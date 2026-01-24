@@ -1,0 +1,198 @@
+# ==============================================================================
+# Promtail Configuration - Système Gaveurs V3.0
+# ==============================================================================
+
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+    backoff_config:
+      min_period: 500ms
+      max_period: 5m
+      max_retries: 10
+
+scrape_configs:
+  # ==========================================================================
+  # Docker container logs
+  # ==========================================================================
+  - job_name: docker
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+    relabel_configs:
+      # Container name
+      - source_labels: ['__meta_docker_container_name']
+        regex: '/(.*)'
+        target_label: 'container'
+
+      # Container ID
+      - source_labels: ['__meta_docker_container_id']
+        target_label: 'container_id'
+
+      # Image name
+      - source_labels: ['__meta_docker_container_label_com_docker_compose_service']
+        target_label: 'service'
+
+      # Project
+      - source_labels: ['__meta_docker_container_label_com_docker_compose_project']
+        target_label: 'project'
+
+      # Log path
+      - source_labels: ['__meta_docker_container_id']
+        target_label: '__path__'
+        replacement: '/var/lib/docker/containers/$1/*.log'
+
+    pipeline_stages:
+      # Parse Docker JSON logs
+      - json:
+          expressions:
+            stream: stream
+            log: log
+            time: time
+
+      # Parse timestamp
+      - timestamp:
+          source: time
+          format: RFC3339Nano
+
+      # Extract log level from log message
+      - regex:
+          expression: '(?i)(?P<level>(DEBUG|INFO|WARNING|ERROR|CRITICAL|FATAL))'
+          source: log
+
+      # Set log level label
+      - labels:
+          level:
+          stream:
+
+  # ==========================================================================
+  # Backend application logs
+  # ==========================================================================
+  - job_name: backend
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: backend
+          service: backend-api
+          __path__: /app/logs/*.log
+
+    pipeline_stages:
+      # Parse JSON logs (if backend outputs JSON)
+      - json:
+          expressions:
+            timestamp: time
+            level: level
+            message: message
+            module: module
+
+      # Parse timestamp
+      - timestamp:
+          source: timestamp
+          format: RFC3339
+
+      # Set labels
+      - labels:
+          level:
+          module:
+
+  # ==========================================================================
+  # Nginx access logs
+  # ==========================================================================
+  - job_name: nginx_access
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: nginx
+          service: nginx-proxy
+          log_type: access
+          __path__: /nginx/logs/*_access.log
+
+    pipeline_stages:
+      # Parse JSON access logs
+      - json:
+          expressions:
+            time: time
+            remote_addr: remote_addr
+            request: request
+            status: status
+            body_bytes_sent: body_bytes_sent
+            request_time: request_time
+            http_referer: http_referer
+            http_user_agent: http_user_agent
+
+      # Parse timestamp
+      - timestamp:
+          source: time
+          format: RFC3339
+
+      # Extract request method and path
+      - regex:
+          expression: '(?P<method>\w+) (?P<path>[^\s]+)'
+          source: request
+
+      # Set labels
+      - labels:
+          method:
+          status:
+
+  # ==========================================================================
+  # Nginx error logs
+  # ==========================================================================
+  - job_name: nginx_error
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: nginx
+          service: nginx-proxy
+          log_type: error
+          __path__: /nginx/logs/*_error.log
+
+    pipeline_stages:
+      # Parse nginx error log format
+      - regex:
+          expression: '(?P<timestamp>\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}) \[(?P<level>\w+)\] (?P<message>.*)'
+
+      # Parse timestamp
+      - timestamp:
+          source: timestamp
+          format: '2006/01/02 15:04:05'
+
+      # Set labels
+      - labels:
+          level:
+
+  # ==========================================================================
+  # System logs (syslog)
+  # ==========================================================================
+  - job_name: syslog
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: syslog
+          service: system
+          __path__: /var/log/syslog
+
+    pipeline_stages:
+      # Parse syslog format
+      - regex:
+          expression: '(?P<timestamp>\w{3}\s+\d{1,2} \d{2}:\d{2}:\d{2}) (?P<hostname>\S+) (?P<process>\S+)\[(?P<pid>\d+)\]: (?P<message>.*)'
+
+      # Parse timestamp
+      - timestamp:
+          source: timestamp
+          format: 'Jan 02 15:04:05'
+
+      # Set labels
+      - labels:
+          hostname:
+          process:
+          pid:

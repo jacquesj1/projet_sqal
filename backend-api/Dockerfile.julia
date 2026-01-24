@@ -1,0 +1,104 @@
+# ==============================================================================
+# Dockerfile avec support Julia pour PySR v2
+# ==============================================================================
+# Stratégie simplifiée: Démarrer de Julia, installer Python
+# ==============================================================================
+
+FROM julia:1.9
+
+# Variables d'environnement
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    DEBIAN_FRONTEND=noninteractive
+
+# Métadonnées
+LABEL maintainer="Claude Sonnet 4.5" \
+      version="3.0-julia" \
+      description="Gaveurs Backend with Julia for PySR v2"
+
+# ==============================================================================
+# Installer Python 3.11 et dépendances
+# ==============================================================================
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    # Python
+    python3.11 \
+    python3.11-dev \
+    python3-pip \
+    python3.11-venv \
+    # Outils de base
+    wget \
+    curl \
+    git \
+    ca-certificates \
+    # Compilation
+    build-essential \
+    gcc \
+    g++ \
+    gfortran \
+    # PostgreSQL client
+    libpq-dev \
+    postgresql-client \
+    # Nettoyage
+    && rm -rf /var/lib/apt/lists/*
+
+# Créer symlinks Python
+RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.11 1 && \
+    update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1
+
+# Vérifier installations
+RUN julia --version && python --version
+
+# ==============================================================================
+# Installer packages Julia pour PySR
+# ==============================================================================
+RUN echo "Installing Julia packages (SymbolicRegression.jl)..." && \
+    julia -e 'using Pkg; Pkg.add("SymbolicRegression"); Pkg.precompile()' && \
+    echo "Julia packages installed successfully"
+
+# ==============================================================================
+# Setup application
+# ==============================================================================
+WORKDIR /app
+
+# Créer répertoires nécessaires
+RUN mkdir -p /app/logs /app/models /app/app
+
+# Copier requirements Python
+COPY requirements.txt .
+
+# Installer dépendances Python (avec override protection Debian)
+RUN pip3 install --no-cache-dir --upgrade pip --break-system-packages && \
+    pip3 install --no-cache-dir -r requirements.txt --break-system-packages && \
+    # Vérifier PySR installé
+    python -c "import pysr; print(f'PySR version: {pysr.__version__}')"
+
+# ==============================================================================
+# Copier code application
+# ==============================================================================
+COPY ./app/__init__.py /app/app/
+COPY ./app/main.py /app/app/
+
+# Alembic migrations
+COPY ./alembic.ini /app/alembic.ini
+COPY ./alembic /app/alembic
+
+# ==============================================================================
+# Configuration runtime
+# ==============================================================================
+
+# Exposer port FastAPI
+EXPOSE 8000
+
+# Healthcheck
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=40s \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+# Variables d'environnement par défaut
+ENV APP_ENV=production \
+    LOG_LEVEL=info \
+    WORKERS=4
+
+# ==============================================================================
+# Commande de démarrage
+# ==============================================================================
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]

@@ -1,0 +1,270 @@
+# ==============================================================================
+# Prometheus Alert Rules - Système Gaveurs V3.0
+# ==============================================================================
+
+groups:
+  # ==========================================================================
+  # Application Alerts
+  # ==========================================================================
+  - name: application
+    interval: 30s
+    rules:
+      - alert: BackendDown
+        expr: up{job="backend-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: backend
+        annotations:
+          summary: "Backend API is down"
+          description: "Backend API has been down for more than 1 minute."
+
+      - alert: HighErrorRate
+        expr: rate(http_requests_total{status=~"5.."}[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          component: backend
+        annotations:
+          summary: "High error rate detected"
+          description: "Error rate is {{ $value | humanizePercentage }} over the last 5 minutes."
+
+      - alert: SlowResponseTime
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 2
+        for: 5m
+        labels:
+          severity: warning
+          component: backend
+        annotations:
+          summary: "Slow API response time"
+          description: "95th percentile response time is {{ $value }}s over the last 5 minutes."
+
+      - alert: HighMemoryUsage
+        expr: (container_memory_usage_bytes{name="gaveurs_backend_prod"} / container_spec_memory_limit_bytes{name="gaveurs_backend_prod"}) > 0.85
+        for: 5m
+        labels:
+          severity: warning
+          component: backend
+        annotations:
+          summary: "High memory usage on backend"
+          description: "Backend container memory usage is {{ $value | humanizePercentage }}."
+
+      - alert: HighCPUUsage
+        expr: rate(container_cpu_usage_seconds_total{name="gaveurs_backend_prod"}[5m]) > 0.8
+        for: 10m
+        labels:
+          severity: warning
+          component: backend
+        annotations:
+          summary: "High CPU usage on backend"
+          description: "Backend container CPU usage is {{ $value | humanizePercentage }}."
+
+  # ==========================================================================
+  # Database Alerts
+  # ==========================================================================
+  - name: database
+    interval: 30s
+    rules:
+      - alert: DatabaseDown
+        expr: up{job="timescaledb"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: database
+        annotations:
+          summary: "TimescaleDB is down"
+          description: "TimescaleDB has been down for more than 1 minute."
+
+      - alert: HighDatabaseConnections
+        expr: pg_stat_activity_count > 150
+        for: 5m
+        labels:
+          severity: warning
+          component: database
+        annotations:
+          summary: "High number of database connections"
+          description: "Database has {{ $value }} active connections."
+
+      - alert: DatabaseSlowQueries
+        expr: rate(pg_stat_statements_mean_exec_time[5m]) > 1000
+        for: 5m
+        labels:
+          severity: warning
+          component: database
+        annotations:
+          summary: "Slow database queries detected"
+          description: "Average query execution time is {{ $value }}ms."
+
+      - alert: DatabaseDiskSpaceHigh
+        expr: (pg_database_size_bytes / 1024 / 1024 / 1024) > 50
+        for: 10m
+        labels:
+          severity: warning
+          component: database
+        annotations:
+          summary: "Database disk space high"
+          description: "Database size is {{ $value }}GB."
+
+      - alert: DatabaseDeadlocks
+        expr: rate(pg_stat_database_deadlocks[5m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+          component: database
+        annotations:
+          summary: "Database deadlocks detected"
+          description: "{{ $value }} deadlocks detected in the last 5 minutes."
+
+  # ==========================================================================
+  # Redis Alerts
+  # ==========================================================================
+  - name: redis
+    interval: 30s
+    rules:
+      - alert: RedisDown
+        expr: up{job="redis"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: cache
+        annotations:
+          summary: "Redis is down"
+          description: "Redis has been down for more than 1 minute."
+
+      - alert: RedisHighMemoryUsage
+        expr: (redis_memory_used_bytes / redis_memory_max_bytes) > 0.85
+        for: 5m
+        labels:
+          severity: warning
+          component: cache
+        annotations:
+          summary: "Redis high memory usage"
+          description: "Redis memory usage is {{ $value | humanizePercentage }}."
+
+      - alert: RedisRejectedConnections
+        expr: rate(redis_rejected_connections_total[5m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+          component: cache
+        annotations:
+          summary: "Redis rejecting connections"
+          description: "Redis is rejecting connections due to maxclients limit."
+
+      - alert: RedisHighEvictionRate
+        expr: rate(redis_evicted_keys_total[5m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+          component: cache
+        annotations:
+          summary: "High Redis eviction rate"
+          description: "Redis is evicting {{ $value }} keys per second."
+
+  # ==========================================================================
+  # System Alerts
+  # ==========================================================================
+  - name: system
+    interval: 30s
+    rules:
+      - alert: HostOutOfMemory
+        expr: node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes < 0.1
+        for: 5m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "Host out of memory"
+          description: "Host memory is filling up (< 10% available)."
+
+      - alert: HostOutOfDiskSpace
+        expr: (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) < 0.1
+        for: 5m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "Host out of disk space"
+          description: "Disk is almost full (< 10% available)."
+
+      - alert: HostHighCPULoad
+        expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 10m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "Host high CPU load"
+          description: "CPU load is {{ $value | humanize }}%."
+
+      - alert: ContainerKilled
+        expr: time() - container_last_seen > 60
+        for: 1m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "Container killed"
+          description: "Container {{ $labels.name }} has disappeared."
+
+  # ==========================================================================
+  # WebSocket Alerts
+  # ==========================================================================
+  - name: websocket
+    interval: 30s
+    rules:
+      - alert: HighWebSocketDisconnections
+        expr: rate(websocket_disconnections_total[5m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+          component: websocket
+        annotations:
+          summary: "High WebSocket disconnection rate"
+          description: "WebSocket disconnection rate is {{ $value }} per second."
+
+      - alert: WebSocketConnectionBacklog
+        expr: websocket_pending_connections > 100
+        for: 5m
+        labels:
+          severity: warning
+          component: websocket
+        annotations:
+          summary: "WebSocket connection backlog"
+          description: "{{ $value }} WebSocket connections are pending."
+
+  # ==========================================================================
+  # Business Logic Alerts
+  # ==========================================================================
+  - name: business
+    interval: 60s
+    rules:
+      - alert: NoSensorDataReceived
+        expr: rate(sqal_sensor_samples_total[15m]) == 0
+        for: 15m
+        labels:
+          severity: warning
+          component: sensors
+        annotations:
+          summary: "No sensor data received"
+          description: "No SQAL sensor data has been received in the last 15 minutes."
+
+      - alert: HighAnomalyDetectionRate
+        expr: rate(ml_anomalies_detected_total[1h]) > 0.1
+        for: 1h
+        labels:
+          severity: info
+          component: ml
+        annotations:
+          summary: "High anomaly detection rate"
+          description: "Anomaly detection rate is {{ $value | humanizePercentage }}."
+
+      - alert: LowConsumerFeedbackRate
+        expr: rate(consumer_feedback_submissions_total[24h]) < 5
+        for: 24h
+        labels:
+          severity: info
+          component: feedback
+        annotations:
+          summary: "Low consumer feedback rate"
+          description: "Only {{ $value }} consumer feedbacks received in last 24 hours."

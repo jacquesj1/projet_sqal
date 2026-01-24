@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pipeline end-to-end - Système Gaveurs V3.0</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;600;700;800&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-brand">
+            <span class="logo">🦆</span>
+            <span class="brand-text">Système Gaveurs V3.0</span>
+        </div>
+        <ul class="nav-links">
+            <li><a href="index.html">Accueil</a></li>
+            <li><a href="boucle-fermee.html" class="active">Pipeline end-to-end</a></li>
+            <li><a href="sqal.html">SQAL (IoT)</a></li>
+            <li><a href="blockchain.html">Traçabilité (Blockchain)</a></li>
+            <li><a href="commercial.html">KPIs & Déploiement</a></li>
+        </ul>
+    </nav>
+
+    <!-- Page Header -->
+    <header class="page-header">
+        <h1>Pipeline end-to-end</h1>
+        <p>Chaînage des événements: gavage → SQAL → QR/trace → blockchain verify → feedback consommateur</p>
+    </header>
+
+    <!-- Concept Unique -->
+    <section class="section">
+        <div class="container">
+            <h2 class="section-title">Objectif</h2>
+            <p class="section-intro">
+                Assurer un chaînage robuste entre un lot, ses événements de production, ses mesures qualité et sa restitution côté traçabilité.
+            </p>
+
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <h3>Problème</h3>
+                    <p>Sans identifiant commun et événements structurés, la corrélation lot ↔ qualité ↔ traçabilité ↔ feedback est difficile.</p>
+                    <ul>
+                        <li>Corrélation production ↔ qualité ↔ feedback indirecte</li>
+                        <li>Auditabilité faible (données dispersées)</li>
+                        <li>Historisation partielle</li>
+                    </ul>
+                </div>
+                <div class="feature-card">
+                    <h3>Approche</h3>
+                    <p>Chaque produit est associé à un token QR; les métadonnées lot/qualité sont portées par l'URL sans modifier le token signé.</p>
+                    <ul>
+                        <li>Chaînage lot → sample → product → trace</li>
+                        <li>Scores qualité (ToF / AS7341) disponibles</li>
+                        <li>Vérification hash blockchain côté UI</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Le Cycle Complet -->
+    <section class="section" style="background: var(--white);">
+        <div class="container">
+            <h2 class="section-title">Étapes (runtime)</h2>
+
+            <div class="timeline">
+                <div class="timeline-item">
+                    <div class="date">ÉTAPE 1</div>
+                    <h4>Gavage (source)</h4>
+                    <p>Production d'événements (matin/soir) et mise à jour des tables lots + doses. Diffusion WebSocket.</p>
+                </div>
+                <div class="timeline-item">
+                    <div class="date">ÉTAPE 2</div>
+                    <h4>Supervision (dashboard)</h4>
+                    <p>Consultation multi-sites/ lots, alertes et agrégations. Consommation WS + API.</p>
+                </div>
+                <div class="timeline-item">
+                    <div class="date">ÉTAPE 3</div>
+                    <h4>SQAL (IoT)</h4>
+                    <p>Ingestion des mesures ToF (8×8) et spectral (10 canaux). Stockage et calcul des scores qualité.</p>
+                </div>
+                <div class="timeline-item">
+                    <div class="date">ÉTAPE 4</div>
+                    <h4>Proof (blockchain)</h4>
+                    <p>Calcul / stockage d'un hash vérifiable pour le produit/lot. Vérification côté UI.</p>
+                </div>
+                <div class="timeline-item">
+                    <div class="date">ÉTAPE 5</div>
+                    <h4>Feedback consommateur</h4>
+                    <p>Scan QR (token) puis soumission de feedback (notes/commentaire). Enregistrement en base.</p>
+                </div>
+                <div class="timeline-item">
+                    <div class="date">ÉTAPE 6</div>
+                    <h4>ML (optionnel)</h4>
+                    <p>Services ML: suggestions de doses, analyses, corrélations. Les résultats sont exposés via API.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Les 6 Algorithmes ML -->
+    <section class="section">
+        <div class="container">
+            <h2 class="section-title">6 Algorithmes d'Intelligence Artificielle</h2>
+            <p class="section-intro">
+                Notre plateforme embarque 6 modèles ML spécialisés, chacun optimisant un aspect différent de la production.
+            </p>
+
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <h3>🧮 PySR - Régression Symbolique</h3>
+                    <p>Découvre les formules mathématiques optimales de gavage. Génère des équations interprétables par les humains.</p>
+                    <ul>
+                        <li>dose(j) = 0.42×j² + 15.3×log(j) + 180</li>
+                        <li>R² > 0.92 sur données historiques</li>
+                        <li>Courbes personnalisées par génétique</li>
+                    </ul>
+                </div>
+                <div class="feature-card">
+                    <h3>🎯 Random Forest - Feedback Optimizer</h3>
+                    <p>Le cœur de la boucle fermée. Corrèle paramètres de production et satisfaction consommateur.</p>
+                    <ul>
+                        <li>Analyse multi-variée (dose, température, humidité...)</li>
+                        <li>Feature importance pour comprendre les facteurs clés</li>
+                        <li>Mise à jour incrémentale avec nouveaux feedbacks</li>
+                    </ul>
+                </div>
+                <div class="feature-card">
+                    <h3>📈 Prophet - Prévision Production</h3>
+                    <p>Prévisions de production à 7, 30 et 90 jours avec intervalles de confiance.</p>
+                    <ul>
+                        <li>Intègre saisonnalité et tendances</li>
+                        <li>Alertes préventives avant pic de mortalité</li>
+                        <li>Planification capacité abattage</li>
+                    </ul>
+                </div>
+                <div class="feature-card">
+                    <h3>🏷️ K-Means - Clustering Gaveurs</h3>
+                    <p>Segmente les gaveurs en 5 clusters de performance pour benchmark et formation.</p>
+                    <ul>
+                        <li>Excellence, Performant, Standard, À risque, Critique</li>
+                        <li>Identification des meilleures pratiques</li>
+                        <li>Programme de mentorat ciblé</li>
+                    </ul>
+                </div>
+                <div class="feature-card">
+                    <h3>⚠️ Isolation Forest - Anomalies</h3>
+                    <p>Détecte en temps réel les comportements anormaux avant qu'ils ne deviennent critiques.</p>
+                    <ul>
+                        <li>Mortalité soudaine détectée en J+1</li>
+                        <li>Écarts de dose inhabituels</li>
+                        <li>Alertes push en temps réel</li>
+                    </ul>
+                </div>
+                <div class="feature-card">
+                    <h3>📅 Hungarian Algorithm - Planification</h3>
+                    <p>Optimise l'assignation des lots aux créneaux d'abattage pour maximiser l'efficacité.</p>
+                    <ul>
+                        <li>Minimise temps d'attente</li>
+                        <li>Équilibre charge des lignes</li>
+                        <li>Intègre contraintes logistiques</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Résultats -->
+    <section class="section stats-section">
+        <div class="container">
+            <h2 class="section-title">Résultats de la Boucle Fermée</h2>
+            <p class="section-intro" style="color: rgba(255,255,255,0.8);">
+                Après 6 mois de déploiement sur sites pilotes, les résultats parlent d'eux-mêmes.
+            </p>
+
+            <div class="stats-grid">
+                <div class="big-stat">
+                    <span class="big-number">+23%</span>
+                    <span class="big-label">Foies Grade A+</span>
+                    <p>Augmentation des foies premium</p>
+                </div>
+                <div class="big-stat">
+                    <span class="big-number">4.7/5</span>
+                    <span class="big-label">Satisfaction Client</span>
+                    <p>Note moyenne consommateurs</p>
+                </div>
+                <div class="big-stat">
+                    <span class="big-number">12,847</span>
+                    <span class="big-label">Feedbacks Collectés</span>
+                    <p>Base d'apprentissage ML</p>
+                </div>
+                <div class="big-stat">
+                    <span class="big-number">847</span>
+                    <span class="big-label">Courbes Générées</span>
+                    <p>Optimisations IA produites</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Comparaison Avant/Après -->
+    <section class="section" style="background: var(--white);">
+        <div class="container">
+            <h2 class="section-title">Avant vs Après</h2>
+
+            <table class="comparison-table">
+                <thead>
+                    <tr>
+                        <th>Critère</th>
+                        <th>Production Traditionnelle</th>
+                        <th>Avec Boucle Fermée IA</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Feedback consommateur</td>
+                        <td class="cross">Aucun retour direct</td>
+                        <td class="check">✓ Collecte systématique via QR</td>
+                    </tr>
+                    <tr>
+                        <td>Courbes de gavage</td>
+                        <td class="cross">Standards fixes par génétique</td>
+                        <td class="check">✓ Personnalisées et évolutives</td>
+                    </tr>
+                    <tr>
+                        <td>Détection anomalies</td>
+                        <td class="cross">Réactive (après le fait)</td>
+                        <td class="check">✓ Prédictive J+3 à J+7</td>
+                    </tr>
+                    <tr>
+                        <td>Traçabilité</td>
+                        <td class="cross">Documents papier</td>
+                        <td class="check">✓ Blockchain immuable</td>
+                    </tr>
+                    <tr>
+                        <td>Amélioration continue</td>
+                        <td class="cross">Intuition et expérience</td>
+                        <td class="check">✓ Data-driven automatisée</td>
+                    </tr>
+                    <tr>
+                        <td>Temps de saisie/jour</td>
+                        <td class="cross">45 min (papier)</td>
+                        <td class="check">✓ 5 min (vocal/OCR)</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <!-- CTA -->
+    <section class="section cta-section">
+        <div class="container">
+            <h2>Découvrez le Contrôle Qualité IoT</h2>
+            <p>SQAL : des capteurs de pointe pour une évaluation objective et instantanée.</p>
+            <div class="cta-buttons">
+                <a href="sqal.html" class="cta-button">Découvrir SQAL →</a>
+                <a href="blockchain.html" class="cta-button secondary">Voir la Blockchain</a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-brand">
+                    <span class="logo">🦆</span>
+                    <span>Système Gaveurs V3.0</span>
+                </div>
+                <p>IA + IoT + Blockchain pour l'excellence du foie gras français</p>
+                <p class="copyright">© 2024 - Projet Euralis Gaveurs</p>
+            </div>
+        </div>
+    </footer>
+</body>
+</html>

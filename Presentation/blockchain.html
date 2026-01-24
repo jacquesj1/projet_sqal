@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Traçabilité (Blockchain) - Système Gaveurs V3.0</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;600;700;800&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-brand">
+            <span class="logo">🦆</span>
+            <span class="brand-text">Système Gaveurs V3.0</span>
+        </div>
+        <ul class="nav-links">
+            <li><a href="index.html">Accueil</a></li>
+            <li><a href="boucle-fermee.html">Pipeline end-to-end</a></li>
+            <li><a href="sqal.html">SQAL (IoT)</a></li>
+            <li><a href="blockchain.html" class="active">Blockchain</a></li>
+            <li><a href="commercial.html">KPIs & Déploiement</a></li>
+        </ul>
+    </nav>
+
+    <!-- Page Header -->
+    <header class="page-header">
+        <h1>Blockchain & traçabilité</h1>
+        <p>Stockage d'une preuve d'intégrité (hash) et vérification via API.</p>
+    </header>
+
+    <!-- Pourquoi la Blockchain -->
+    <section class="section">
+        <div class="container">
+            <h2 class="section-title">Objectif</h2>
+            <p class="section-intro">
+                Fournir une preuve vérifiable de l'intégrité des événements (lot, qualité, produit) et permettre un contrôle via hash.
+            </p>
+
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <h3>Immuabilité</h3>
+                    <p>Une fois enregistrée, une donnée ne peut plus être modifiée ni supprimée. Chaque bloc est lié au précédent par une empreinte cryptographique.</p>
+                    <ul>
+                        <li>Hash SHA-256 pour chaque transaction</li>
+                        <li>Consensus multi-nœuds requis</li>
+                        <li>Historique complet auditable</li>
+                    </ul>
+                </div>
+                <div class="feature-card">
+                    <h3>Réseau permissionné</h3>
+                    <p>Aucun point unique de défaillance. Les données sont répliquées sur plusieurs nœuds appartenant à différents acteurs.</p>
+                    <ul>
+                        <li>Nœud Euralis (producteur)</li>
+                        <li>Nœud abattoir certifié</li>
+                        <li>Nœud distributeur partenaire</li>
+                    </ul>
+                </div>
+                <div class="feature-card">
+                    <h3>Confidentialité</h3>
+                    <p>Avec Hyperledger Fabric, les données sensibles restent privées entre parties autorisées, tout en garantissant la vérifiabilité.</p>
+                    <ul>
+                        <li>Canaux privés entre partenaires</li>
+                        <li>Données publiques pour consommateurs</li>
+                        <li>Conformité RGPD respectée</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Architecture Hyperledger -->
+    <section class="section" style="background: var(--white);">
+        <div class="container">
+            <h2 class="section-title">Architecture Hyperledger Fabric</h2>
+            <p class="section-intro">
+                Nous utilisons <strong>Hyperledger Fabric</strong>, la blockchain entreprise de la Linux Foundation,
+                spécialement conçue pour les cas d'usage B2B avec permissions et confidentialité.
+            </p>
+
+            <div class="blockchain-architecture">
+                <div class="arch-layer">
+                    <h4>📱 Applications</h4>
+                    <div class="arch-items">
+                        <span>App Gaveur</span>
+                        <span>Dashboard Euralis</span>
+                        <span>App Consommateur</span>
+                    </div>
+                </div>
+                <div class="arch-arrow">↓</div>
+                <div class="arch-layer">
+                    <h4>🔌 API Gateway</h4>
+                    <div class="arch-items">
+                        <span>FastAPI Backend</span>
+                        <span>Fabric SDK Node.js</span>
+                    </div>
+                </div>
+                <div class="arch-arrow">↓</div>
+                <div class="arch-layer highlight-layer">
+                    <h4>⛓️ Hyperledger Fabric Network</h4>
+                    <div class="arch-items">
+                        <span>Orderer (Raft)</span>
+                        <span>Peer Euralis</span>
+                        <span>Peer Abattoir</span>
+                        <span>Peer Distributeur</span>
+                    </div>
+                </div>
+                <div class="arch-arrow">↓</div>
+                <div class="arch-layer">
+                    <h4>📜 Smart Contracts (Chaincode)</h4>
+                    <div class="arch-items">
+                        <span>LotContract</span>
+                        <span>QualityContract</span>
+                        <span>TraceContract</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Données Enregistrées -->
+    <section class="section">
+        <div class="container">
+            <h2 class="section-title">Données Enregistrées sur la Blockchain</h2>
+
+            <div class="timeline">
+                <div class="timeline-item">
+                    <div class="date">BLOC 1</div>
+                    <h4>🥚 Origine du Lot</h4>
+                    <p>Enregistrement initial lors de la création du lot de canards.</p>
+                    <ul>
+                        <li>ID unique du lot (hash)</li>
+                        <li>Souche génétique (Mulard Grimaud, etc.)</li>
+                        <li>Date de naissance</li>
+                        <li>Couvoir d'origine certifié</li>
+                        <li>Effectif initial</li>
+                    </ul>
+                </div>
+                <div class="timeline-item">
+                    <div class="date">BLOC 2</div>
+                    <h4>🏠 Élevage</h4>
+                    <p>Conditions d'élevage avant le gavage (phase prégavage).</p>
+                    <ul>
+                        <li>Site d'élevage (géolocalisation)</li>
+                        <li>Durée phase prégavage</li>
+                        <li>Alimentation utilisée</li>
+                        <li>Certifications (Label Rouge, IGP...)</li>
+                        <li>Contrôles vétérinaires</li>
+                    </ul>
+                </div>
+                <div class="timeline-item">
+                    <div class="date">BLOC 3</div>
+                    <h4>🌽 Gavage</h4>
+                    <p>Historique complet des 12-14 jours de gavage.</p>
+                    <ul>
+                        <li>Gaveur identifié (ID anonymisé)</li>
+                        <li>Courbe de gavage appliquée</li>
+                        <li>Doses journalières (matin/soir)</li>
+                        <li>Mortalité quotidienne</li>
+                        <li>Conditions environnementales</li>
+                    </ul>
+                </div>
+                <div class="timeline-item">
+                    <div class="date">BLOC 4</div>
+                    <h4>🔬 Contrôle Qualité SQAL</h4>
+                    <p>Résultats objectifs des capteurs IoT.</p>
+                    <ul>
+                        <li>Grade attribué (A+ à D)</li>
+                        <li>Score de confiance ML</li>
+                        <li>Volume estimé (ToF)</li>
+                        <li>Teneur lipidique (spectral)</li>
+                        <li>Horodatage précis</li>
+                    </ul>
+                </div>
+                <div class="timeline-item">
+                    <div class="date">BLOC 5</div>
+                    <h4>📦 Distribution</h4>
+                    <p>Traçabilité logistique jusqu'au point de vente.</p>
+                    <ul>
+                        <li>Date d'abattage</li>
+                        <li>Numéro de lot commercial</li>
+                        <li>Chaîne du froid respectée</li>
+                        <li>Distributeur destinataire</li>
+                        <li>QR code généré</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- QR Code et Consommateur -->
+    <section class="section" style="background: var(--white);">
+        <div class="container">
+            <h2 class="section-title">Le QR Code : Pont vers le Consommateur</h2>
+
+            <div class="qr-demo">
+                <div class="qr-left">
+                    <div class="qr-code-visual">
+                        <div class="qr-placeholder">
+                            <span>📱</span>
+                            <p>QR Code Unique</p>
+                        </div>
+                    </div>
+                    <p class="qr-caption">Chaque produit porte un QR code unique lié à son historique blockchain</p>
+                </div>
+                <div class="qr-right">
+                    <h3>Expérience Consommateur</h3>
+                    <div class="qr-steps">
+                        <div class="qr-step">
+                            <span class="step-num">1</span>
+                            <div>
+                                <strong>Scan</strong>
+                                <p>Le consommateur scanne le QR code avec son smartphone</p>
+                            </div>
+                        </div>
+                        <div class="qr-step">
+                            <span class="step-num">2</span>
+                            <div>
+                                <strong>Découverte</strong>
+                                <p>Page web avec l'histoire complète du produit : origine, gaveur, grade qualité</p>
+                            </div>
+                        </div>
+                        <div class="qr-step">
+                            <span class="step-num">3</span>
+                            <div>
+                                <strong>Vérification</strong>
+                                <p>Possibilité de vérifier l'empreinte blockchain (hash)</p>
+                            </div>
+                        </div>
+                        <div class="qr-step">
+                            <span class="step-num">4</span>
+                            <div>
+                                <strong>Feedback</strong>
+                                <p>Notation de l'expérience (1-5 étoiles) → alimente la boucle fermée IA</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Smart Contracts -->
+    <section class="section">
+        <div class="container">
+            <h2 class="section-title">Smart Contracts (Chaincode)</h2>
+            <p class="section-intro">
+                Les smart contracts automatisent la logique métier et garantissent l'application des règles sans intervention humaine.
+            </p>
+
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <h3>📋 LotContract</h3>
+                    <p>Gestion du cycle de vie des lots de canards.</p>
+                    <pre class="code-snippet">
+createLot(origin, strain, count)
+updatePhase(lotId, newPhase)
+recordMortality(lotId, count)
+closeLot(lotId, finalCount)</pre>
+                </div>
+                <div class="feature-card">
+                    <h3>⭐ QualityContract</h3>
+                    <p>Enregistrement des évaluations qualité SQAL.</p>
+                    <pre class="code-snippet">
+recordGrade(lotId, grade, confidence)
+validateSensorData(deviceId, data)
+getQualityHistory(lotId)
+computeAverageGrade(timeRange)</pre>
+                </div>
+                <div class="feature-card">
+                    <h3>🔍 TraceContract</h3>
+                    <p>Génération et vérification de la traçabilité.</p>
+                    <pre class="code-snippet">
+generateQRCode(lotId, productId)
+verifyTrace(qrHash)
+getFullHistory(productId)
+recordConsumerFeedback(qrHash, rating)</pre>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Avantages Compétitifs -->
+    <section class="section stats-section">
+        <div class="container">
+            <h2 class="section-title">Avantages Compétitifs</h2>
+
+            <div class="stats-grid">
+                <div class="big-stat">
+                    <span class="big-number">100%</span>
+                    <span class="big-label">Traçabilité</span>
+                    <p>Du couvoir à l'assiette</p>
+                </div>
+                <div class="big-stat">
+                    <span class="big-number">< 3s</span>
+                    <span class="big-label">Vérification</span>
+                    <p>Temps de validation blockchain</p>
+                </div>
+                <div class="big-stat">
+                    <span class="big-number">0</span>
+                    <span class="big-label">Falsification</span>
+                    <p>Données immuables et signées</p>
+                </div>
+                <div class="big-stat">
+                    <span class="big-number">∞</span>
+                    <span class="big-label">Rétention</span>
+                    <p>Historique permanent</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Conformité et Certifications -->
+    <section class="section" style="background: var(--white);">
+        <div class="container">
+            <h2 class="section-title">Conformité & Certifications</h2>
+
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <h3>🇪🇺 RGPD</h3>
+                    <p>Conformité totale avec la réglementation européenne sur les données personnelles.</p>
+                    <ul>
+                        <li>Données gaveurs pseudonymisées</li>
+                        <li>Consentement consommateur explicite</li>
+                        <li>Droit à l'oubli respecté (off-chain)</li>
+                    </ul>
+                </div>
+                <div class="feature-card">
+                    <h3>🏷️ IGP Sud-Ouest</h3>
+                    <p>Compatible avec les exigences de l'Indication Géographique Protégée.</p>
+                    <ul>
+                        <li>Origine géographique vérifiable</li>
+                        <li>Cahier des charges tracé</li>
+                        <li>Audits facilités</li>
+                    </ul>
+                </div>
+                <div class="feature-card">
+                    <h3>🔴 Label Rouge</h3>
+                    <p>Intégration des critères Label Rouge dans la chaîne de traçabilité.</p>
+                    <ul>
+                        <li>Durée d'élevage minimale</li>
+                        <li>Alimentation contrôlée</li>
+                        <li>Conditions bien-être animal</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- CTA -->
+    <section class="section cta-section">
+        <div class="container">
+            <h2>Découvrez le ROI et Notre Offre</h2>
+            <p>Investissement, retour sur investissement et modèles de déploiement.</p>
+            <div class="cta-buttons">
+                <a href="commercial.html" class="cta-button">Voir l'Offre Commerciale →</a>
+                <a href="index.html" class="cta-button secondary">Retour à l'Accueil</a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-brand">
+                    <span class="logo">🦆</span>
+                    <span>Système Gaveurs V3.0</span>
+                </div>
+                <p>IA + IoT + Blockchain pour l'excellence du foie gras français</p>
+                <p class="copyright">© 2024 - Projet Euralis Gaveurs</p>
+            </div>
+        </div>
+    </footer>
+
+    <style>
+        /* Blockchain Architecture */
+        .blockchain-architecture {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border-radius: 20px;
+            padding: 40px;
+            margin-top: 30px;
+        }
+
+        .arch-layer {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+
+        .arch-layer h4 {
+            margin-bottom: 15px;
+            color: var(--primary);
+        }
+
+        .arch-layer.highlight-layer {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+            color: white;
+        }
+
+        .arch-layer.highlight-layer h4 {
+            color: white;
+        }
+
+        .arch-items {
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .arch-items span {
+            background: rgba(184, 134, 11, 0.1);
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+        }
+
+        .highlight-layer .arch-items span {
+            background: rgba(255,255,255,0.2);
+            color: white;
+        }
+
+        .arch-arrow {
+            text-align: center;
+            font-size: 2rem;
+            color: var(--primary);
+            margin: 10px 0;
+        }
+
+        /* QR Demo */
+        .qr-demo {
+            display: grid;
+            grid-template-columns: 1fr 2fr;
+            gap: 40px;
+            align-items: center;
+            margin-top: 30px;
+        }
+
+        .qr-code-visual {
+            background: white;
+            border: 3px dashed var(--primary);
+            border-radius: 20px;
+            padding: 40px;
+            text-align: center;
+        }
+
+        .qr-placeholder span {
+            font-size: 4rem;
+            display: block;
+            margin-bottom: 10px;
+        }
+
+        .qr-caption {
+            text-align: center;
+            margin-top: 15px;
+            color: var(--gray);
+            font-style: italic;
+        }
+
+        .qr-steps {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .qr-step {
+            display: flex;
+            align-items: flex-start;
+            gap: 15px;
+        }
+
+        .step-num {
+            background: var(--primary);
+            color: white;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            flex-shrink: 0;
+        }
+
+        .qr-step strong {
+            display: block;
+            margin-bottom: 5px;
+            color: var(--dark);
+        }
+
+        .qr-step p {
+            margin: 0;
+            color: var(--gray);
+        }
+
+        /* Code Snippet */
+        .code-snippet {
+            background: #1e1e1e;
+            color: #9cdcfe;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Fira Code', monospace;
+            font-size: 0.85rem;
+            overflow-x: auto;
+            margin-top: 15px;
+        }
+
+        @media (max-width: 768px) {
+            .qr-demo {
+                grid-template-columns: 1fr;
+            }
+
+            .qr-left {
+                order: -1;
+            }
+        }
+    </style>
+</body>
+</html>

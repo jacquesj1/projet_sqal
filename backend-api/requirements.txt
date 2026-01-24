@@ -1,0 +1,49 @@
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+pydantic==2.6.0
+pydantic-settings==2.1.0
+email-validator==2.1.0
+asyncpg==0.29.0
+python-multipart==0.0.6
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+python-keycloak==3.9.0
+websockets==12.0
+redis==4.6.0
+
+# Task Queue - Celery
+celery[redis]==5.3.4
+flower==2.0.1
+
+# Machine Learning & IA
+pysr==0.18.1
+scikit-learn==1.4.0
+numpy==1.26.3
+pandas==2.2.0
+prophet==1.1.5
+tensorflow==2.18.0  # Updated for Python 3.12 compatibility
+torch==2.5.0  # Updated for Python 3.12 compatibility
+
+# SMS Service
+twilio==8.11.1
+requests==2.31.0
+
+# Blockchain
+pycryptodome==3.20.0
+# hashlib is built-in to Python, no need to install
+
+# Monitoring
+prometheus-client==0.19.0
+psutil==5.9.8  # System metrics for monitoring
+
+# Database ORM & migrations
+SQLAlchemy==2.0.36
+alembic==1.13.3
+
+# Docker API (for control panel)
+docker==7.0.0
+
+# Testing
+pytest==7.4.4
+pytest-asyncio==0.23.3
+httpx==0.26.0

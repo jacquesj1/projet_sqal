@@ -1,0 +1,32 @@
+# Dockerfile pour Simulateur Gavage Temps Réel
+# ==============================================
+# Simule le gavage de canards jour par jour (11-14 jours, 2x/jour)
+#
+# Build: docker build -f Dockerfile.gavage_realtime -t gaveurs-simulator-gavage-realtime:latest .
+# Run:   docker run gaveurs-simulator-gavage-realtime --nb-lots 3 --acceleration 1440
+
+FROM python:3.11-slim
+
+LABEL maintainer="Euralis Multi-Sites"
+LABEL description="Simulateur Gavage Temps Réel - Cycle 2x/jour"
+LABEL version="3.0.0"
+
+# Variables d'environnement
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# Répertoire de travail
+WORKDIR /app
+
+# Copier les dépendances (depuis le répertoire simulators)
+COPY simulators/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copier le code source du simulateur gavage_realtime
+COPY simulators/gavage_realtime/ /app/gavage_realtime/
+
+# Point d'entrée
+WORKDIR /app/gavage_realtime
+CMD ["python", "main.py", "--backend-url", "ws://backend:8000/ws/gavage", "--nb-lots", "3", "--acceleration", "1440"]

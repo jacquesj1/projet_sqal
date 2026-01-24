@@ -1,0 +1,852 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SQAL (IoT) - Contrôle qualité et scoring - Système Gaveurs V3.0</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;600;700;800&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
+    <style>
+        .sqal-hero {
+            background: linear-gradient(135deg, #0d9488 0%, #14b8a6 50%, #2dd4bf 100%);
+        }
+        .sensor-showcase {
+            display: flex;
+            gap: 4rem;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin: 3rem 0;
+        }
+        .sensor-box {
+            background: var(--white);
+            border-radius: 24px;
+            padding: 3rem;
+            box-shadow: var(--shadow-lg);
+            text-align: center;
+            flex: 1;
+            min-width: 320px;
+            max-width: 450px;
+        }
+        .sensor-box h3 {
+            color: var(--primary);
+            font-size: 1.5rem;
+            margin-bottom: 0.5rem;
+        }
+        .sensor-box .model {
+            color: #0d9488;
+            font-weight: 600;
+            font-size: 0.9rem;
+            margin-bottom: 1.5rem;
+        }
+        .tof-matrix {
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            gap: 4px;
+            width: 200px;
+            margin: 1.5rem auto;
+        }
+        .tof-matrix .cell {
+            aspect-ratio: 1;
+            border-radius: 4px;
+            transition: all 0.3s ease;
+        }
+        .spectral-display {
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            gap: 6px;
+            height: 120px;
+            margin: 1.5rem 0;
+        }
+        .spectral-bar {
+            width: 24px;
+            border-radius: 6px 6px 0 0;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+        .spectral-bar::after {
+            content: attr(data-nm);
+            position: absolute;
+            bottom: -25px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 0.65rem;
+            color: var(--text-light);
+            white-space: nowrap;
+        }
+        .grade-showcase {
+            display: flex;
+            justify-content: center;
+            gap: 1.5rem;
+            margin: 3rem 0;
+            flex-wrap: wrap;
+        }
+        .grade-item {
+            text-align: center;
+        }
+        .grade-circle {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2.5rem;
+            font-weight: 800;
+            color: var(--white);
+            margin-bottom: 0.75rem;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        .grade-circle.a-plus { background: linear-gradient(135deg, #059669, #10b981); }
+        .grade-circle.a { background: linear-gradient(135deg, #2563eb, #3b82f6); }
+        .grade-circle.b { background: linear-gradient(135deg, #d97706, #f59e0b); }
+        .grade-circle.c { background: linear-gradient(135deg, #dc2626, #ef4444); }
+        .grade-circle.d { background: linear-gradient(135deg, #7f1d1d, #b91c1c); }
+        .grade-item .label {
+            font-size: 0.85rem;
+            color: var(--text-light);
+        }
+        .grade-item .criteria {
+            font-size: 0.75rem;
+            color: var(--text-light);
+            margin-top: 0.25rem;
+        }
+        .workflow-steps {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 2rem;
+            margin: 3rem 0;
+            flex-wrap: wrap;
+        }
+        .workflow-step {
+            flex: 1;
+            min-width: 200px;
+            text-align: center;
+            position: relative;
+        }
+        .workflow-step:not(:last-child)::after {
+            content: '→';
+            position: absolute;
+            right: -1.5rem;
+            top: 2rem;
+            font-size: 2rem;
+            color: #0d9488;
+        }
+        .workflow-icon {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(135deg, #0d9488, #2dd4bf);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+            margin: 0 auto 1rem;
+            color: var(--white);
+        }
+        .workflow-step h4 {
+            color: var(--primary);
+            margin-bottom: 0.5rem;
+        }
+        .workflow-step p {
+            font-size: 0.85rem;
+            color: var(--text-light);
+        }
+        .tech-specs {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin-top: 2rem;
+        }
+        .spec-card {
+            background: var(--white);
+            padding: 1.5rem;
+            border-radius: 12px;
+            border-left: 4px solid #0d9488;
+        }
+        .spec-card h4 {
+            color: var(--primary);
+            font-size: 1rem;
+            margin-bottom: 0.5rem;
+        }
+        .spec-card .value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #0d9488;
+        }
+        .spec-card p {
+            font-size: 0.8rem;
+            color: var(--text-light);
+            margin-top: 0.25rem;
+        }
+        .realtime-demo {
+            background: #1a1a2e;
+            border-radius: 20px;
+            padding: 2rem;
+            color: var(--white);
+            margin: 2rem 0;
+        }
+        .demo-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        .demo-title {
+            font-weight: 600;
+        }
+        .live-badge {
+            background: #ef4444;
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .demo-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 2rem;
+        }
+        .demo-section h5 {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            opacity: 0.6;
+            margin-bottom: 1rem;
+        }
+        .mini-matrix {
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            gap: 2px;
+        }
+        .mini-matrix .cell {
+            aspect-ratio: 1;
+            border-radius: 2px;
+        }
+        .mini-bars {
+            display: flex;
+            align-items: flex-end;
+            gap: 3px;
+            height: 60px;
+        }
+        .mini-bars .bar {
+            flex: 1;
+            border-radius: 2px 2px 0 0;
+        }
+        .result-grade {
+            font-size: 4rem;
+            font-weight: 800;
+            text-align: center;
+            color: #10b981;
+        }
+        .result-confidence {
+            text-align: center;
+            font-size: 0.85rem;
+            opacity: 0.7;
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-brand">
+            <span class="logo">🦆</span>
+            <span class="brand-text">Système Gaveurs V3.0</span>
+        </div>
+        <ul class="nav-links">
+            <li><a href="index.html">Accueil</a></li>
+            <li><a href="boucle-fermee.html">Pipeline end-to-end</a></li>
+            <li><a href="sqal.html" class="active">SQAL (IoT)</a></li>
+            <li><a href="blockchain.html">Traçabilité (Blockchain)</a></li>
+            <li><a href="commercial.html">KPIs & Déploiement</a></li>
+        </ul>
+    </nav>
+
+    <!-- Page Header -->
+    <header class="page-header sqal-hero">
+        <h1>SQAL (IoT)</h1>
+        <p>Ingestion capteurs (ToF + spectral), scoring qualité, stockage et exposition via API.</p>
+    </header>
+
+    <!-- Introduction -->
+    <section class="section">
+        <div class="container">
+            <h2 class="section-title">Capteurs & métriques</h2>
+            <p class="section-intro">
+                Mesures instrumentées (ToF + spectral) produisant un score qualité et un grade.
+            </p>
+
+            <!-- Sensor Showcase -->
+            <div class="sensor-showcase">
+                <div class="sensor-box">
+                    <h3>Capteur ToF (VL53L8CH)</h3>
+                    <p class="model">VL53L8CH by STMicroelectronics</p>
+
+                    <div class="tof-matrix" id="tofMatrix">
+                        <!-- 64 cells generated by JS -->
+                    </div>
+
+                    <p style="color: var(--text-light); font-size: 0.9rem; margin-top: 1rem;">
+                        <strong>Time-of-Flight</strong> : Matrice 8×8 zones mesurant la distance avec précision millimétrique.
+                    </p>
+
+                    <div class="tech-specs" style="margin-top: 1.5rem;">
+                        <div class="spec-card" style="text-align: center;">
+                            <div class="value">64</div>
+                            <p>Zones de mesure</p>
+                        </div>
+                        <div class="spec-card" style="text-align: center;">
+                            <div class="value">±1mm</div>
+                            <p>Précision</p>
+                        </div>
+                    </div>
+
+                    <ul style="text-align: left; margin-top: 1.5rem; color: var(--text-light); font-size: 0.9rem;">
+                        <li>Volume 3D reconstruit</li>
+                        <li>Régularité de surface</li>
+                        <li>Détection des défauts</li>
+                    </ul>
+                </div>
+
+                <div class="sensor-box">
+                    <h3>Spectromètre (AS7341)</h3>
+                    <p class="model">AS7341 by AMS-OSRAM</p>
+
+                    <p style="color: var(--text-light); font-size: 0.9rem; margin-top: 1rem;">
+                        <strong>Spectromètre 10 canaux</strong> : Analyse de 415nm (violet) à NIR (infrarouge proche).
+                    </p>
+
+                    <div class="tech-specs" style="margin-top: 1.5rem;">
+                        <div class="spec-card" style="text-align: center;">
+                            <div class="value">10</div>
+                            <p>Canaux spectraux</p>
+                        </div>
+                        <div class="spec-card" style="text-align: center;">
+                            <div class="value">415-910nm</div>
+                            <p>Plage spectrale</p>
+                        </div>
+                    </div>
+
+                    <ul style="text-align: left; margin-top: 1.5rem; color: var(--text-light); font-size: 0.9rem;">
+                        <li>Teneur en graisse</li>
+                        <li>Couleur objective (L*a*b*)</li>
+                        <li>Fraîcheur tissulaire</li>
+                        <li>Homogénéité interne</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Real-time Demo -->
+    <section class="section" style="background: var(--primary);">
+        <div class="container">
+            <h2 class="section-title" style="color: var(--white);">Flux temps réel (exemple)</h2>
+            <p class="section-intro" style="color: rgba(255,255,255,0.8);">
+                Exemple de rendu UI sur une série de mesures.
+            </p>
+
+            <div class="realtime-demo">
+                <div class="demo-header">
+                    <span class="demo-title">Station SQAL #03 - Ligne Abattage 2</span>
+                    <span class="live-badge">● LIVE</span>
+                </div>
+                <div class="demo-content">
+                    <div class="demo-section">
+                        <h5>Matrice ToF 8×8</h5>
+                        <div class="mini-matrix" id="miniMatrix"></div>
+                        <p style="font-size: 0.75rem; opacity: 0.6; margin-top: 0.5rem;">Volume: 487cm³ | Uniformité: 94%</p>
+                    </div>
+                    <div class="demo-section">
+                        <h5>Spectre 10 Canaux</h5>
+                        <div class="mini-bars" id="miniBars"></div>
+                        <p style="font-size: 0.75rem; opacity: 0.6; margin-top: 0.5rem;">Graisse: 68% | L*: 72.4</p>
+                    </div>
+                    <div class="demo-section">
+                        <h5>Résultat</h5>
+                        <div class="result-grade">A+</div>
+                        <div class="result-confidence">Confiance: 97.3%</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Grading System -->
+    <section class="section" style="background: var(--white);">
+        <div class="container">
+            <h2 class="section-title">Système de Grading Automatique</h2>
+            <p class="section-intro">
+                L'algorithme ML combine les données ToF et spectrales pour attribuer un grade objectif et reproductible.
+            </p>
+
+            <div class="grade-showcase">
+                <div class="grade-item">
+                    <div class="grade-circle a-plus">A+</div>
+                    <div class="label">Excellence</div>
+                    <div class="criteria">Volume >450cm³, Graisse >65%</div>
+                </div>
+                <div class="grade-item">
+                    <div class="grade-circle a">A</div>
+                    <div class="label">Premium</div>
+                    <div class="criteria">Volume 400-450cm³, Graisse 60-65%</div>
+                </div>
+                <div class="grade-item">
+                    <div class="grade-circle b">B</div>
+                    <div class="label">Standard</div>
+                    <div class="criteria">Volume 350-400cm³, Graisse 55-60%</div>
+                </div>
+                <div class="grade-item">
+                    <div class="grade-circle c">C</div>
+                    <div class="label">Économique</div>
+                    <div class="criteria">Volume 300-350cm³, Graisse 50-55%</div>
+                </div>
+                <div class="grade-item">
+                    <div class="grade-circle d">D</div>
+                    <div class="label">Déclassé</div>
+                    <div class="criteria">Hors critères qualité</div>
+                </div>
+            </div>
+
+            <div style="background: #f0fdf4; border: 1px solid #86efac; border-radius: 12px; padding: 1.5rem; margin-top: 2rem;">
+                <p style="color: #166534; font-size: 0.95rem;">
+                    <strong>💡 Avantage clé :</strong> Le grading SQAL est 100% objectif et reproductible.
+                    Deux foies identiques recevront toujours le même grade, indépendamment de l'opérateur ou de l'heure de la journée.
+                </p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Workflow -->
+    <section class="section">
+        <div class="container">
+            <h2 class="section-title">Workflow de Contrôle</h2>
+
+            <div class="workflow-steps">
+                <div class="workflow-step">
+                    <div class="workflow-icon">📥</div>
+                    <h4>1. Réception</h4>
+                    <p>Foie positionné sur station SQAL. Lecture QR lot automatique.</p>
+                </div>
+                <div class="workflow-step">
+                    <div class="workflow-icon">📏</div>
+                    <h4>2. Scan ToF</h4>
+                    <p>Analyse morphologique 3D en 0.8 seconde. 64 points de mesure.</p>
+                </div>
+                <div class="workflow-step">
+                    <div class="workflow-icon">🌈</div>
+                    <h4>3. Scan Spectral</h4>
+                    <p>Analyse composition en 0.5 seconde. 10 bandes spectrales.</p>
+                </div>
+                <div class="workflow-step">
+                    <div class="workflow-icon">🤖</div>
+                    <h4>4. ML Processing</h4>
+                    <p>Fusion données + classification. Grade calculé en 0.2 seconde.</p>
+                </div>
+                <div class="workflow-step">
+                    <div class="workflow-icon">✅</div>
+                    <h4>5. Résultat</h4>
+                    <p>Grade affiché + envoi blockchain. Données pour feedback loop.</p>
+                </div>
+            </div>
+
+            <div style="text-align: center; margin-top: 2rem;">
+                <div style="display: inline-block; background: linear-gradient(135deg, #0d9488, #2dd4bf); color: white; padding: 1rem 2rem; border-radius: 50px; font-weight: 700;">
+                    ⏱️ Temps total : < 2 secondes par foie
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Technical Specifications -->
+    <section class="section" style="background: var(--white);">
+        <div class="container">
+            <h2 class="section-title">Spécifications Techniques</h2>
+
+            <div class="tech-specs">
+                <div class="spec-card">
+                    <h4>Hardware</h4>
+                    <div class="value">ESP32-S3</div>
+                    <p>Microcontrôleur dual-core 240MHz, WiFi + BLE</p>
+                </div>
+                <div class="spec-card">
+                    <h4>Connectivité</h4>
+                    <div class="value">WebSocket</div>
+                    <p>Streaming temps réel vers serveur central</p>
+                </div>
+                <div class="spec-card">
+                    <h4>Base de données</h4>
+                    <div class="value">TimescaleDB</div>
+                    <p>Hypertable optimisée time-series</p>
+                </div>
+                <div class="spec-card">
+                    <h4>Cadence</h4>
+                    <div class="value">1800/h</div>
+                    <p>Foies analysés par heure et par station</p>
+                </div>
+                <div class="spec-card">
+                    <h4>Précision Grade</h4>
+                    <div class="value">98.7%</div>
+                    <p>Corrélation avec évaluation experte</p>
+                </div>
+                <div class="spec-card">
+                    <h4>Maintenance</h4>
+                    <div class="value">Auto-diag</div>
+                    <p>Calibration automatique quotidienne</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Advanced Analytics Section -->
+    <section class="section" style="background: linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%);">
+        <div class="container">
+            <h2 class="section-title" style="color: var(--white);">🧠 Analyse Avancée Multi-Dimensionnelle</h2>
+            <p class="section-intro" style="color: rgba(255,255,255,0.85);">
+                Chaque capteur génère des métriques sophistiquées issues d'algorithmes d'analyse en temps réel.
+            </p>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 3rem; margin-top: 2rem;">
+                <!-- VL53L8CH Analysis -->
+                <div style="background: rgba(255,255,255,0.1); border-radius: 20px; padding: 2rem; backdrop-filter: blur(10px);">
+                    <h3 style="color: #2dd4bf; font-size: 1.4rem; margin-bottom: 1.5rem;">📏 Analyse ToF VL53L8CH</h3>
+
+                    <div style="margin-bottom: 1.5rem;">
+                        <h4 style="color: #fff; font-size: 1rem; margin-bottom: 0.75rem;">📊 Métriques Morphologiques</h4>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+                            <div style="background: rgba(255,255,255,0.08); padding: 0.75rem; border-radius: 8px;">
+                                <div style="color: #2dd4bf; font-weight: 700; font-size: 1.1rem;">Volume 3D</div>
+                                <div style="color: rgba(255,255,255,0.7); font-size: 0.8rem;">4 méthodes de calcul (trapezoidal, simpson, rectangular, mean)</div>
+                            </div>
+                            <div style="background: rgba(255,255,255,0.08); padding: 0.75rem; border-radius: 8px;">
+                                <div style="color: #2dd4bf; font-weight: 700; font-size: 1.1rem;">Uniformité Surface</div>
+                                <div style="color: rgba(255,255,255,0.7); font-size: 0.8rem;">Coefficient de variation (σ/μ)</div>
+                            </div>
+                            <div style="background: rgba(255,255,255,0.08); padding: 0.75rem; border-radius: 8px;">
+                                <div style="color: #2dd4bf; font-weight: 700; font-size: 1.1rem;">Hauteur Moyenne</div>
+                                <div style="color: rgba(255,255,255,0.7); font-size: 0.8rem;">mm avec min/max/std</div>
+                            </div>
+                            <div style="background: rgba(255,255,255,0.08); padding: 0.75rem; border-radius: 8px;">
+                                <div style="color: #2dd4bf; font-weight: 700; font-size: 1.1rem;">Pixels Valides</div>
+                                <div style="color: rgba(255,255,255,0.7); font-size: 0.8rem;">Ratio de couverture qualité</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="margin-bottom: 1.5rem;">
+                        <h4 style="color: #fff; font-size: 1rem; margin-bottom: 0.75rem;">📈 Analyse Histogramme (Bins)</h4>
+                        <div style="background: rgba(255,255,255,0.05); padding: 1rem; border-radius: 10px;">
+                            <ul style="color: rgba(255,255,255,0.85); font-size: 0.85rem; margin: 0; padding-left: 1.2rem;">
+                                <li><strong style="color: #2dd4bf;">texture_score</strong> : Score de texture [0-1]</li>
+                                <li><strong style="color: #2dd4bf;">density_score</strong> : Score de densité [0-1]</li>
+                                <li><strong style="color: #2dd4bf;">surface_roughness</strong> : Rugosité de surface</li>
+                                <li><strong style="color: #2dd4bf;">signal_quality</strong> : Qualité du signal capteur</li>
+                                <li><strong style="color: #2dd4bf;">multi_peak_count</strong> : Détection multi-pics</li>
+                                <li><strong style="color: #2dd4bf;">peak_bin_map</strong> : Carte 8×8 des pics dominants</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div>
+                        <h4 style="color: #fff; font-size: 1rem; margin-bottom: 0.75rem;">🔍 Détection de Défauts</h4>
+                        <div style="background: rgba(255,255,255,0.05); padding: 1rem; border-radius: 10px;">
+                            <ul style="color: rgba(255,255,255,0.85); font-size: 0.85rem; margin: 0; padding-left: 1.2rem;">
+                                <li><strong style="color: #ef4444;">Cavity</strong> : Cavité détectée (Z-score &gt; 2)</li>
+                                <li><strong style="color: #f59e0b;">Bump</strong> : Protubérance anormale</li>
+                                <li><strong style="color: #ef4444;">Edge anomaly</strong> : Anomalie de bord</li>
+                                <li>Position (row, col) + sévérité + déviation mm</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div style="margin-top: 1.5rem; background: linear-gradient(135deg, #059669, #10b981); padding: 1rem; border-radius: 10px;">
+                        <div style="color: #fff; font-weight: 700;">Pondération Score ToF</div>
+                        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.5rem;">
+                            <span style="background: rgba(0,0,0,0.2); padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.75rem; color: #fff;">Volume 15%</span>
+                            <span style="background: rgba(0,0,0,0.2); padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.75rem; color: #fff;">Texture 20%</span>
+                            <span style="background: rgba(0,0,0,0.2); padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.75rem; color: #fff;">Densité 20%</span>
+                            <span style="background: rgba(0,0,0,0.2); padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.75rem; color: #fff;">Signal 15%</span>
+                            <span style="background: rgba(0,0,0,0.2); padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.75rem; color: #fff;">Reflectance 15%</span>
+                            <span style="background: rgba(0,0,0,0.2); padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.75rem; color: #fff;">Consistance 15%</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- AS7341 Analysis -->
+                <div style="background: rgba(255,255,255,0.1); border-radius: 20px; padding: 2rem; backdrop-filter: blur(10px);">
+                    <h3 style="color: #f59e0b; font-size: 1.4rem; margin-bottom: 1.5rem;">🌈 Analyse Spectrale AS7341</h3>
+
+                    <div style="margin-bottom: 1.5rem;">
+                        <h4 style="color: #fff; font-size: 1rem; margin-bottom: 0.75rem;">📐 Ratios Spectraux Calculés</h4>
+                        <div style="background: rgba(255,255,255,0.05); padding: 1rem; border-radius: 10px; font-family: monospace; font-size: 0.8rem;">
+                            <div style="color: rgba(255,255,255,0.9); margin-bottom: 0.5rem;">
+                                <span style="color: #8b5cf6;">violet_orange</span> = F1(415nm) / F6(590nm)
+                            </div>
+                            <div style="color: rgba(255,255,255,0.9); margin-bottom: 0.5rem;">
+                                <span style="color: #ef4444;">nir_violet</span> = F8(680nm) / F1(415nm)
+                            </div>
+                            <div style="color: rgba(255,255,255,0.9); margin-bottom: 0.5rem;">
+                                <span style="color: #f59e0b;">discoloration_index</span> = (F4-F2) / (F4+F2)
+                            </div>
+                            <div style="color: rgba(255,255,255,0.9); margin-bottom: 0.5rem;">
+                                <span style="color: #ef4444;">lipid_oxidation</span> = F7(630nm) / F5(555nm)
+                            </div>
+                            <div style="color: rgba(255,255,255,0.9); margin-bottom: 0.5rem;">
+                                <span style="color: #10b981;">freshness_meat</span> = F3(480nm) / F6(590nm)
+                            </div>
+                            <div style="color: rgba(255,255,255,0.9);">
+                                <span style="color: #3b82f6;">fat_marbling</span> = NIR / F4(515nm)
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="margin-bottom: 1.5rem;">
+                        <h4 style="color: #fff; font-size: 1rem; margin-bottom: 0.75rem;">🎯 Indices de Qualité</h4>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+                            <div style="background: rgba(16, 185, 129, 0.2); border: 1px solid #10b981; padding: 0.75rem; border-radius: 8px;">
+                                <div style="color: #10b981; font-weight: 700;">Freshness Index</div>
+                                <div style="color: rgba(255,255,255,0.7); font-size: 0.75rem;">Fraîcheur tissulaire 0-100</div>
+                            </div>
+                            <div style="background: rgba(245, 158, 11, 0.2); border: 1px solid #f59e0b; padding: 0.75rem; border-radius: 8px;">
+                                <div style="color: #f59e0b; font-weight: 700;">Fat Quality Index</div>
+                                <div style="color: rgba(255,255,255,0.7); font-size: 0.75rem;">Qualité lipidique 0-100</div>
+                            </div>
+                            <div style="background: rgba(59, 130, 246, 0.2); border: 1px solid #3b82f6; padding: 0.75rem; border-radius: 8px;">
+                                <div style="color: #3b82f6; font-weight: 700;">Color Uniformity</div>
+                                <div style="color: rgba(255,255,255,0.7); font-size: 0.75rem;">Homogénéité couleur 0-100</div>
+                            </div>
+                            <div style="background: rgba(239, 68, 68, 0.2); border: 1px solid #ef4444; padding: 0.75rem; border-radius: 8px;">
+                                <div style="color: #ef4444; font-weight: 700;">Oxidation Index</div>
+                                <div style="color: rgba(255,255,255,0.7); font-size: 0.75rem;">Niveau d'oxydation 0-100</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <h4 style="color: #fff; font-size: 1rem; margin-bottom: 0.75rem;">⚠️ Alertes Qualité Spectrale</h4>
+                        <div style="background: rgba(255,255,255,0.05); padding: 1rem; border-radius: 10px;">
+                            <ul style="color: rgba(255,255,255,0.85); font-size: 0.85rem; margin: 0; padding-left: 1.2rem;">
+                                <li><span style="color: #ef4444;">●</span> Oxydation lipidique excessive (&gt;0.7)</li>
+                                <li><span style="color: #f59e0b;">●</span> Décoloration anormale (&gt;0.3)</li>
+                                <li><span style="color: #ef4444;">●</span> Fraîcheur insuffisante (&lt;0.5)</li>
+                                <li><span style="color: #f59e0b;">●</span> Ratio NIR/Violet hors norme</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div style="margin-top: 1.5rem; background: linear-gradient(135deg, #d97706, #f59e0b); padding: 1rem; border-radius: 10px;">
+                        <div style="color: #fff; font-weight: 700;">Pondération Score Spectral</div>
+                        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.5rem;">
+                            <span style="background: rgba(0,0,0,0.2); padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.75rem; color: #fff;">Fraîcheur 35%</span>
+                            <span style="background: rgba(0,0,0,0.2); padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.75rem; color: #fff;">Qualité Graisse 30%</span>
+                            <span style="background: rgba(0,0,0,0.2); padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.75rem; color: #fff;">Uniformité 20%</span>
+                            <span style="background: rgba(0,0,0,0.2); padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.75rem; color: #fff;">Oxydation 15%</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Fusion Score -->
+            <div style="margin-top: 3rem; background: rgba(255,255,255,0.15); border-radius: 20px; padding: 2rem; text-align: center;">
+                <h3 style="color: #fff; font-size: 1.5rem; margin-bottom: 1rem;">🔗 Score de Fusion Multi-Capteurs</h3>
+                <div style="display: flex; justify-content: center; align-items: center; gap: 2rem; flex-wrap: wrap;">
+                    <div style="text-align: center;">
+                        <div style="color: #2dd4bf; font-size: 2.5rem; font-weight: 800;">60%</div>
+                        <div style="color: rgba(255,255,255,0.7); font-size: 0.9rem;">Score ToF</div>
+                    </div>
+                    <div style="color: #fff; font-size: 2rem;">+</div>
+                    <div style="text-align: center;">
+                        <div style="color: #f59e0b; font-size: 2.5rem; font-weight: 800;">40%</div>
+                        <div style="color: rgba(255,255,255,0.7); font-size: 0.9rem;">Score Spectral</div>
+                    </div>
+                    <div style="color: #fff; font-size: 2rem;">=</div>
+                    <div style="text-align: center;">
+                        <div style="color: #10b981; font-size: 3rem; font-weight: 800;">Grade Final</div>
+                        <div style="color: rgba(255,255,255,0.7); font-size: 0.9rem;">A+ / A / B / C / D</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Foie Gras Quality Profiles -->
+    <section class="section" style="background: #f8fafc;">
+        <div class="container">
+            <h2 class="section-title">🍽️ Profils Qualité Foie Gras</h2>
+            <p class="section-intro">
+                L'analyseur classifie automatiquement chaque foie selon des profils prédéfinis basés sur les caractéristiques spectrales et morphologiques.
+            </p>
+
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem; margin-top: 2rem;">
+                <div style="background: linear-gradient(135deg, #fef3c7, #fde68a); border-radius: 16px; padding: 1.5rem; border: 2px solid #f59e0b;">
+                    <h4 style="color: #92400e; font-size: 1.2rem; margin-bottom: 0.75rem;">🥇 Premium Onctueux</h4>
+                    <ul style="color: #78350f; font-size: 0.9rem; margin: 0; padding-left: 1.2rem;">
+                        <li>Fat ratio: 0.75 - 0.95</li>
+                        <li>Freshness: &gt; 0.80</li>
+                        <li>Couleur: ivoire à jaune pâle</li>
+                        <li>Texture: fondante, homogène</li>
+                    </ul>
+                </div>
+                <div style="background: linear-gradient(135deg, #dbeafe, #bfdbfe); border-radius: 16px; padding: 1.5rem; border: 2px solid #3b82f6;">
+                    <h4 style="color: #1e40af; font-size: 1.2rem; margin-bottom: 0.75rem;">🥈 Standard Équilibré</h4>
+                    <ul style="color: #1e3a8a; font-size: 0.9rem; margin: 0; padding-left: 1.2rem;">
+                        <li>Fat ratio: 0.60 - 0.75</li>
+                        <li>Freshness: 0.65 - 0.80</li>
+                        <li>Couleur: rosé léger acceptable</li>
+                        <li>Texture: légèrement ferme</li>
+                    </ul>
+                </div>
+                <div style="background: linear-gradient(135deg, #fce7f3, #fbcfe8); border-radius: 16px; padding: 1.5rem; border: 2px solid #ec4899;">
+                    <h4 style="color: #9d174d; font-size: 1.2rem; margin-bottom: 0.75rem;">🥉 Économique</h4>
+                    <ul style="color: #831843; font-size: 0.9rem; margin: 0; padding-left: 1.2rem;">
+                        <li>Fat ratio: 0.45 - 0.60</li>
+                        <li>Freshness: 0.50 - 0.65</li>
+                        <li>Légère hétérogénéité</li>
+                        <li>Convient transformation</li>
+                    </ul>
+                </div>
+                <div style="background: linear-gradient(135deg, #fee2e2, #fecaca); border-radius: 16px; padding: 1.5rem; border: 2px solid #ef4444;">
+                    <h4 style="color: #991b1b; font-size: 1.2rem; margin-bottom: 0.75rem;">⚠️ Déclassé</h4>
+                    <ul style="color: #7f1d1d; font-size: 0.9rem; margin: 0; padding-left: 1.2rem;">
+                        <li>Fat ratio: &lt; 0.45</li>
+                        <li>Freshness: &lt; 0.50</li>
+                        <li>Défauts visuels majeurs</li>
+                        <li>Orientation valorisation</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Benefits -->
+    <section class="section">
+        <div class="container">
+            <h2 class="section-title">Bénéfices Mesurés</h2>
+
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <h3>🎯 Objectivité Totale</h3>
+                    <p>Fin des variations subjectives entre opérateurs. Chaque foie est évalué selon les mêmes critères précis.</p>
+                    <ul>
+                        <li>Élimination du biais humain</li>
+                        <li>Reproductibilité 99.2%</li>
+                        <li>Traçabilité de chaque décision</li>
+                    </ul>
+                </div>
+                <div class="feature-card">
+                    <h3>⚡ Cadence Industrielle</h3>
+                    <p>1800 foies/heure par station, sans fatigue ni baisse de vigilance sur les longues journées.</p>
+                    <ul>
+                        <li>5× plus rapide que contrôle manuel</li>
+                        <li>Fonctionnement 24/7 possible</li>
+                        <li>Pics de production absorbés</li>
+                    </ul>
+                </div>
+                <div class="feature-card">
+                    <h3>📊 Data pour l'IA</h3>
+                    <p>Chaque analyse enrichit la base d'apprentissage. Corrélation avec satisfaction consommateur finale.</p>
+                    <ul>
+                        <li>Amélioration continue du modèle</li>
+                        <li>Identification tendances qualité</li>
+                        <li>Feedback loop production</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- CTA -->
+    <section class="section cta-section">
+        <div class="container">
+            <h2>Découvrez la Traçabilité Blockchain</h2>
+            <p>Comment chaque analyse SQAL est certifiée et rendue accessible au consommateur.</p>
+            <div class="cta-buttons">
+                <a href="blockchain.html" class="cta-button">Voir la Blockchain →</a>
+                <a href="commercial.html" class="cta-button secondary">Offre Commerciale</a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-brand">
+                    <span class="logo">🦆</span>
+                    <span>Système Gaveurs V3.0</span>
+                </div>
+                <p>IA + IoT + Blockchain pour l'excellence du foie gras français</p>
+                <p class="copyright">© 2024 - Projet Euralis Gaveurs</p>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // Generate ToF Matrix
+        const tofMatrix = document.getElementById('tofMatrix');
+        for (let i = 0; i < 64; i++) {
+            const cell = document.createElement('div');
+            cell.className = 'cell';
+            const intensity = Math.random();
+            const hue = 160 + intensity * 40; // Green to teal
+            cell.style.background = `hsl(${hue}, 70%, ${30 + intensity * 40}%)`;
+            tofMatrix.appendChild(cell);
+        }
+
+        // Generate Spectral Display
+        const spectralDisplay = document.getElementById('spectralDisplay');
+        const wavelengths = ['415', '445', '480', '515', '555', '590', '630', '680', '910', 'NIR'];
+        const colors = ['#8b5cf6', '#6366f1', '#3b82f6', '#22d3ee', '#10b981', '#84cc16', '#eab308', '#f97316', '#ef4444', '#881337'];
+
+        wavelengths.forEach((nm, i) => {
+            const bar = document.createElement('div');
+            bar.className = 'spectral-bar';
+            bar.style.height = (30 + Math.random() * 70) + '%';
+            bar.style.background = colors[i];
+            bar.setAttribute('data-nm', nm + 'nm');
+            spectralDisplay.appendChild(bar);
+        });
+
+        // Generate Mini Matrix for demo
+        const miniMatrix = document.getElementById('miniMatrix');
+        for (let i = 0; i < 64; i++) {
+            const cell = document.createElement('div');
+            cell.className = 'cell';
+            const intensity = Math.random();
+            cell.style.background = `rgba(16, 185, 129, ${0.3 + intensity * 0.7})`;
+            miniMatrix.appendChild(cell);
+        }
+
+        // Generate Mini Bars for demo
+        const miniBars = document.getElementById('miniBars');
+        colors.forEach((color) => {
+            const bar = document.createElement('div');
+            bar.className = 'bar';
+            bar.style.height = (20 + Math.random() * 80) + '%';
+            bar.style.background = color;
+            miniBars.appendChild(bar);
+        });
+
+        // Animate demo periodically
+        setInterval(() => {
+            // Update mini matrix
+            miniMatrix.querySelectorAll('.cell').forEach(cell => {
+                const intensity = Math.random();
+                cell.style.background = `rgba(16, 185, 129, ${0.3 + intensity * 0.7})`;
+            });
+            // Update mini bars
+            miniBars.querySelectorAll('.bar').forEach(bar => {
+                bar.style.height = (20 + Math.random() * 80) + '%';
+            });
+        }, 2000);
+    </script>
+</body>
+</html>

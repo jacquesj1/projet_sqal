@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Système Gaveurs V3.0 - Pitch Euralis</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
+            color: #1f2937;
+        }
+
+        .slide {
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 60px;
+            background: white;
+            scroll-snap-align: start;
+        }
+
+        .container {
+            height: 100vh;
+            overflow-y: scroll;
+            scroll-snap-type: y mandatory;
+        }
+
+        /* SLIDE 1 - TITRE */
+        .slide-title {
+            background: linear-gradient(135deg, #1e3a8a, #3b82f6);
+            color: white;
+            text-align: center;
+        }
+
+        .slide-title h1 {
+            font-size: 4.5em;
+            margin-bottom: 30px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .slide-title .tagline {
+            font-size: 2em;
+            margin-bottom: 50px;
+            opacity: 0.95;
+        }
+
+        .slide-title .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 40px;
+            margin-top: 60px;
+            max-width: 1100px;
+        }
+
+        .stat-box {
+            background: rgba(255,255,255,0.15);
+            backdrop-filter: blur(10px);
+            padding: 40px;
+            border-radius: 20px;
+            border: 2px solid rgba(255,255,255,0.3);
+        }
+
+        .stat-box .number {
+            font-size: 4em;
+            font-weight: bold;
+            display: block;
+            margin-bottom: 15px;
+            color: #fbbf24;
+        }
+
+        .stat-box .label {
+            font-size: 1.3em;
+        }
+
+        /* SLIDE 2 - PROBLÈME */
+        h2 {
+            font-size: 3em;
+            color: #1e3a8a;
+            margin-bottom: 50px;
+            text-align: center;
+            border-bottom: 5px solid #3b82f6;
+            padding-bottom: 20px;
+            width: 100%;
+        }
+
+        .problem-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 40px;
+            max-width: 1200px;
+            width: 100%;
+        }
+
+        .problem-box {
+            background: linear-gradient(135deg, #fef3c7, #fde68a);
+            padding: 35px;
+            border-radius: 20px;
+            border-left: 8px solid #f59e0b;
+        }
+
+        .problem-box .icon {
+            font-size: 3.5em;
+            margin-bottom: 20px;
+        }
+
+        .problem-box .title {
+            font-size: 1.8em;
+            font-weight: bold;
+            color: #92400e;
+            margin-bottom: 15px;
+        }
+
+        .problem-box .desc {
+            font-size: 1.2em;
+            color: #78350f;
+            line-height: 1.6;
+        }
+
+        .roi-loss {
+            background: linear-gradient(135deg, #fee2e2, #fecaca);
+            padding: 45px;
+            border-radius: 25px;
+            text-align: center;
+            margin-top: 50px;
+            border: 4px solid #ef4444;
+            max-width: 800px;
+        }
+
+        .roi-loss .amount {
+            font-size: 5em;
+            font-weight: bold;
+            color: #dc2626;
+            margin: 20px 0;
+        }
+
+        /* SLIDE 3 - BOUCLE FERMÉE */
+        .loop-diagram {
+            max-width: 1100px;
+            width: 100%;
+            position: relative;
+            margin: 50px 0;
+        }
+
+        .loop-step {
+            background: white;
+            border: 4px solid #3b82f6;
+            border-radius: 20px;
+            padding: 30px;
+            margin: 25px auto;
+            max-width: 900px;
+            position: relative;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+            transition: transform 0.3s;
+        }
+
+        .loop-step:hover {
+            transform: scale(1.03);
+        }
+
+        .loop-step::after {
+            content: '⬇';
+            position: absolute;
+            bottom: -45px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 3em;
+            color: #3b82f6;
+            font-weight: bold;
+        }
+
+        .loop-step:last-child::after {
+            content: '🔄';
+            bottom: -50px;
+            font-size: 3.5em;
+            animation: rotate 3s linear infinite;
+        }
+
+        @keyframes rotate {
+            from { transform: translateX(-50%) rotate(0deg); }
+            to { transform: translateX(-50%) rotate(360deg); }
+        }
+
+        .step-number {
+            display: inline-block;
+            width: 60px;
+            height: 60px;
+            background: #3b82f6;
+            color: white;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 60px;
+            font-size: 2em;
+            font-weight: bold;
+            margin-right: 20px;
+            float: left;
+        }
+
+        .step-content {
+            margin-left: 90px;
+        }
+
+        .step-title {
+            font-size: 2em;
+            font-weight: bold;
+            color: #1e3a8a;
+            margin-bottom: 10px;
+        }
+
+        .step-desc {
+            font-size: 1.3em;
+            color: #4b5563;
+            line-height: 1.6;
+        }
+
+        /* SLIDE 4 - INNOVATION */
+        .innovation-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 35px;
+            max-width: 1200px;
+            width: 100%;
+            margin-top: 40px;
+        }
+
+        .innovation-box {
+            background: linear-gradient(135deg, #dbeafe, #bfdbfe);
+            padding: 35px;
+            border-radius: 20px;
+            border-left: 8px solid #2563eb;
+        }
+
+        .innovation-box .icon {
+            font-size: 3.5em;
+            margin-bottom: 15px;
+        }
+
+        .innovation-box .title {
+            font-size: 1.8em;
+            font-weight: bold;
+            color: #1e3a8a;
+            margin-bottom: 15px;
+        }
+
+        .innovation-box .desc {
+            font-size: 1.2em;
+            color: #1e40af;
+            line-height: 1.6;
+        }
+
+        .unique-value {
+            background: linear-gradient(135deg, #10b981, #059669);
+            color: white;
+            padding: 50px;
+            border-radius: 25px;
+            text-align: center;
+            margin-top: 50px;
+            max-width: 900px;
+        }
+
+        .unique-value h3 {
+            font-size: 2.5em;
+            margin-bottom: 20px;
+        }
+
+        .unique-value p {
+            font-size: 1.5em;
+            line-height: 1.8;
+        }
+
+        /* SLIDE 5 - CTA */
+        .slide-cta {
+            background: linear-gradient(135deg, #1e3a8a, #3b82f6);
+            color: white;
+            text-align: center;
+        }
+
+        .slide-cta .logo {
+            font-size: 8em;
+            margin-bottom: 30px;
+        }
+
+        .slide-cta h1 {
+            font-size: 4em;
+            margin-bottom: 40px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .roi-box {
+            background: rgba(255,255,255,0.15);
+            backdrop-filter: blur(10px);
+            padding: 60px;
+            border-radius: 30px;
+            border: 3px solid rgba(255,255,255,0.3);
+            max-width: 800px;
+            margin: 40px auto;
+        }
+
+        .roi-box .title {
+            font-size: 2em;
+            margin-bottom: 20px;
+        }
+
+        .roi-box .amount {
+            font-size: 6em;
+            font-weight: bold;
+            color: #fbbf24;
+            margin: 25px 0;
+        }
+
+        .roi-box .subtitle {
+            font-size: 1.8em;
+            margin-top: 20px;
+        }
+
+        .cta-button {
+            display: inline-block;
+            padding: 30px 70px;
+            background: #fbbf24;
+            color: #1e3a8a;
+            text-decoration: none;
+            font-size: 2em;
+            font-weight: bold;
+            border-radius: 50px;
+            margin-top: 50px;
+            box-shadow: 0 10px 40px rgba(251,191,36,0.4);
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+
+        .cta-button:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 50px rgba(251,191,36,0.6);
+        }
+
+        .contact-info {
+            margin-top: 60px;
+            font-size: 1.4em;
+        }
+
+        .contact-info p {
+            margin: 15px 0;
+        }
+
+        /* Navigation */
+        .nav {
+            position: fixed;
+            bottom: 40px;
+            right: 40px;
+            background: rgba(30,58,138,0.9);
+            padding: 20px 35px;
+            border-radius: 50px;
+            color: white;
+            font-size: 1.3em;
+            font-weight: bold;
+            z-index: 1000;
+            backdrop-filter: blur(10px);
+        }
+
+        /* Print */
+        @media print {
+            .slide {
+                page-break-after: always;
+            }
+            .nav {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+
+        <!-- SLIDE 1: TITRE -->
+        <div class="slide slide-title">
+            <div style="font-size: 6em; margin-bottom: 20px;">🦆</div>
+            <h1>Système Gaveurs V3.0</h1>
+            <p class="tagline">L'IA qui transforme vos retours clients<br>en excellence de production</p>
+
+            <div class="stats-grid">
+                <div class="stat-box">
+                    <span class="number">€2M+</span>
+                    <span class="label">Gain Annuel</span>
+                </div>
+                <div class="stat-box">
+                    <span class="number">+25%</span>
+                    <span class="label">Qualité</span>
+                </div>
+                <div class="stat-box">
+                    <span class="number">100%</span>
+                    <span class="label">Traçabilité</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- SLIDE 2: PROBLÈME -->
+        <div class="slide">
+            <h2>❌ Le Problème Aujourd'hui</h2>
+
+            <div class="problem-grid">
+                <div class="problem-box">
+                    <div class="icon">🔍</div>
+                    <div class="title">Qualité Imprévisible</div>
+                    <div class="desc">20-30% de variation entre lots sans comprendre pourquoi</div>
+                </div>
+
+                <div class="problem-box">
+                    <div class="icon">⛓️</div>
+                    <div class="title">Traçabilité Incomplète</div>
+                    <div class="desc">Impossible de remonter du consommateur au gaveur</div>
+                </div>
+
+                <div class="problem-box">
+                    <div class="icon">🚫</div>
+                    <div class="title">Zéro Feedback Client</div>
+                    <div class="desc">Pas de lien entre satisfaction finale et pratiques de gavage</div>
+                </div>
+
+                <div class="problem-box">
+                    <div class="icon">📉</div>
+                    <div class="title">Amélioration Lente</div>
+                    <div class="desc">Chaque gaveur apprend seul, sans capitaliser les données</div>
+                </div>
+            </div>
+
+            <div class="roi-loss">
+                <p style="font-size: 1.8em; margin: 0;">Perte Annuelle Estimée</p>
+                <div class="amount">€2.5M</div>
+                <p style="font-size: 1.4em;">En gaspillage, non-conformités et clients perdus</p>
+            </div>
+        </div>
+
+        <!-- SLIDE 3: BOUCLE FERMÉE -->
+        <div class="slide">
+            <h2>✅ Notre Solution : La Boucle Fermée Intelligente</h2>
+
+            <div class="loop-diagram">
+                <div class="loop-step">
+                    <span class="step-number">1</span>
+                    <div class="step-content">
+                        <div class="step-title">🌽 GAVAGE (200 canards/lot, 14 jours)</div>
+                        <div class="step-desc">L'IA recommande la courbe d'alimentation optimale basée sur l'historique de satisfaction client</div>
+                    </div>
+                </div>
+
+                <div class="loop-step">
+                    <span class="step-number">2</span>
+                    <div class="step-content">
+                        <div class="step-title">🔬 CONTRÔLE QUALITÉ IoT (Capteurs automatiques)</div>
+                        <div class="step-desc">Mesure précise : dimensions (ToF 8x8), couleur, texture (Spectral 10 canaux) → Grade A+/A/B/C</div>
+                    </div>
+                </div>
+
+                <div class="loop-step">
+                    <span class="step-number">3</span>
+                    <div class="step-content">
+                        <div class="step-title">🔗 BLOCKCHAIN + QR CODE (Traçabilité certifiée)</div>
+                        <div class="step-desc">Génération automatique : QR cryptographique imprimé sur barquette avec origine complète</div>
+                    </div>
+                </div>
+
+                <div class="loop-step">
+                    <span class="step-number">4</span>
+                    <div class="step-content">
+                        <div class="step-title">📱 CONSOMMATEUR SCANNE (Notation 1-5 étoiles)</div>
+                        <div class="step-desc">Client voit l'origine exacte (gaveur, site, durée) et note le produit : goût, texture, fraîcheur</div>
+                    </div>
+                </div>
+
+                <div class="loop-step">
+                    <span class="step-number">5</span>
+                    <div class="step-content">
+                        <div class="step-title">🤖 IA ANALYSE (Corrélations automatiques)</div>
+                        <div class="step-desc">Random Forest : Paramètres gavage ↔ Qualité SQAL ↔ Satisfaction client → Nouvelle courbe optimisée</div>
+                    </div>
+                </div>
+
+                <div class="loop-step" style="background: linear-gradient(135deg, #d1fae5, #a7f3d0); border-color: #10b981;">
+                    <span class="step-number" style="background: #10b981;">6</span>
+                    <div class="step-content">
+                        <div class="step-title" style="color: #047857;">🔄 AMÉLIORATION CONTINUE</div>
+                        <div class="step-desc" style="color: #065f46;">Le gaveur reçoit la nouvelle recommandation IA → Qualité augmente → Cycle recommence</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SLIDE 4: INNOVATION -->
+        <div class="slide">
+            <h2>🚀 Innovation Unique Mondiale</h2>
+
+            <div class="innovation-grid">
+                <div class="innovation-box">
+                    <div class="icon">🔄</div>
+                    <div class="title">Boucle Fermée Complète</div>
+                    <div class="desc"><strong>Premier système au monde</strong> à fermer la boucle du gaveur au consommateur et retour</div>
+                </div>
+
+                <div class="innovation-box">
+                    <div class="icon">⭐</div>
+                    <div class="title">IA Entraînée sur Satisfaction Réelle</div>
+                    <div class="desc">Pas juste des métriques techniques : <strong>optimise directement le bonheur client</strong></div>
+                </div>
+
+                <div class="innovation-box">
+                    <div class="icon">📲</div>
+                    <div class="title">QR Code Blockchain Public</div>
+                    <div class="desc">Consommateur voit TOUT (gaveur, qualité SQAL) et impacte la production future</div>
+                </div>
+
+                <div class="innovation-box">
+                    <div class="icon">🔬</div>
+                    <div class="title">Capteurs IoT Intégrés</div>
+                    <div class="desc">Contrôle 100% automatique, objectif, reproductible - Zéro subjectivité</div>
+                </div>
+            </div>
+
+            <div class="unique-value">
+                <h3>Avantage Concurrentiel Décisif</h3>
+                <p><strong>3 à 5 ans d'avance</strong> sur toute autre solution du marché<br>
+                Technologie brevetable • ROI en 8 mois • Excellence mesurable</p>
+            </div>
+        </div>
+
+        <!-- SLIDE 5: CALL TO ACTION -->
+        <div class="slide slide-cta">
+            <div class="logo">🦆</div>
+            <h1>Transformez Vos Données<br>en Excellence</h1>
+
+            <div class="roi-box">
+                <div class="title">Retour sur Investissement</div>
+                <div class="amount">€2.05M</div>
+                <div class="subtitle">Gain annuel estimé | ROI en <strong>8 mois</strong></div>
+            </div>
+
+            <a href="mailto:commercial@gaveurs-v3.fr" class="cta-button">
+                🚀 Démarrer le Pilote
+            </a>
+
+            <div class="contact-info">
+                <p><strong>Pilote 3 mois</strong> • <strong>1 site + 2 gaveurs</strong></p>
+                <p>📧 commercial@gaveurs-v3.fr • 📱 +33 6 12 34 56 78</p>
+                <p style="margin-top: 30px; font-size: 0.9em; opacity: 0.9;">
+                    Système clé-en-main • Support 24/7 • Formation incluse
+                </p>
+            </div>
+        </div>
+
+    </div>
+
+    <div class="nav">
+        Slide <span id="current">1</span> / 5
+    </div>
+
+    <script>
+        const slides = document.querySelectorAll('.slide');
+        const container = document.querySelector('.container');
+        const currentSpan = document.getElementById('current');
+
+        container.addEventListener('scroll', () => {
+            const scrolled = container.scrollTop;
+            const slideHeight = window.innerHeight;
+            const current = Math.round(scrolled / slideHeight) + 1;
+            currentSpan.textContent = Math.min(current, 5);
+        });
+
+        // Navigation clavier
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowDown' || e.key === 'PageDown') {
+                e.preventDefault();
+                const current = Math.floor(container.scrollTop / window.innerHeight);
+                container.scrollTo({
+                    top: (current + 1) * window.innerHeight,
+                    behavior: 'smooth'
+                });
+            } else if (e.key === 'ArrowUp' || e.key === 'PageUp') {
+                e.preventDefault();
+                const current = Math.ceil(container.scrollTop / window.innerHeight);
+                container.scrollTo({
+                    top: (current - 1) * window.innerHeight,
+                    behavior: 'smooth'
+                });
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,32 @@
+# Dockerfile pour Simulateur Consumer Feedback
+# ==============================================
+# Simule des feedbacks consommateurs réalistes basés sur la qualité SQAL
+#
+# Build: docker build -f Dockerfile.consumer -t gaveurs-simulator-consumer:latest .
+# Run:   docker run gaveurs-simulator-consumer --feedbacks-per-hour 10 --backend-url http://backend:8000
+
+FROM python:3.11-slim
+
+LABEL maintainer="Euralis Multi-Sites"
+LABEL description="Simulateur Consumer Feedback - Satisfaction clients"
+LABEL version="3.0.0"
+
+# Variables d'environnement
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# Répertoire de travail
+WORKDIR /app
+
+# Copier les dépendances du simulateur consumer
+COPY simulators/consumer-satisfaction/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copier le code source du simulateur consumer-satisfaction
+COPY simulators/consumer-satisfaction/ /app/consumer-satisfaction/
+
+# Point d'entrée
+WORKDIR /app/consumer-satisfaction
+CMD ["python", "main.py", "--api-url", "http://backend:8000", "--interval", "360"]

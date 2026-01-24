@@ -1,0 +1,193 @@
+version: '3.8'
+
+services:
+  # ============================================
+  # BASE DE DONNÉES TIMESCALEDB
+  # ============================================
+  timescaledb:
+    image: timescale/timescaledb:latest-pg15
+    container_name: gaveurs_timescaledb
+    environment:
+      POSTGRES_DB: gaveurs_db
+      POSTGRES_USER: gaveurs_user
+      POSTGRES_PASSWORD: gaveurs_pass
+      TIMESCALEDB_TELEMETRY: 'off'
+    volumes:
+      - timescale_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - gaveurs_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gaveurs_user -d gaveurs_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================
+  # REDIS (Cache & WebSocket)
+  # ============================================
+  redis:
+    image: redis:7-alpine
+    container_name: gaveurs_redis
+    ports:
+      - "6379:6379"
+    networks:
+      - gaveurs_network
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================
+  # BACKEND FASTAPI
+  # ============================================
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: gaveurs_backend
+    environment:
+      # Database
+      DATABASE_URL: postgresql://gaveurs_user:gaveurs_pass@timescaledb:5432/gaveurs_db
+      
+      # Redis
+      REDIS_URL: redis://redis:6379
+      
+      # SMS Configuration (Twilio)
+      SMS_PROVIDER: twilio
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN}
+      TWILIO_PHONE_NUMBER: ${TWILIO_PHONE_NUMBER}
+      
+      # SMS Configuration (OVH) - Alternative
+      # SMS_PROVIDER: ovh
+      # OVH_SMS_ACCOUNT: ${OVH_SMS_ACCOUNT}
+      # OVH_SMS_LOGIN: ${OVH_SMS_LOGIN}
+      # OVH_SMS_PASSWORD: ${OVH_SMS_PASSWORD}
+      # OVH_SMS_SENDER: Gaveurs
+      
+      # Application
+      ENVIRONMENT: production
+      LOG_LEVEL: INFO
+      
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    networks:
+      - gaveurs_network
+    volumes:
+      - ./backend/app:/app/app
+    restart: unless-stopped
+
+  # ============================================
+  # FRONTEND NEXT.JS
+  # ============================================
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: gaveurs_frontend
+    environment:
+      NEXT_PUBLIC_API_URL: http://backend:8000
+      NEXT_PUBLIC_WS_URL: ws://backend:8000
+    depends_on:
+      - backend
+    ports:
+      - "3000:3000"
+    networks:
+      - gaveurs_network
+    volumes:
+      - ./frontend/app:/app/app
+      - ./frontend/components:/app/components
+    restart: unless-stopped
+
+  # ============================================
+  # PROMETHEUS (Monitoring)
+  # ============================================
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: gaveurs_prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - gaveurs_network
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    restart: unless-stopped
+
+  # ============================================
+  # GRAFANA (Dashboards)
+  # ============================================
+  grafana:
+    image: grafana/grafana:latest
+    container_name: gaveurs_grafana
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_SECURITY_ADMIN_USER: admin
+      GF_INSTALL_PLUGINS: ''
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./grafana/datasources:/etc/grafana/provisioning/datasources
+    ports:
+      - "3001:3000"
+    networks:
+      - gaveurs_network
+    depends_on:
+      - prometheus
+      - timescaledb
+    restart: unless-stopped
+
+  # ============================================
+  # PGADMIN (Administration DB)
+  # ============================================
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: gaveurs_pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@gaveurs.fr}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+    ports:
+      - "5050:80"
+    networks:
+      - gaveurs_network
+    depends_on:
+      - timescaledb
+    restart: unless-stopped
+
+# ============================================
+# VOLUMES PERSISTANTS
+# ============================================
+volumes:
+  timescale_data:
+    driver: local
+  redis_data:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+
+# ============================================
+# RÉSEAU
+# ============================================
+networks:
+  gaveurs_network:
+    driver: bridge

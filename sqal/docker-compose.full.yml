@@ -1,0 +1,179 @@
+
+services:
+  # ============================================================================
+  # DATABASE - TimescaleDB (PostgreSQL with time-series extensions)
+  # ============================================================================
+  timescaledb:
+    image: timescale/timescaledb:latest-pg15
+    container_name: sqal_timescaledb
+    environment:
+      POSTGRES_DB: sqal_db
+      POSTGRES_USER: sqal_user
+      POSTGRES_PASSWORD: sqal_password
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "5432:5432"
+    volumes:
+      - timescaledb_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sqal_user -d sqal_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - sqal_network
+    restart: unless-stopped
+
+  # ============================================================================
+  # CACHE - Redis
+  # ============================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: sqal_redis
+    ports:
+      - "6379:6379"
+    networks:
+      - sqal_network
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  # ============================================================================
+  # AUTHENTICATION - Keycloak SSO
+  # ============================================================================
+  keycloak:
+    image: quay.io/keycloak/keycloak:23.0
+    container_name: sqal_keycloak
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_DB: dev-file
+      KC_HTTP_PORT: 8080
+      KC_HOSTNAME_STRICT: false
+      KC_HOSTNAME_STRICT_HTTPS: false
+      KC_HTTP_ENABLED: true
+      KC_HEALTH_ENABLED: true
+    ports:
+      - "8080:8080"
+    volumes:
+      - keycloak_data:/opt/keycloak/data
+      - ./keycloak/themes:/opt/keycloak/themes
+    command: start-dev
+    networks:
+      - sqal_network
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8080;echo -e 'GET /health/ready HTTP/1.1\r\nhost: 127.0.0.1\r\nConnection: close\r\n\r\n' >&3;grep 'HTTP/1.1 200' <&3"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+    restart: unless-stopped
+
+  # ============================================================================
+  # BACKEND - FastAPI
+  # ============================================================================
+  backend:
+    build:
+      context: ./backend_new
+      dockerfile: Dockerfile
+    container_name: sqal_backend
+    environment:
+      # Database
+      DATABASE_URL: postgresql+asyncpg://sqal_user:sqal_password@timescaledb:5432/sqal_db
+      # Redis
+      REDIS_URL: redis://redis:6379
+      # Keycloak
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_REALM: sqal_realm
+      KEYCLOAK_CLIENT_ID: sqal-frontend
+      # CORS
+      CORS_ORIGINS: "http://localhost:5173,http://localhost:3000,http://localhost:8080"
+    ports:
+      - "8000:8000"
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    networks:
+      - sqal_network
+    volumes:
+      - ./backend_new/app:/app/app
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ============================================================================
+  # SIMULATOR - Data Generator (Sensor Simulator)
+  # ============================================================================
+  simulator:
+    build:
+      context: ./simulator
+      dockerfile: Dockerfile
+    container_name: sqal_simulator
+    environment:
+      BACKEND_WS_URL: ws://backend:8000/ws/sensors/
+      CONFIG_PATH: config_foiegras.yaml
+      GENERATION_INTERVAL: "5"  # seconds
+      DEVICE_ID: ESP32_SIM_001
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - sqal_network
+    volumes:
+      - ./simulator:/app
+    restart: unless-stopped
+
+  # ============================================================================
+  # FRONTEND - React + Vite
+  # ============================================================================
+  frontend:
+    image: node:18-alpine
+    container_name: sqal_frontend
+    working_dir: /app
+    environment:
+      VITE_API_BASE_URL: http://localhost:8000
+      VITE_WS_URL: ws://localhost:8000
+      VITE_KEYCLOAK_URL: http://localhost:8080
+      VITE_KEYCLOAK_REALM: sqal_realm
+      VITE_KEYCLOAK_CLIENT_ID: sqal-frontend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./sqal:/app
+      - /app/node_modules
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    networks:
+      - sqal_network
+    restart: unless-stopped
+
+# ============================================================================
+# VOLUMES
+# ============================================================================
+volumes:
+  timescaledb_data:
+    driver: local
+  redis_data:
+    driver: local
+  keycloak_data:
+    driver: local
+
+# ============================================================================
+# NETWORKS
+# ============================================================================
+networks:
+  sqal_network:
+    driver: bridge

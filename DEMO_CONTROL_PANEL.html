@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎮 Control Panel Démo - Système Gaveurs V3.0</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            color: white;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            padding: 30px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 20px;
+            margin-bottom: 30px;
+            backdrop-filter: blur(10px);
+        }
+
+        h1 {
+            font-size: 3em;
+            margin-bottom: 10px;
+        }
+
+        .tagline {
+            font-size: 1.3em;
+            opacity: 0.9;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 25px;
+            margin-bottom: 30px;
+        }
+
+        .panel {
+            background: rgba(255,255,255,0.05);
+            border: 2px solid rgba(255,255,255,0.1);
+            border-radius: 15px;
+            padding: 25px;
+            backdrop-filter: blur(10px);
+        }
+
+        .panel h2 {
+            font-size: 1.8em;
+            margin-bottom: 20px;
+            color: #60a5fa;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .status {
+            display: inline-block;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            font-weight: bold;
+            margin-left: auto;
+        }
+
+        .status.running {
+            background: #10b981;
+            color: white;
+        }
+
+        .status.stopped {
+            background: #ef4444;
+            color: white;
+        }
+
+        .status.warning {
+            background: #f59e0b;
+            color: white;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 15px 30px;
+            background: linear-gradient(135deg, #3b82f6, #2563eb);
+            color: white;
+            text-decoration: none;
+            border: none;
+            border-radius: 10px;
+            font-size: 1.1em;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin: 5px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(59,130,246,0.4);
+        }
+
+        .btn.success {
+            background: linear-gradient(135deg, #10b981, #059669);
+        }
+
+        .btn.danger {
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+        }
+
+        .btn.warning {
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+        }
+
+        .btn-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .info-box {
+            background: rgba(59,130,246,0.1);
+            border-left: 4px solid #3b82f6;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 5px;
+        }
+
+        .info-box code {
+            background: rgba(0,0,0,0.3);
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+        }
+
+        .step-box {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 10px;
+            padding: 20px;
+            margin: 15px 0;
+        }
+
+        .step-number {
+            display: inline-block;
+            width: 35px;
+            height: 35px;
+            background: #3b82f6;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 35px;
+            font-weight: bold;
+            margin-right: 10px;
+        }
+
+        .step-title {
+            font-size: 1.3em;
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #60a5fa;
+        }
+
+        .step-desc {
+            color: #cbd5e1;
+            line-height: 1.6;
+        }
+
+        .log-box {
+            background: #000;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 15px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            color: #0f0;
+            max-height: 200px;
+            overflow-y: auto;
+            margin-top: 15px;
+        }
+
+        .timeline {
+            position: relative;
+            padding-left: 40px;
+            margin: 20px 0;
+        }
+
+        .timeline::before {
+            content: '';
+            position: absolute;
+            left: 15px;
+            top: 0;
+            bottom: 0;
+            width: 3px;
+            background: linear-gradient(to bottom, #3b82f6, #2563eb);
+        }
+
+        .timeline-item {
+            position: relative;
+            margin-bottom: 30px;
+        }
+
+        .timeline-item::before {
+            content: '';
+            position: absolute;
+            left: -32px;
+            top: 5px;
+            width: 15px;
+            height: 15px;
+            background: #3b82f6;
+            border-radius: 50%;
+            border: 3px solid #0f172a;
+        }
+
+        .timeline-item.active::before {
+            background: #10b981;
+            box-shadow: 0 0 20px #10b981;
+        }
+
+        .urls-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .url-box {
+            background: rgba(0,0,0,0.3);
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #3b82f6;
+        }
+
+        .url-box .label {
+            font-size: 0.9em;
+            color: #94a3b8;
+            margin-bottom: 5px;
+        }
+
+        .url-box .url {
+            font-size: 1.1em;
+            color: #60a5fa;
+            word-break: break-all;
+        }
+
+        .qr-display {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        .qr-display img {
+            max-width: 200px;
+            margin-bottom: 10px;
+        }
+
+        .qr-code-text {
+            color: #1f2937;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            word-break: break-all;
+        }
+
+        .alert {
+            background: rgba(239,68,68,0.1);
+            border: 2px solid #ef4444;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+
+        .alert .title {
+            font-size: 1.3em;
+            font-weight: bold;
+            color: #fca5a5;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div style="font-size: 4em; margin-bottom: 10px;">🎮</div>
+            <h1>Control Panel Démo</h1>
+            <p class="tagline">Système Gaveurs V3.0 - Boucle Fermée End-to-End</p>
+        </header>
+
+        <!-- STATUS SYSTÈME -->
+        <div class="panel">
+            <h2>📊 État du Système</h2>
+            <div class="urls-grid">
+                <div class="url-box">
+                    <div class="label">Backend API</div>
+                    <div class="url">
+                        <a href="http://localhost:8000/docs" target="_blank" style="color: #60a5fa;">
+                            http://localhost:8000
+                        </a>
+                        <span class="status running">✓ Running</span>
+                    </div>
+                </div>
+                <div class="url-box">
+                    <div class="label">Frontend Gaveurs</div>
+                    <div class="url">
+                        <a href="http://localhost:3000" target="_blank" style="color: #60a5fa;">
+                            http://localhost:3000
+                        </a>
+                        <span class="status warning">⚠ Unhealthy</span>
+                    </div>
+                </div>
+                <div class="url-box">
+                    <div class="label">Frontend Euralis</div>
+                    <div class="url">
+                        <a href="http://localhost:3001/euralis/dashboard" target="_blank" style="color: #60a5fa;">
+                            http://localhost:3001
+                        </a>
+                        <span class="status warning">⚠ Unhealthy</span>
+                    </div>
+                </div>
+                <div class="url-box">
+                    <div class="label">Frontend Traçabilité</div>
+                    <div class="url">
+                        <a href="http://localhost:3002" target="_blank" style="color: #60a5fa;">
+                            http://localhost:3002
+                        </a>
+                        <span class="status stopped">✗ Not Running</span>
+                    </div>
+                </div>
+                <div class="url-box">
+                    <div class="label">Frontend SQAL</div>
+                    <div class="url">
+                        <a href="http://localhost:5173" target="_blank" style="color: #60a5fa;">
+                            http://localhost:5173
+                        </a>
+                        <span class="status running">✓ Running</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="btn-group">
+                <button class="btn success" onclick="checkStatus()">🔄 Refresh Status</button>
+                <button class="btn" onclick="openAllFrontends()">🌐 Ouvrir Tous les Frontends</button>
+            </div>
+        </div>
+
+        <div class="grid">
+            <!-- ÉTAPE 1: DÉMARRAGE -->
+            <div class="panel">
+                <h2>🚀 Étape 1: Démarrage</h2>
+
+                <div class="info-box">
+                    <strong>Actions requises:</strong><br>
+                    1. Démarrer frontend-traceability<br>
+                    2. Vérifier tous les services
+                </div>
+
+                <div class="btn-group">
+                    <button class="btn success" onclick="copyCommand('docker-compose up -d frontend-traceability')">
+                        📋 Démarrer Frontend Traçabilité
+                    </button>
+                    <button class="btn" onclick="copyCommand('docker-compose ps')">
+                        📋 Vérifier Services
+                    </button>
+                </div>
+
+                <div class="log-box" id="startup-log">
+                    # Commandes à exécuter dans le terminal:<br>
+                    docker-compose up -d frontend-traceability<br>
+                    docker-compose ps<br>
+                    <br>
+                    # Vérification<br>
+                    curl http://localhost:3002<br>
+                </div>
+            </div>
+
+            <!-- ÉTAPE 2: GAVAGE -->
+            <div class="panel">
+                <h2>🌽 Étape 2: Saisie Gavage</h2>
+
+                <div class="step-box">
+                    <span class="step-number">1</span>
+                    <div class="step-title">Gaveur Jean Dupont</div>
+                    <div class="step-desc">
+                        Connectez-vous sur <code>localhost:3000</code><br>
+                        Email: <code>jean.martin@gaveur.fr</code><br>
+                        Password: <code>gaveur123</code>
+                    </div>
+                </div>
+
+                <div class="step-box">
+                    <span class="step-number">2</span>
+                    <div class="step-title">Saisir Gavage LOT</div>
+                    <div class="step-desc">
+                        Lot: <code>LS2512001</code> (200 canards)<br>
+                        Dose: <code>450g matin / 480g soir</code><br>
+                        Les données sont envoyées au backend via WebSocket
+                    </div>
+                </div>
+
+                <div class="btn-group">
+                    <button class="btn" onclick="window.open('http://localhost:3000', '_blank')">
+                        🦆 Ouvrir Frontend Gaveurs
+                    </button>
+                </div>
+            </div>
+
+            <!-- ÉTAPE 3: CONTRÔLE SQAL -->
+            <div class="panel">
+                <h2>🔬 Étape 3: Contrôle Qualité SQAL</h2>
+
+                <div class="info-box">
+                    Le simulateur SQAL génère des données capteurs en temps réel:<br>
+                    - VL53L8CH (ToF 8x8): Dimensions foie<br>
+                    - AS7341 (Spectral): Couleur, composition<br>
+                    - Grade automatique: A+/A/B/C
+                </div>
+
+                <div class="step-box">
+                    <div class="step-title">Visualiser Données SQAL</div>
+                    <div class="step-desc">
+                        Ouvrez <code>localhost:5173</code><br>
+                        Surveillez les métriques temps réel<br>
+                        Attendez qu'un lot obtienne grade A+ ou A
+                    </div>
+                </div>
+
+                <div class="btn-group">
+                    <button class="btn" onclick="window.open('http://localhost:5173', '_blank')">
+                        🔬 Ouvrir SQAL Dashboard
+                    </button>
+                    <button class="btn warning" onclick="copyCommand('docker-compose logs -f simulator-sqal')">
+                        📋 Voir Logs Simulateur
+                    </button>
+                </div>
+            </div>
+
+            <!-- ÉTAPE 4: GÉNÉRATION QR -->
+            <div class="panel">
+                <h2>🔗 Étape 4: Génération QR Code</h2>
+
+                <div class="alert">
+                    <div class="title">⚠️ Action Manuelle Requise</div>
+                    Actuellement, aucun QR code n'existe en base.<br>
+                    Vous devez générer un QR code via l'API.
+                </div>
+
+                <div class="info-box">
+                    <strong>Commande CURL:</strong><br>
+                    <code style="display: block; margin-top: 10px;">
+curl -X POST http://localhost:8000/api/internal/register-product \<br>
+  -H "Content-Type: application/json" \<br>
+  -d '{<br>
+    "lot_id": 1,<br>
+    "sample_id": "SQAL_LS2512001_001",<br>
+    "site_code": "LS"<br>
+  }'
+                    </code>
+                </div>
+
+                <div class="btn-group">
+                    <button class="btn success" onclick="generateQRCode()">
+                        🎯 Générer QR Code Test
+                    </button>
+                    <button class="btn" onclick="copyCommand('docker exec gaveurs_timescaledb psql -U gaveurs_admin -d gaveurs_db -c \"SELECT * FROM consumer_products;\"')">
+                        📋 Voir QR Codes en Base
+                    </button>
+                </div>
+
+                <div id="qr-result" style="margin-top: 20px;"></div>
+            </div>
+
+            <!-- ÉTAPE 5: SCAN CONSOMMATEUR -->
+            <div class="panel">
+                <h2>📱 Étape 5: Scan Consommateur</h2>
+
+                <div class="step-box">
+                    <span class="step-number">1</span>
+                    <div class="step-title">Ouvrir Frontend Traçabilité</div>
+                    <div class="step-desc">
+                        URL: <code>http://localhost:3002</code><br>
+                        Interface publique sans authentification
+                    </div>
+                </div>
+
+                <div class="step-box">
+                    <span class="step-number">2</span>
+                    <div class="step-title">Scanner ou Saisir Code</div>
+                    <div class="step-desc">
+                        Option 1: Scanner QR avec caméra<br>
+                        Option 2: Saisie manuelle du product_id<br>
+                        Exemple: <code>FG_LS_20250127_001</code>
+                    </div>
+                </div>
+
+                <div class="step-box">
+                    <span class="step-number">3</span>
+                    <div class="step-title">Voir Traçabilité</div>
+                    <div class="step-desc">
+                        Page affiche:<br>
+                        - Origine (gaveur, site, dates)<br>
+                        - Qualité SQAL (grade, scores)<br>
+                        - Blockchain (hash de vérification)
+                    </div>
+                </div>
+
+                <div class="btn-group">
+                    <button class="btn" onclick="window.open('http://localhost:3002', '_blank')">
+                        📱 Ouvrir Frontend Traçabilité
+                    </button>
+                </div>
+            </div>
+
+            <!-- ÉTAPE 6: FEEDBACK CLIENT -->
+            <div class="panel">
+                <h2>⭐ Étape 6: Feedback Client</h2>
+
+                <div class="info-box">
+                    Sur la page traçabilité, le consommateur peut noter:<br>
+                    - Note globale: 1-5 étoiles<br>
+                    - Goût, Texture, Fraîcheur: 1-5<br>
+                    - Commentaire libre
+                </div>
+
+                <div class="step-box">
+                    <div class="step-title">Soumettre Feedback</div>
+                    <div class="step-desc">
+                        1. Remplir le formulaire de notation<br>
+                        2. Exemple: 5/5 étoiles "Exceptionnel !"<br>
+                        3. Cliquer "Envoyer mon avis"<br>
+                        4. Feedback enregistré en base
+                    </div>
+                </div>
+
+                <div class="btn-group">
+                    <button class="btn" onclick="copyCommand('docker exec gaveurs_timescaledb psql -U gaveurs_admin -d gaveurs_db -c \"SELECT * FROM consumer_feedbacks ORDER BY time DESC LIMIT 5;\"')">
+                        📋 Voir Feedbacks en Base
+                    </button>
+                </div>
+            </div>
+
+            <!-- ÉTAPE 7: ANALYSE IA -->
+            <div class="panel">
+                <h2>🤖 Étape 7: Analyse IA</h2>
+
+                <div class="info-box">
+                    <strong>Module ML: feedback_optimizer.py</strong><br>
+                    L'IA corrèle automatiquement:<br>
+                    - Paramètres gavage (doses, durée, température)<br>
+                    - Qualité SQAL (grade, uniformité, composition)<br>
+                    - Satisfaction client (notes, commentaires)
+                </div>
+
+                <div class="step-box">
+                    <div class="step-title">Entraîner le Modèle</div>
+                    <div class="step-desc">
+                        Minimum requis: <code>100 feedbacks</code><br>
+                        Algorithme: <code>Random Forest Regressor</code><br>
+                        Prédiction: Note client (1-5) selon paramètres
+                    </div>
+                </div>
+
+                <div class="step-box">
+                    <div class="step-title">Optimiser Courbes</div>
+                    <div class="step-desc">
+                        L'IA calcule la courbe d'alimentation optimale<br>
+                        pour maximiser la satisfaction client future
+                    </div>
+                </div>
+
+                <div class="btn-group">
+                    <button class="btn" onclick="window.open('http://localhost:8000/docs#/Consumer%20Feedback%20%26%20Traceability/get_ml_training_data_api_consumer_ml_training_data_get', '_blank')">
+                        📊 Voir Données ML (API)
+                    </button>
+                </div>
+            </div>
+
+            <!-- ÉTAPE 8: BOUCLE FERMÉE -->
+            <div class="panel">
+                <h2>🔄 Étape 8: Boucle Fermée</h2>
+
+                <div class="timeline">
+                    <div class="timeline-item active">
+                        <strong>Gaveur</strong> reçoit nouvelle recommandation IA
+                    </div>
+                    <div class="timeline-item">
+                        <strong>Courbe optimisée</strong> basée sur succès clients
+                    </div>
+                    <div class="timeline-item">
+                        <strong>Qualité augmente</strong> progressivement
+                    </div>
+                    <div class="timeline-item">
+                        <strong>Satisfaction client</strong> s'améliore
+                    </div>
+                    <div class="timeline-item active">
+                        <strong>Cycle recommence</strong> - amélioration continue
+                    </div>
+                </div>
+
+                <div class="info-box">
+                    <strong>Résultat attendu:</strong><br>
+                    Chaque lot améliore le suivant grâce aux retours clients réels
+                </div>
+            </div>
+        </div>
+
+        <!-- DASHBOARD SUPERVISION -->
+        <div class="panel">
+            <h2>👁️ Dashboard Supervision Euralis</h2>
+
+            <div class="info-box">
+                Vue multi-sites pour superviseurs Euralis:<br>
+                - Statistiques agrégées tous sites<br>
+                - Performance par gaveur<br>
+                - Évolution qualité dans le temps<br>
+                - Prédictions Prophet (7/30/90 jours)
+            </div>
+
+            <div class="btn-group">
+                <button class="btn" onclick="window.open('http://localhost:3001/euralis/dashboard', '_blank')">
+                    📊 Ouvrir Dashboard Euralis
+                </button>
+                <button class="btn" onclick="window.open('http://localhost:8000/docs', '_blank')">
+                    📖 Documentation API
+                </button>
+            </div>
+        </div>
+
+        <!-- ACTIONS RAPIDES -->
+        <div class="panel">
+            <h2>⚡ Actions Rapides</h2>
+
+            <div class="btn-group">
+                <button class="btn" onclick="copyCommand('docker-compose logs -f backend')">
+                    📋 Logs Backend
+                </button>
+                <button class="btn" onclick="copyCommand('docker-compose logs -f simulator-gavage-realtime')">
+                    📋 Logs Simulateur Gavage
+                </button>
+                <button class="btn" onclick="copyCommand('docker-compose logs -f simulator-sqal')">
+                    📋 Logs Simulateur SQAL
+                </button>
+                <button class="btn danger" onclick="copyCommand('docker-compose restart backend')">
+                    🔄 Restart Backend
+                </button>
+                <button class="btn danger" onclick="copyCommand('docker-compose down && docker-compose up -d')">
+                    🔄 Restart All
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function copyCommand(cmd) {
+            navigator.clipboard.writeText(cmd).then(() => {
+                alert('✅ Commande copiée:\n' + cmd + '\n\nCollez-la dans votre terminal.');
+            });
+        }
+
+        function openAllFrontends() {
+            window.open('http://localhost:3000', '_blank');
+            window.open('http://localhost:3001/euralis/dashboard', '_blank');
+            window.open('http://localhost:3002', '_blank');
+            window.open('http://localhost:5173', '_blank');
+            window.open('http://localhost:8000/docs', '_blank');
+        }
+
+        function checkStatus() {
+            alert('🔄 Rechargez la page pour voir le statut mis à jour des services.\n\nOu exécutez: docker-compose ps');
+        }
+
+        async function generateQRCode() {
+            const resultDiv = document.getElementById('qr-result');
+            resultDiv.innerHTML = '<p>⏳ Génération en cours...</p>';
+
+            try {
+                const response = await fetch('http://localhost:8000/api/internal/register-product', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        lot_id: 1,
+                        sample_id: 'SQAL_LS2512001_001',
+                        site_code: 'LS'
+                    })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    resultDiv.innerHTML = `
+                        <div class="qr-display">
+                            <h3 style="color: #10b981; margin-bottom: 15px;">✅ QR Code Généré</h3>
+                            <div style="background: #f3f4f6; padding: 15px; border-radius: 8px; margin-top: 15px;">
+                                <p style="color: #1f2937; margin-bottom: 5px;"><strong>Product ID:</strong></p>
+                                <code class="qr-code-text">${data.product_id}</code>
+                                <p style="color: #1f2937; margin: 15px 0 5px;"><strong>QR Code:</strong></p>
+                                <code class="qr-code-text">${data.qr_code}</code>
+                            </div>
+                            <button class="btn" onclick="window.open('http://localhost:3002/trace/${data.product_id}', '_blank')" style="margin-top: 20px;">
+                                📱 Ouvrir Page Traçabilité
+                            </button>
+                        </div>
+                    `;
+                } else {
+                    resultDiv.innerHTML = `<div class="alert"><div class="title">❌ Erreur</div>${data.detail || 'Erreur lors de la génération'}</div>`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="alert"><div class="title">❌ Erreur de connexion</div>Vérifiez que le backend est accessible sur http://localhost:8000<br><br>Error: ${error.message}</div>`;
+            }
+        }
+
+        // Auto-refresh status toutes les 30 secondes
+        setInterval(() => {
+            console.log('Status refresh - reload page to see updates');
+        }, 30000);
+    </script>
+</body>
+</html>

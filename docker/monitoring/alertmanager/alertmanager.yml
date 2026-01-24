@@ -1,0 +1,170 @@
+# ==============================================================================
+# AlertManager Configuration - Système Gaveurs V3.0
+# ==============================================================================
+
+global:
+  resolve_timeout: 5m
+  smtp_from: '${ALERTMANAGER_EMAIL_FROM}'
+  smtp_smarthost: '${ALERTMANAGER_SMTP_HOST}:${ALERTMANAGER_SMTP_PORT}'
+  smtp_auth_username: '${ALERTMANAGER_SMTP_USERNAME}'
+  smtp_auth_password: '${ALERTMANAGER_SMTP_PASSWORD}'
+  smtp_require_tls: true
+
+# Templates
+templates:
+  - '/etc/alertmanager/*.tmpl'
+
+# Route configuration
+route:
+  receiver: 'default'
+  group_by: ['alertname', 'cluster', 'service']
+  group_wait: 10s
+  group_interval: 10s
+  repeat_interval: 12h
+
+  # Routes
+  routes:
+    # Critical alerts
+    - match:
+        severity: critical
+      receiver: 'critical'
+      group_wait: 5s
+      repeat_interval: 4h
+
+    # Warning alerts
+    - match:
+        severity: warning
+      receiver: 'warning'
+      group_wait: 30s
+      repeat_interval: 12h
+
+    # Info alerts
+    - match:
+        severity: info
+      receiver: 'info'
+      group_wait: 5m
+      repeat_interval: 24h
+
+    # Database alerts
+    - match:
+        component: database
+      receiver: 'database-team'
+
+    # Backend alerts
+    - match:
+        component: backend
+      receiver: 'backend-team'
+
+    # System alerts
+    - match:
+        component: system
+      receiver: 'ops-team'
+
+# Inhibit rules
+inhibit_rules:
+  # Inhibit warning if critical is firing
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['alertname', 'instance']
+
+  # Inhibit info if warning is firing
+  - source_match:
+      severity: 'warning'
+    target_match:
+      severity: 'info'
+    equal: ['alertname', 'instance']
+
+# Receivers
+receivers:
+  # Default receiver
+  - name: 'default'
+    email_configs:
+      - to: '${ALERTMANAGER_EMAIL_TO}'
+        headers:
+          Subject: '[Gaveurs] {{ .GroupLabels.alertname }}'
+        html: |
+          <h2>{{ .GroupLabels.alertname }}</h2>
+          <p><b>Status:</b> {{ .Status }}</p>
+          <p><b>Environment:</b> {{ .CommonLabels.environment }}</p>
+          <p><b>Severity:</b> {{ .CommonLabels.severity }}</p>
+          {{ range .Alerts }}
+          <hr>
+          <h3>{{ .Labels.alertname }}</h3>
+          <p><b>Summary:</b> {{ .Annotations.summary }}</p>
+          <p><b>Description:</b> {{ .Annotations.description }}</p>
+          <p><b>Started:</b> {{ .StartsAt }}</p>
+          {{ end }}
+
+  # Critical alerts
+  - name: 'critical'
+    email_configs:
+      - to: '${ALERTMANAGER_EMAIL_TO}'
+        headers:
+          Subject: '[CRITICAL] Gaveurs - {{ .GroupLabels.alertname }}'
+          Priority: 'urgent'
+    slack_configs:
+      - api_url: '${ALERTMANAGER_SLACK_WEBHOOK}'
+        channel: '#gaveurs-alerts'
+        title: ':rotating_light: CRITICAL ALERT'
+        text: |
+          *{{ .GroupLabels.alertname }}*
+          Environment: {{ .CommonLabels.environment }}
+          {{ range .Alerts }}
+          • {{ .Annotations.summary }}
+            {{ .Annotations.description }}
+          {{ end }}
+        color: 'danger'
+
+  # Warning alerts
+  - name: 'warning'
+    email_configs:
+      - to: '${ALERTMANAGER_EMAIL_TO}'
+        headers:
+          Subject: '[WARNING] Gaveurs - {{ .GroupLabels.alertname }}'
+    slack_configs:
+      - api_url: '${ALERTMANAGER_SLACK_WEBHOOK}'
+        channel: '#gaveurs-alerts'
+        title: ':warning: Warning Alert'
+        text: |
+          *{{ .GroupLabels.alertname }}*
+          Environment: {{ .CommonLabels.environment }}
+          {{ range .Alerts }}
+          • {{ .Annotations.summary }}
+          {{ end }}
+        color: 'warning'
+
+  # Info alerts
+  - name: 'info'
+    slack_configs:
+      - api_url: '${ALERTMANAGER_SLACK_WEBHOOK}'
+        channel: '#gaveurs-monitoring'
+        title: ':information_source: Info Alert'
+        text: |
+          *{{ .GroupLabels.alertname }}*
+          {{ range .Alerts }}
+          • {{ .Annotations.summary }}
+          {{ end }}
+        color: 'good'
+
+  # Database team
+  - name: 'database-team'
+    email_configs:
+      - to: 'dba@your-domain.com'
+        headers:
+          Subject: '[Database] Gaveurs - {{ .GroupLabels.alertname }}'
+
+  # Backend team
+  - name: 'backend-team'
+    email_configs:
+      - to: 'backend@your-domain.com'
+        headers:
+          Subject: '[Backend] Gaveurs - {{ .GroupLabels.alertname }}'
+
+  # Operations team
+  - name: 'ops-team'
+    email_configs:
+      - to: 'ops@your-domain.com'
+        headers:
+          Subject: '[Ops] Gaveurs - {{ .GroupLabels.alertname }}'

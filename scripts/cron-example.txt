@@ -1,0 +1,235 @@
+# ==============================================================================
+# Euralis Gaveurs System - Backup Cron Jobs Examples
+# ==============================================================================
+# Purpose: Automated backup scheduling using cron (Linux/Mac)
+# Installation: Edit crontab with 'crontab -e' and add desired schedules
+# ==============================================================================
+
+# ==============================================================================
+# CRON FORMAT REMINDER
+# ==============================================================================
+# ┌───────────── minute (0 - 59)
+# │ ┌───────────── hour (0 - 23)
+# │ │ ┌───────────── day of month (1 - 31)
+# │ │ │ ┌───────────── month (1 - 12)
+# │ │ │ │ ┌───────────── day of week (0 - 6) (Sunday to Saturday)
+# │ │ │ │ │
+# * * * * * command to execute
+
+# ==============================================================================
+# EXAMPLE 1: DAILY BACKUP AT 2 AM
+# ==============================================================================
+# Run full backup every day at 2:00 AM
+# Recommended for production systems
+0 2 * * * /opt/euralis-gaveurs/scripts/backup.sh >> /var/log/euralis-gaveurs/backup-cron.log 2>&1
+
+# ==============================================================================
+# EXAMPLE 2: MULTIPLE DAILY BACKUPS
+# ==============================================================================
+# Run backup every 6 hours
+0 */6 * * * /opt/euralis-gaveurs/scripts/backup.sh >> /var/log/euralis-gaveurs/backup-cron.log 2>&1
+
+# Run backup every 4 hours during business hours (8 AM - 8 PM)
+0 8,12,16,20 * * * /opt/euralis-gaveurs/scripts/backup.sh >> /var/log/euralis-gaveurs/backup-cron.log 2>&1
+
+# ==============================================================================
+# EXAMPLE 3: WEEKLY BACKUP
+# ==============================================================================
+# Run full backup every Sunday at 3:00 AM
+0 3 * * 0 /opt/euralis-gaveurs/scripts/backup.sh >> /var/log/euralis-gaveurs/backup-cron.log 2>&1
+
+# ==============================================================================
+# EXAMPLE 4: MONTHLY BACKUP
+# ==============================================================================
+# Run full backup on the 1st day of every month at 4:00 AM
+0 4 1 * * /opt/euralis-gaveurs/scripts/backup.sh >> /var/log/euralis-gaveurs/backup-cron.log 2>&1
+
+# ==============================================================================
+# EXAMPLE 5: DIFFERENTIAL BACKUP STRATEGY
+# ==============================================================================
+# Full backup every Sunday at 2:00 AM
+0 2 * * 0 /opt/euralis-gaveurs/scripts/backup.sh >> /var/log/euralis-gaveurs/backup-full.log 2>&1
+
+# Incremental backup Monday-Saturday at 2:00 AM
+0 2 * * 1-6 /opt/euralis-gaveurs/scripts/backup.sh --incremental >> /var/log/euralis-gaveurs/backup-incremental.log 2>&1
+
+# ==============================================================================
+# EXAMPLE 6: BUSINESS HOURS PROTECTION
+# ==============================================================================
+# Backup every hour during business hours (Monday-Friday, 9 AM - 6 PM)
+0 9-18 * * 1-5 /opt/euralis-gaveurs/scripts/backup.sh >> /var/log/euralis-gaveurs/backup-hourly.log 2>&1
+
+# ==============================================================================
+# EXAMPLE 7: HIGH-FREQUENCY BACKUP FOR CRITICAL DATA
+# ==============================================================================
+# Backup database every 30 minutes during production hours
+*/30 8-22 * * * /opt/euralis-gaveurs/scripts/backup.sh --database-only >> /var/log/euralis-gaveurs/backup-frequent.log 2>&1
+
+# ==============================================================================
+# EXAMPLE 8: TIERED BACKUP STRATEGY
+# ==============================================================================
+# Tier 1: Database-only backup every 2 hours
+0 */2 * * * /opt/euralis-gaveurs/scripts/backup.sh --database-only >> /var/log/euralis-gaveurs/backup-tier1.log 2>&1
+
+# Tier 2: Full backup (database + files) daily at 2 AM
+0 2 * * * /opt/euralis-gaveurs/scripts/backup.sh >> /var/log/euralis-gaveurs/backup-tier2.log 2>&1
+
+# Tier 3: Full backup with cloud upload weekly on Sunday at 3 AM
+0 3 * * 0 /opt/euralis-gaveurs/scripts/backup.sh >> /var/log/euralis-gaveurs/backup-tier3.log 2>&1
+
+# ==============================================================================
+# EXAMPLE 9: MAINTENANCE TASKS
+# ==============================================================================
+# Verify backups every day at 6 AM
+0 6 * * * /opt/euralis-gaveurs/scripts/verify-backups.sh >> /var/log/euralis-gaveurs/verify.log 2>&1
+
+# Clean up old backups every day at 1 AM
+0 1 * * * find /opt/euralis-gaveurs/backups -name "*.tar.gz*" -mtime +7 -delete
+
+# ==============================================================================
+# EXAMPLE 10: PRODUCTION RECOMMENDED SCHEDULE
+# ==============================================================================
+# Comprehensive production backup schedule
+
+# Daily full backup at 2:00 AM (with cloud upload)
+0 2 * * * /opt/euralis-gaveurs/scripts/backup.sh >> /var/log/euralis-gaveurs/backup.log 2>&1
+
+# Verify backup integrity at 6:00 AM
+0 6 * * * /opt/euralis-gaveurs/scripts/restore.sh --verify >> /var/log/euralis-gaveurs/verify.log 2>&1
+
+# Database-only backup every 4 hours during business hours
+0 8,12,16,20 * * 1-5 /opt/euralis-gaveurs/scripts/backup.sh --database-only >> /var/log/euralis-gaveurs/backup-db.log 2>&1
+
+# Monthly archive on 1st day at 1:00 AM
+0 1 1 * * /opt/euralis-gaveurs/scripts/backup.sh --archive >> /var/log/euralis-gaveurs/backup-monthly.log 2>&1
+
+# ==============================================================================
+# ADVANCED: USING ENVIRONMENT VARIABLES
+# ==============================================================================
+# Set custom backup directory and options
+0 3 * * * BACKUP_DIR=/mnt/nas/backups /opt/euralis-gaveurs/scripts/backup.sh >> /var/log/euralis-gaveurs/backup.log 2>&1
+
+# ==============================================================================
+# ADVANCED: BACKUP WITH EMAIL NOTIFICATION
+# ==============================================================================
+# Backup and send email with results
+0 2 * * * /opt/euralis-gaveurs/scripts/backup.sh 2>&1 | mail -s "Euralis Gaveurs Backup Report" admin@example.com
+
+# ==============================================================================
+# ADVANCED: CONDITIONAL BACKUP (ONLY IF SYSTEM IS IDLE)
+# ==============================================================================
+# Backup only if system load is low
+0 2 * * * [ $(uptime | awk -F'load average:' '{print $2}' | awk '{print $1}' | cut -d'.' -f1) -lt 2 ] && /opt/euralis-gaveurs/scripts/backup.sh
+
+# ==============================================================================
+# WINDOWS TASK SCHEDULER EQUIVALENT
+# ==============================================================================
+# For Windows systems, use Task Scheduler instead of cron
+# See windows-task-scheduler-example.xml for Task Scheduler configuration
+#
+# Quick PowerShell command to create scheduled task:
+# $action = New-ScheduledTaskAction -Execute "PowerShell.exe" -Argument "-File C:\EuralisGaveurs\scripts\backup.bat"
+# $trigger = New-ScheduledTaskTrigger -Daily -At 2am
+# Register-ScheduledTask -Action $action -Trigger $trigger -TaskName "EuralisGaveursBackup" -Description "Daily backup"
+
+# ==============================================================================
+# DOCKER/KUBERNETES CRONJOB
+# ==============================================================================
+# For containerized deployments, use Kubernetes CronJob:
+#
+# apiVersion: batch/v1
+# kind: CronJob
+# metadata:
+#   name: euralis-gaveurs-backup
+# spec:
+#   schedule: "0 2 * * *"
+#   jobTemplate:
+#     spec:
+#       template:
+#         spec:
+#           containers:
+#           - name: backup
+#             image: euralis-gaveurs-backup:latest
+#             command: ["/scripts/backup.sh"]
+#           restartPolicy: OnFailure
+
+# ==============================================================================
+# SYSTEMD TIMER (ALTERNATIVE TO CRON)
+# ==============================================================================
+# Modern Linux systems can use systemd timers instead of cron
+# See systemd-timer-example.timer and systemd-timer-example.service
+
+# ==============================================================================
+# MONITORING CRON JOBS
+# ==============================================================================
+# Check cron job execution with Healthchecks.io
+# 0 2 * * * /opt/euralis-gaveurs/scripts/backup.sh && curl -fsS -m 10 --retry 5 -o /dev/null https://hc-ping.com/your-uuid
+
+# Deadman's Snitch monitoring
+# 0 2 * * * /opt/euralis-gaveurs/scripts/backup.sh && curl https://nosnch.in/your-snitch-url
+
+# ==============================================================================
+# BEST PRACTICES
+# ==============================================================================
+# 1. Always redirect output to log files
+# 2. Use absolute paths for scripts and logs
+# 3. Set proper PATH in crontab if needed: PATH=/usr/local/bin:/usr/bin:/bin
+# 4. Test cron jobs manually before scheduling
+# 5. Monitor cron job execution (email, logs, monitoring tools)
+# 6. Use locking to prevent overlapping backups:
+#    0 2 * * * flock -n /tmp/backup.lock /opt/euralis-gaveurs/scripts/backup.sh
+# 7. Implement retry logic for failed backups
+# 8. Log rotation for backup logs
+# 9. Alert on backup failures
+# 10. Regular restore testing
+
+# ==============================================================================
+# TROUBLESHOOTING
+# ==============================================================================
+# Check cron logs:
+# - Ubuntu/Debian: /var/log/syslog or /var/log/cron.log
+# - RHEL/CentOS: /var/log/cron
+# - Check with: grep CRON /var/log/syslog
+#
+# Test cron syntax:
+# - Use https://crontab.guru/
+#
+# Common issues:
+# - PATH not set: Add PATH=/usr/local/bin:/usr/bin:/bin at top of crontab
+# - Permissions: Ensure script is executable (chmod +x backup.sh)
+# - Missing environment variables: Source them in script or crontab
+# - Logs not created: Check directory permissions
+#
+# Debug mode:
+# SHELL=/bin/bash
+# PATH=/usr/local/bin:/usr/bin:/bin
+# MAILTO=admin@example.com
+# * * * * * echo "Cron is working" >> /tmp/cron-test.log
+
+# ==============================================================================
+# INSTALLATION INSTRUCTIONS
+# ==============================================================================
+# 1. Choose appropriate schedule from examples above
+# 2. Edit user crontab:
+#    crontab -e
+#
+# 3. Or edit system crontab (as root):
+#    sudo vim /etc/crontab
+#
+# 4. Add your chosen schedule(s)
+#
+# 5. Save and exit
+#
+# 6. Verify crontab was updated:
+#    crontab -l
+#
+# 7. Check cron service is running:
+#    systemctl status cron     # Ubuntu/Debian
+#    systemctl status crond    # RHEL/CentOS
+#
+# 8. Monitor first execution in logs
+#
+# 9. Test backup restoration procedure
+#
+# 10. Document your backup strategy
+# ==============================================================================

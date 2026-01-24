@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KPIs & Déploiement - Système Gaveurs V3.0</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;600;700;800&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-brand">
+            <span class="logo">🦆</span>
+            <span class="brand-text">Système Gaveurs V3.0</span>
+        </div>
+        <ul class="nav-links">
+            <li><a href="index.html">Accueil</a></li>
+            <li><a href="boucle-fermee.html">Pipeline end-to-end</a></li>
+            <li><a href="sqal.html">SQAL (IoT)</a></li>
+            <li><a href="blockchain.html">Traçabilité (Blockchain)</a></li>
+            <li><a href="commercial.html" class="active">KPIs & Déploiement</a></li>
+        </ul>
+    </nav>
+
+    <!-- Page Header -->
+    <header class="page-header">
+        <h1>KPIs & Déploiement</h1>
+        <p>Indicateurs de fonctionnement, points de contrôle et éléments de déploiement (Docker / ports / services).</p>
+    </header>
+
+    <!-- Problème Business -->
+    <section class="section">
+        <div class="container">
+            <h2 class="section-title">Indicateurs & risques opérationnels</h2>
+            <p class="section-intro">
+                Cette page liste des exemples d'indicateurs (qualité, mortalité, traçabilité) et des éléments de déploiement.
+            </p>
+
+            <div class="cost-analysis">
+                <div class="cost-card loss">
+                    <h3>KPIs (exemples)</h3>
+                    <div class="cost-items">
+                        <div class="cost-item">
+                            <span class="cost-label">Mortalité excessive</span>
+                            <span class="cost-value">-180 000 €</span>
+                            <span class="cost-detail">3% au lieu de 1.5% optimisé</span>
+                        </div>
+                        <div class="cost-item">
+                            <span class="cost-label">Foies déclassés évitables</span>
+                            <span class="cost-value">-320 000 €</span>
+                            <span class="cost-detail">15% déclassement vs 8% avec IA</span>
+                        </div>
+                        <div class="cost-item">
+                            <span class="cost-label">Temps administratif</span>
+                            <span class="cost-value">-95 000 €</span>
+                            <span class="cost-detail">Saisie papier, ressaisie, erreurs</span>
+                        </div>
+                        <div class="cost-item">
+                            <span class="cost-label">Audits et non-conformités</span>
+                            <span class="cost-value">-45 000 €</span>
+                            <span class="cost-detail">Traçabilité manuelle imparfaite</span>
+                        </div>
+                        <div class="cost-item total">
+                            <span class="cost-label">TOTAL (exemple)</span>
+                            <span class="cost-value">-640 000 €/an</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Observability -->
+    <section class="section" style="background: var(--white);">
+        <div class="container">
+            <h2 class="section-title">Observabilité (exemples)</h2>
+
+            <div class="gains-grid">
+                <div class="gain-card">
+                    <div class="gain-icon">🎯</div>
+                    <div class="gain-percent">+23%</div>
+                    <h4>Foies Grade A+</h4>
+                    <p>Distribution des grades SQAL (A+ → D) et suivi par lot / site / période.</p>
+                    <div class="gain-value">+185 000 €/an</div>
+                </div>
+                <div class="gain-card">
+                    <div class="gain-icon">📉</div>
+                    <div class="gain-percent">-50%</div>
+                    <h4>Mortalité</h4>
+                    <p>Détection d'anomalies et alerting (ex: dérives de mortalité / écarts de courbe).</p>
+                    <div class="gain-value">+90 000 €/an</div>
+                </div>
+                <div class="gain-card">
+                    <div class="gain-icon">⏱️</div>
+                    <div class="gain-percent">-85%</div>
+                    <h4>Temps de Saisie</h4>
+                    <p>Traçage des événements de saisie (matin/soir) et complétude des données attendues.</p>
+                    <div class="gain-value">+75 000 €/an</div>
+                </div>
+                <div class="gain-card">
+                    <div class="gain-icon">✅</div>
+                    <div class="gain-percent">100%</div>
+                    <h4>Traçabilité</h4>
+                    <p>Vérification par hash (blockchain) + URL QR (token signé) + métadonnées.</p>
+                    <div class="gain-value">+45 000 €/an</div>
+                </div>
+            </div>
+
+            <div class="total-gains">
+                <h3>KPIs agrégés (exemple)</h3>
+                <div class="total-value">+395 000 €/an</div>
+                <p>Valeurs illustratives conservées pour la mise en forme.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Déploiement -->
+    <section class="section">
+        <div class="container">
+            <h2 class="section-title">Déploiement (exemples)</h2>
+
+            <div class="investment-breakdown">
+                <div class="invest-category">
+                    <h4>Infrastructure</h4>
+                    <ul>
+                        <li><span>Serveurs cloud (TimescaleDB + Backend)</span><span>15 000 €</span></li>
+                        <li><span>Réseau Hyperledger (3 nœuds)</span><span>12 000 €</span></li>
+                        <li><span>Setup et configuration</span><span>8 000 €</span></li>
+                    </ul>
+                    <div class="invest-subtotal">35 000 €</div>
+                </div>
+                <div class="invest-category">
+                    <h4>Équipements SQAL</h4>
+                    <ul>
+                        <li><span>Stations SQAL complètes (×3)</span><span>45 000 €</span></li>
+                        <li><span>Capteurs ToF VL53L8CH (spare)</span><span>3 000 €</span></li>
+                        <li><span>Installation et calibration</span><span>7 000 €</span></li>
+                    </ul>
+                    <div class="invest-subtotal">55 000 €</div>
+                </div>
+                <div class="invest-category">
+                    <h4>Logiciel</h4>
+                    <ul>
+                        <li><span>Licence plateforme (1ère année)</span><span>48 000 €</span></li>
+                        <li><span>Personnalisation & intégration</span><span>25 000 €</span></li>
+                        <li><span>Formation équipes (5 jours)</span><span>12 000 €</span></li>
+                    </ul>
+                    <div class="invest-subtotal">85 000 €</div>
+                </div>
+            </div>
+
+            <div class="investment-total">
+                <h3>Synthèse (exemple)</h3>
+                <div class="total-invest">175 000 €</div>
+                <p>Valeurs illustratives conservées pour la mise en forme.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Timeline -->
+    <section class="section" style="background: var(--white);">
+        <div class="container">
+            <h2 class="section-title">Timeline (exemple)</h2>
+
+            <div class="roi-chart">
+                <div class="roi-bar">
+                    <div class="roi-period">
+                        <span class="month">M0</span>
+                        <span class="label">Déploiement</span>
+                    </div>
+                    <div class="roi-period">
+                        <span class="month">M6</span>
+                        <span class="label">Premiers gains</span>
+                        <span class="value positive">+98 000 €</span>
+                    </div>
+                    <div class="roi-period">
+                        <span class="month">M12</span>
+                        <span class="label">Break-even proche</span>
+                        <span class="value positive">+198 000 €</span>
+                    </div>
+                    <div class="roi-period highlight">
+                        <span class="month">M18</span>
+                        <span class="label">ROI Atteint</span>
+                        <span class="value positive">+297 000 €</span>
+                    </div>
+                    <div class="roi-period">
+                        <span class="month">M24</span>
+                        <span class="label">Profit net</span>
+                        <span class="value positive">+347 000 €</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="roi-summary">
+                <div class="roi-metric">
+                    <span class="metric-value">M18</span>
+                    <span class="metric-label">Point de contrôle</span>
+                </div>
+                <div class="roi-metric">
+                    <span class="metric-value">3 ans</span>
+                    <span class="metric-label">Horizon d'observation</span>
+                </div>
+                <div class="roi-metric">
+                    <span class="metric-value">Y2</span>
+                    <span class="metric-label">Stabilisation</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Environnements -->
+    <section class="section">
+        <div class="container">
+            <h2 class="section-title">Environnements (exemples)</h2>
+            <p class="section-intro">
+                Trois configurations de référence (illustratives) conservées pour la mise en forme.
+            </p>
+
+            <div class="pricing-grid">
+                <div class="pricing-card">
+                    <div class="pricing-header">
+                        <h3>Starter</h3>
+                        <p class="pricing-desc">Petites exploitations</p>
+                    </div>
+                    <div class="pricing-price">
+                        <span class="amount">24 000</span>
+                        <span class="currency">€/an</span>
+                    </div>
+                    <ul class="pricing-features">
+                        <li class="included">✓ App Gaveur (jusqu'à 10 gaveurs)</li>
+                        <li class="included">✓ Dashboard superviseur</li>
+                        <li class="included">✓ 3 algorithmes ML de base</li>
+                        <li class="included">✓ Support email</li>
+                        <li class="excluded">✗ SQAL IoT</li>
+                        <li class="excluded">✗ Blockchain</li>
+                        <li class="excluded">✗ Boucle fermée consommateur</li>
+                    </ul>
+                    <a href="#contact" class="pricing-cta">Demander un devis</a>
+                </div>
+
+                <div class="pricing-card featured">
+                    <div class="pricing-badge">Recommandé</div>
+                    <div class="pricing-header">
+                        <h3>Professional</h3>
+                        <p class="pricing-desc">Coopératives moyennes</p>
+                    </div>
+                    <div class="pricing-price">
+                        <span class="amount">48 000</span>
+                        <span class="currency">€/an</span>
+                    </div>
+                    <ul class="pricing-features">
+                        <li class="included">✓ App Gaveur (jusqu'à 50 gaveurs)</li>
+                        <li class="included">✓ Dashboard multi-sites</li>
+                        <li class="included">✓ 6 algorithmes ML complets</li>
+                        <li class="included">✓ SQAL IoT (2 stations)</li>
+                        <li class="included">✓ Blockchain traçabilité</li>
+                        <li class="included">✓ Support prioritaire</li>
+                        <li class="excluded">✗ Boucle fermée consommateur</li>
+                    </ul>
+                    <a href="#contact" class="pricing-cta">Demander un devis</a>
+                </div>
+
+                <div class="pricing-card">
+                    <div class="pricing-header">
+                        <h3>Enterprise</h3>
+                        <p class="pricing-desc">Grandes coopératives</p>
+                    </div>
+                    <div class="pricing-price">
+                        <span class="amount">Sur mesure</span>
+                        <span class="currency"></span>
+                    </div>
+                    <ul class="pricing-features">
+                        <li class="included">✓ Gaveurs illimités</li>
+                        <li class="included">✓ Multi-sites illimités</li>
+                        <li class="included">✓ 6 algorithmes ML + personnalisés</li>
+                        <li class="included">✓ SQAL IoT (stations illimitées)</li>
+                        <li class="included">✓ Blockchain privée dédiée</li>
+                        <li class="included">✓ Boucle fermée consommateur</li>
+                        <li class="included">✓ Account manager dédié</li>
+                    </ul>
+                    <a href="#contact" class="pricing-cta">Nous contacter</a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Témoignages -->
+    <section class="section" style="background: var(--white);">
+        <div class="container">
+            <h2 class="section-title">Ils Nous Font Confiance</h2>
+
+            <div class="testimonials-grid">
+                <div class="testimonial-card">
+                    <div class="testimonial-content">
+                        <p>"Le système a transformé notre façon de travailler. Nos gaveurs adorent l'application et nos foies n'ont jamais été aussi bien notés."</p>
+                    </div>
+                    <div class="testimonial-author">
+                        <div class="author-avatar">JD</div>
+                        <div class="author-info">
+                            <strong>Jean Dupont</strong>
+                            <span>Directeur Production, Coopérative du Sud-Ouest</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="testimonial-card">
+                    <div class="testimonial-content">
+                        <p>"La traçabilité blockchain nous a permis de décrocher le référencement chez un grand distributeur. Argument décisif."</p>
+                    </div>
+                    <div class="testimonial-author">
+                        <div class="author-avatar">ML</div>
+                        <div class="author-info">
+                            <strong>Marie Lefebvre</strong>
+                            <span>Responsable Qualité, Maison Lafitte</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="testimonial-card">
+                    <div class="testimonial-content">
+                        <p>"ROI atteint en 14 mois au lieu de 18 prévus. Les alertes prédictives nous ont évité 3 épisodes de mortalité majeurs."</p>
+                    </div>
+                    <div class="testimonial-author">
+                        <div class="author-avatar">PB</div>
+                        <div class="author-info">
+                            <strong>Pierre Bernard</strong>
+                            <span>DAF, Euralis Gastronomie</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Contact CTA -->
+    <section class="section cta-section" id="contact">
+        <div class="container">
+            <h2>Prêt à Transformer Votre Production ?</h2>
+            <p>Demandez une démonstration personnalisée et un devis adapté à vos besoins.</p>
+            <div class="contact-info">
+                <div class="contact-item">
+                    <span>📧</span>
+                    <a href="mailto:contact@gaveurs-v3.com">contact@gaveurs-v3.com</a>
+                </div>
+                <div class="contact-item">
+                    <span>📞</span>
+                    <a href="tel:+33559123456">+33 5 59 12 34 56</a>
+                </div>
+            </div>
+            <div class="cta-buttons" style="margin-top: 30px;">
+                <a href="index.html" class="cta-button secondary">← Retour à l'Accueil</a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-brand">
+                    <span class="logo">🦆</span>
+                    <span>Système Gaveurs V3.0</span>
+                </div>
+                <p>IA + IoT + Blockchain pour l'excellence du foie gras français</p>
+                <p class="copyright">© 2024 - Projet Euralis Gaveurs</p>
+            </div>
+        </div>
+    </footer>
+
+    <style>
+        /* Cost Analysis */
+        .cost-analysis {
+            max-width: 700px;
+            margin: 30px auto 0;
+        }
+
+        .cost-card {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+        }
+
+        .cost-card.loss {
+            border-left: 5px solid #e74c3c;
+        }
+
+        .cost-card h3 {
+            margin-bottom: 20px;
+            color: #e74c3c;
+        }
+
+        .cost-items {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .cost-item {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 10px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 10px;
+        }
+
+        .cost-item.total {
+            background: #fef5f5;
+            border: 2px solid #e74c3c;
+        }
+
+        .cost-label {
+            font-weight: 500;
+        }
+
+        .cost-value {
+            font-weight: 700;
+            color: #e74c3c;
+        }
+
+        .cost-detail {
+            grid-column: 1 / -1;
+            font-size: 0.85rem;
+            color: var(--gray);
+        }
+
+        /* Gains Grid */
+        .gains-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 25px;
+            margin-top: 30px;
+        }
+
+        .gain-card {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            text-align: center;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.08);
+            transition: transform 0.3s;
+        }
+
+        .gain-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .gain-icon {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+
+        .gain-percent {
+            font-size: 2.5rem;
+            font-weight: 800;
+            color: var(--primary);
+        }
+
+        .gain-card h4 {
+            margin: 10px 0;
+        }
+
+        .gain-card p {
+            color: var(--gray);
+            font-size: 0.9rem;
+            margin-bottom: 15px;
+        }
+
+        .gain-value {
+            background: linear-gradient(135deg, #27ae60, #2ecc71);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: 600;
+        }
+
+        .total-gains {
+            text-align: center;
+            margin-top: 40px;
+            padding: 30px;
+            background: linear-gradient(135deg, #27ae60, #2ecc71);
+            border-radius: 20px;
+            color: white;
+        }
+
+        .total-gains h3 {
+            margin-bottom: 10px;
+        }
+
+        .total-gains .total-value {
+            font-size: 3rem;
+            font-weight: 800;
+        }
+
+        /* Investment Breakdown */
+        .investment-breakdown {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 25px;
+            margin-top: 30px;
+        }
+
+        .invest-category {
+            background: white;
+            border-radius: 20px;
+            padding: 25px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.08);
+        }
+
+        .invest-category h4 {
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid var(--primary);
+        }
+
+        .invest-category ul {
+            list-style: none;
+            padding: 0;
+        }
+
+        .invest-category li {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid #eee;
+        }
+
+        .invest-category li:last-child {
+            border-bottom: none;
+        }
+
+        .invest-subtotal {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 2px solid var(--primary);
+            text-align: right;
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: var(--primary);
+        }
+
+        .investment-total {
+            text-align: center;
+            margin-top: 40px;
+            padding: 30px;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            border-radius: 20px;
+            color: white;
+        }
+
+        .investment-total .total-invest {
+            font-size: 3rem;
+            font-weight: 800;
+        }
+
+        /* ROI Chart */
+        .roi-chart {
+            margin: 40px 0;
+            padding: 30px;
+            background: #f8f9fa;
+            border-radius: 20px;
+        }
+
+        .roi-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            position: relative;
+        }
+
+        .roi-bar::before {
+            content: '';
+            position: absolute;
+            bottom: 60px;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, #e74c3c, #f39c12, #27ae60);
+            border-radius: 2px;
+        }
+
+        .roi-period {
+            text-align: center;
+            position: relative;
+            z-index: 1;
+        }
+
+        .roi-period .month {
+            display: block;
+            background: var(--primary);
+            color: white;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            line-height: 50px;
+            margin: 0 auto 10px;
+            font-weight: 700;
+        }
+
+        .roi-period.highlight .month {
+            background: #27ae60;
+            width: 60px;
+            height: 60px;
+            line-height: 60px;
+            font-size: 1.1rem;
+        }
+
+        .roi-period .label {
+            display: block;
+            font-size: 0.85rem;
+            color: var(--gray);
+        }
+
+        .roi-period .value {
+            display: block;
+            margin-top: 5px;
+            font-weight: 700;
+        }
+
+        .roi-period .value.positive {
+            color: #27ae60;
+        }
+
+        .roi-summary {
+            display: flex;
+            justify-content: center;
+            gap: 60px;
+            margin-top: 40px;
+        }
+
+        .roi-metric {
+            text-align: center;
+        }
+
+        .metric-value {
+            display: block;
+            font-size: 2.5rem;
+            font-weight: 800;
+            color: var(--primary);
+        }
+
+        .metric-label {
+            font-size: 0.9rem;
+            color: var(--gray);
+        }
+
+        /* Testimonials */
+        .testimonials-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 25px;
+            margin-top: 30px;
+        }
+
+        .testimonial-card {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.08);
+        }
+
+        .testimonial-content {
+            font-style: italic;
+            color: var(--gray);
+            margin-bottom: 20px;
+            line-height: 1.7;
+        }
+
+        .testimonial-content::before {
+            content: '"';
+            font-size: 3rem;
+            color: var(--primary);
+            opacity: 0.3;
+            line-height: 0;
+            display: block;
+            margin-bottom: -10px;
+        }
+
+        .testimonial-author {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .author-avatar {
+            width: 50px;
+            height: 50px;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+        }
+
+        .author-info strong {
+            display: block;
+        }
+
+        .author-info span {
+            font-size: 0.85rem;
+            color: var(--gray);
+        }
+
+        /* Contact Info */
+        .contact-info {
+            display: flex;
+            justify-content: center;
+            gap: 40px;
+            margin-top: 30px;
+        }
+
+        .contact-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 1.2rem;
+        }
+
+        .contact-item span {
+            font-size: 1.5rem;
+        }
+
+        .contact-item a {
+            color: white;
+            text-decoration: none;
+        }
+
+        .contact-item a:hover {
+            text-decoration: underline;
+        }
+
+        @media (max-width: 768px) {
+            .roi-bar {
+                flex-wrap: wrap;
+                gap: 20px;
+            }
+
+            .roi-summary {
+                flex-direction: column;
+                gap: 20px;
+            }
+
+            .contact-info {
+                flex-direction: column;
+                gap: 15px;
+            }
+        }
+    </style>
+</body>
+</html>

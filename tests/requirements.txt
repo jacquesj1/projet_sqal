@@ -1,0 +1,33 @@
+# Testing dependencies for Système Gaveurs V3.0
+
+# Core testing framework
+pytest==7.4.3
+pytest-asyncio==0.21.1
+pytest-cov==4.1.0
+pytest-timeout==2.2.0
+pytest-xdist==3.5.0
+
+# HTTP client for API testing
+httpx==0.25.2
+
+# WebSocket testing
+websockets==12.0
+
+# Database testing
+asyncpg==0.29.0
+
+# Mocking and fixtures
+pytest-mock==3.12.0
+faker==20.1.0
+
+# Load testing
+locust==2.20.0
+
+# Code quality
+black==23.12.1
+flake8==7.0.0
+mypy==1.8.0
+pylint==3.0.3
+
+# Coverage reporting
+coverage==7.4.0

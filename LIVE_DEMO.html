@@ -1,0 +1,2893 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EURALIS - Live Demo | Intelligence Artificielle & SQAL</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #0a0a1a 0%, #1a1a3e 100%);
+            color: white;
+            overflow: hidden;
+            overflow-x: hidden;
+        }
+
+        /* Header - Compact */
+        .header {
+            background: linear-gradient(135deg, #1a1a3e 0%, #0d0d2b 100%);
+            padding: 8px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(52, 152, 219, 0.5);
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
+
+        /* Boutons de contrôle dans le header */
+        .header-controls {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .header-controls .control-btn {
+            padding: 4px 8px;
+            font-size: 0.7em;
+            border-radius: 6px;
+            border: 1px solid rgba(52, 152, 219, 0.3);
+            background: rgba(52, 152, 219, 0.1);
+            color: #3498db;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .header-controls .control-btn:hover {
+            background: rgba(52, 152, 219, 0.3);
+            transform: translateY(-1px);
+        }
+
+        .header-controls .btn-start:hover {
+            background: rgba(46, 204, 113, 0.3);
+            border-color: rgba(46, 204, 113, 0.5);
+            color: #2ecc71;
+        }
+
+        .header-controls .btn-stop:hover {
+            background: rgba(231, 76, 60, 0.3);
+            border-color: rgba(231, 76, 60, 0.5);
+            color: #e74c3c;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .logo-icon {
+            font-size: 1.6em;
+        }
+
+        .logo-text {
+            font-size: 1.1em;
+            font-weight: bold;
+            background: linear-gradient(135deg, #3498db, #9b59b6);
+            background-clip: text;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .live-indicator {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(231, 76, 60, 0.15);
+            padding: 4px 12px;
+            border-radius: 12px;
+            border: 1px solid rgba(231, 76, 60, 0.5);
+            font-size: 0.85em;
+        }
+
+        .live-dot {
+            width: 8px;
+            height: 8px;
+            background: #e74c3c;
+            border-radius: 50%;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(1.2); }
+        }
+
+        /* Main Grid */
+        .main-grid {
+            display: grid;
+            grid-template-columns: 1fr 2fr 1fr;
+            grid-template-rows: auto 1fr auto;
+            gap: 15px;
+            padding: 15px;
+            height: calc(100vh - 50px);
+        }
+
+        /* Panels */
+        .panel {
+            background: linear-gradient(145deg, #1a1a3e, #0d0d2b);
+            border-radius: 15px;
+            border: 1px solid rgba(52, 152, 219, 0.3);
+            overflow: hidden;
+        }
+
+        .panel-header {
+            background: linear-gradient(135deg, rgba(52, 152, 219, 0.3), rgba(155, 89, 182, 0.3));
+            padding: 12px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(52, 152, 219, 0.3);
+        }
+
+        .panel-title {
+            font-size: 1.1em;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .panel-badge {
+            font-size: 0.75em;
+            padding: 3px 10px;
+            border-radius: 10px;
+            background: rgba(46, 204, 113, 0.3);
+            color: #2ecc71;
+        }
+
+        .panel-content {
+            padding: 15px;
+            height: calc(100% - 50px);
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
+
+        /* SQAL Focus Panel (Central - Large) */
+        .sqal-panel {
+            grid-column: 2;
+            grid-row: 1 / 3;
+        }
+
+        .sqal-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            height: 100%;
+        }
+
+        .sqal-grid > * {
+            min-width: 0;
+        }
+
+        /* ToF Sensor Heatmap - SQAL Style */
+        .tof-container {
+            background: rgba(0, 0, 0, 0.4);
+            border-radius: 12px;
+            padding: 15px;
+            border: 1px solid rgba(52, 152, 219, 0.2);
+            min-width: 0;
+        }
+
+        .tof-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .tof-title {
+            font-size: 0.9em;
+            color: #3498db;
+            font-weight: 600;
+        }
+
+        .tof-stats {
+            font-size: 0.75em;
+            color: #888;
+        }
+
+        .tof-grid {
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            gap: 2px;
+            aspect-ratio: 1;
+            max-width: 280px;
+            margin: 0 auto 10px;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 4px;
+            border-radius: 8px;
+        }
+
+        .tof-cell {
+            aspect-ratio: 1;
+            border-radius: 2px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.55em;
+            font-weight: bold;
+            transition: all 0.3s ease;
+            text-shadow: 0 0 2px rgba(0,0,0,0.8);
+        }
+
+        .tof-legend {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 8px;
+            margin-top: 8px;
+        }
+
+        .tof-legend-bar {
+            height: 8px;
+            width: 120px;
+            border-radius: 4px;
+            background: linear-gradient(to right, #3498db, #2ecc71, #f1c40f, #e67e22, #e74c3c);
+        }
+
+        .tof-legend-label {
+            font-size: 0.65em;
+            color: #666;
+        }
+
+        /* Spectral Chart - SQAL AS7341 Style */
+        .spectral-container {
+            background: rgba(0, 0, 0, 0.4);
+            border-radius: 12px;
+            padding: 15px;
+            border: 1px solid rgba(155, 89, 182, 0.2);
+            min-width: 0;
+        }
+
+        .spectral-header {
+            display: flex;
+            justify-content: flex-start;
+            align-items: center;
+            position: relative;
+            gap: 10px;
+            flex-wrap: nowrap;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .spectral-header .viewer-3d-btn-expand {
+            margin-left: auto;
+        }
+
+        .spectral-title {
+            font-size: 0.9em;
+            color: #9b59b6;
+            font-weight: 600;
+        }
+
+        .spectral-index {
+            font-size: 0.75em;
+            padding: 2px 8px;
+            background: rgba(46, 204, 113, 0.2);
+            color: #2ecc71;
+            border-radius: 8px;
+        }
+
+        .spectral-bars {
+            display: block;
+            padding: 10px 5px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 8px;
+        }
+
+        .spectral-ratios {
+            margin-top: 10px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+
+        .spectral-ratio {
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 8px;
+            padding: 8px;
+        }
+
+        .spectral-ratio-title {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            gap: 10px;
+            font-size: 0.75em;
+            color: #bbb;
+            margin-bottom: 6px;
+        }
+
+        .spectral-ratio-bar {
+            position: relative;
+            height: 10px;
+            border-radius: 6px;
+            background: rgba(255,255,255,0.08);
+            overflow: hidden;
+        }
+
+        .spectral-ratio-fill {
+            height: 100%;
+            border-radius: 6px;
+            width: 0%;
+            opacity: 0.75;
+            transition: width 0.25s ease;
+        }
+
+        .spectral-ratio-ref {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: rgba(34,197,94,0.9);
+            opacity: 0.9;
+        }
+
+        .spectral-bar-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            flex: 1;
+            max-width: 35px;
+        }
+
+        .spectral-bar {
+            width: 100%;
+            border-radius: 3px 3px 0 0;
+            transition: height 0.4s ease;
+            min-height: 4px;
+            box-shadow: 0 0 8px currentColor;
+        }
+
+        .spectral-value {
+            font-size: 0.6em;
+            color: #aaa;
+            font-weight: 500;
+        }
+
+        .spectral-label {
+            font-size: 0.55em;
+            color: #666;
+            text-align: center;
+            line-height: 1.1;
+        }
+
+        /* Quality Grade Display */
+        .grade-display {
+            text-align: center;
+            padding: 20px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 10px;
+        }
+
+        .grade-circle {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 15px;
+            font-size: 3em;
+            font-weight: bold;
+            border: 4px solid;
+            animation: gradeGlow 2s infinite;
+        }
+
+        @keyframes gradeGlow {
+            0%, 100% { box-shadow: 0 0 20px currentColor; }
+            50% { box-shadow: 0 0 40px currentColor; }
+        }
+
+        .grade-a-plus { color: #2ecc71; border-color: #2ecc71; }
+        .grade-a { color: #27ae60; border-color: #27ae60; }
+        .grade-b { color: #f39c12; border-color: #f39c12; }
+        .grade-c { color: #e67e22; border-color: #e67e22; }
+        .grade-d { color: #e74c3c; border-color: #e74c3c; }
+
+        .grade-score {
+            font-size: 2em;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .grade-label {
+            color: #888;
+            font-size: 0.9em;
+        }
+
+        /* AI Insights Panel */
+        .ai-panel {
+            grid-column: 1;
+            grid-row: 1 / 3;
+        }
+
+        .ai-insight {
+            background: rgba(155, 89, 182, 0.1);
+            border-left: 3px solid #9b59b6;
+            padding: 12px;
+            margin-bottom: 10px;
+            border-radius: 0 8px 8px 0;
+            animation: fadeInSlide 0.5s ease;
+        }
+
+        @keyframes fadeInSlide {
+            from { opacity: 0; transform: translateX(-20px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+
+        .ai-insight-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #9b59b6;
+        }
+
+        .ai-insight-time {
+            font-size: 0.75em;
+            color: #666;
+            margin-left: auto;
+        }
+
+        .ai-insight-text {
+            font-size: 0.9em;
+            line-height: 1.5;
+        }
+
+        .ai-model-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            background: rgba(52, 152, 219, 0.3);
+            border-radius: 10px;
+            font-size: 0.7em;
+            color: #3498db;
+            margin-top: 8px;
+        }
+
+        /* Consumer Feedback Panel */
+        .consumer-panel {
+            grid-column: 3;
+            grid-row: 1;
+        }
+
+        .feedback-item {
+            background: rgba(46, 204, 113, 0.1);
+            border-radius: 10px;
+            padding: 12px;
+            margin-bottom: 10px;
+            border-left: 3px solid #2ecc71;
+        }
+
+        .feedback-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .feedback-stars {
+            color: #f1c40f;
+            font-size: 1.2em;
+        }
+
+        .feedback-time {
+            font-size: 0.75em;
+            color: #666;
+        }
+
+        .feedback-comment {
+            font-style: italic;
+            color: #aaa;
+            font-size: 0.9em;
+        }
+
+        .feedback-product {
+            font-size: 0.75em;
+            color: #3498db;
+            margin-top: 5px;
+        }
+
+        /* Blockchain Panel */
+        .blockchain-panel {
+            grid-column: 3;
+            grid-row: 2;
+        }
+
+        .block {
+            background: linear-gradient(135deg, rgba(52, 152, 219, 0.2), rgba(155, 89, 182, 0.2));
+            border-radius: 10px;
+            padding: 12px;
+            margin-bottom: 10px;
+            border: 1px solid rgba(52, 152, 219, 0.3);
+            position: relative;
+        }
+
+        .block::before {
+            content: '';
+            position: absolute;
+            left: 50%;
+            bottom: -15px;
+            width: 2px;
+            height: 15px;
+            background: linear-gradient(to bottom, #3498db, transparent);
+        }
+
+        .block:last-child::before {
+            display: none;
+        }
+
+        .block-index {
+            font-size: 0.8em;
+            color: #3498db;
+            margin-bottom: 5px;
+        }
+
+        .block-type {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .block-hash {
+            font-family: monospace;
+            font-size: 0.75em;
+            color: #888;
+            word-break: break-all;
+        }
+
+        /* Stats Bar */
+        .stats-bar {
+            grid-column: 1 / 4;
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            background: linear-gradient(135deg, rgba(52, 152, 219, 0.2), rgba(155, 89, 182, 0.2));
+            border-radius: 15px;
+            padding: 15px;
+        }
+
+        .stat-item {
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 2em;
+            font-weight: bold;
+            background: linear-gradient(135deg, #3498db, #9b59b6);
+            background-clip: text;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .stat-label {
+            font-size: 0.85em;
+            color: #888;
+        }
+
+        .stat-change {
+            font-size: 0.8em;
+            margin-top: 3px;
+        }
+
+        .stat-up { color: #2ecc71; }
+        .stat-down { color: #e74c3c; }
+
+        /* Gavage Mini Panel */
+        .gavage-mini {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 10px;
+            padding: 15px;
+        }
+
+        .gavage-lot {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .gavage-lot:last-child {
+            border-bottom: none;
+        }
+
+        .lot-name {
+            font-weight: bold;
+        }
+
+        .lot-itm {
+            color: #3498db;
+        }
+
+        .lot-progress {
+            width: 100%;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 2px;
+            margin-top: 5px;
+        }
+
+        .lot-progress-fill {
+            height: 100%;
+            border-radius: 2px;
+            background: linear-gradient(90deg, #3498db, #2ecc71);
+            transition: width 0.5s ease;
+        }
+
+        /* Control Button Styles - Utilisés dans header */
+        .control-btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.75em;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .btn-start {
+            background: rgba(46, 204, 113, 0.3);
+            color: #2ecc71;
+            border: 1px solid rgba(46, 204, 113, 0.4);
+        }
+
+        .btn-start:hover {
+            background: rgba(46, 204, 113, 0.5);
+            box-shadow: 0 2px 10px rgba(46, 204, 113, 0.3);
+        }
+
+        .btn-stop {
+            background: rgba(231, 76, 60, 0.3);
+            color: #e74c3c;
+            border: 1px solid rgba(231, 76, 60, 0.4);
+        }
+
+        .btn-stop:hover {
+            background: rgba(231, 76, 60, 0.5);
+            box-shadow: 0 2px 10px rgba(231, 76, 60, 0.3);
+        }
+
+        .btn-scenario {
+            background: rgba(52, 152, 219, 0.3);
+            color: #3498db;
+            border: 1px solid rgba(52, 152, 219, 0.4);
+        }
+
+        .btn-scenario:hover {
+            background: rgba(52, 152, 219, 0.5);
+            box-shadow: 0 2px 10px rgba(52, 152, 219, 0.3);
+        }
+
+        /* Real-time data flash effect */
+        .data-update {
+            animation: dataFlash 0.5s ease;
+        }
+
+        @keyframes dataFlash {
+            0% { background-color: rgba(52, 152, 219, 0.3); }
+            100% { background-color: transparent; }
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.3);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(52, 152, 219, 0.5);
+            border-radius: 3px;
+        }
+
+        /* AI Processing Animation */
+        .ai-processing {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px;
+            background: rgba(155, 89, 182, 0.2);
+            border-radius: 8px;
+            margin-bottom: 10px;
+        }
+
+        .ai-spinner {
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(155, 89, 182, 0.3);
+            border-top-color: #9b59b6;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Connection Status */
+        .connection-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.85em;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+
+        .status-connected { background: #2ecc71; }
+        .status-disconnected { background: #e74c3c; }
+        .status-connecting { background: #f39c12; animation: pulse 1s infinite; }
+
+        /* Toast Notifications */
+        .toast-container {
+            position: fixed;
+            top: 80px;
+            right: 20px;
+            z-index: 1001;
+        }
+
+        .toast {
+            background: rgba(0, 0, 0, 0.9);
+            border-left: 4px solid #3498db;
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            animation: slideIn 0.3s ease;
+            max-width: 350px;
+        }
+
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        .toast-success { border-color: #2ecc71; }
+        .toast-warning { border-color: #f39c12; }
+        .toast-error { border-color: #e74c3c; }
+        .toast-ai { border-color: #9b59b6; }
+
+        /* Modal Overlay for QR Scan Demo */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 2000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal-content {
+            background: linear-gradient(145deg, #1a1a3e, #0d0d2b);
+            border-radius: 20px;
+            padding: 30px;
+            max-width: 500px;
+            width: 90%;
+            border: 2px solid #3498db;
+            text-align: center;
+        }
+
+        .qr-code-display {
+            width: 200px;
+            height: 200px;
+            background: white;
+            margin: 20px auto;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.8em;
+            color: #333;
+            padding: 10px;
+            word-break: break-all;
+        }
+
+        .modal-close {
+            position: absolute;
+            top: 15px;
+            right: 20px;
+            font-size: 2em;
+            cursor: pointer;
+            color: #888;
+        }
+
+        .modal-close:hover {
+            color: #fff;
+        }
+
+        .viewer-3d-modal-content {
+            width: 96vw;
+            height: 88vh;
+            max-width: 1400px;
+            background: rgba(20, 20, 30, 0.98);
+            border: 1px solid rgba(52, 152, 219, 0.25);
+        }
+
+        .viewer-3d-modal-body {
+            width: 100%;
+            height: calc(88vh - 70px);
+            max-height: calc(88vh - 70px);
+        }
+
+        .spectral-modal-body {
+            width: 100%;
+            height: calc(70vh - 70px);
+            max-height: calc(70vh - 70px);
+            min-height: 360px;
+        }
+
+        /* 3D Viewer Container */
+        .viewer-3d-container {
+            position: relative;
+            width: 100%;
+            height: 280px;
+            background: rgba(0, 0, 0, 0.4);
+            border-radius: 8px;
+            overflow: hidden;
+            min-width: 0;
+        }
+
+        .viewer-3d-controls {
+            position: absolute;
+            bottom: 8px;
+            left: 8px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            z-index: 10;
+        }
+
+        .viewer-3d-settings {
+            position: absolute;
+            top: 8px;
+            left: 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            z-index: 11;
+            background: rgba(0, 0, 0, 0.55);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 8px;
+            padding: 8px 10px;
+            min-width: 170px;
+        }
+
+        .viewer-3d-settings-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            font-size: 0.72em;
+            color: #bbb;
+            white-space: nowrap;
+        }
+
+        .viewer-3d-settings input[type="range"] {
+            width: 100%;
+        }
+
+        .viewer-3d-btn {
+            padding: 4px 8px;
+            font-size: 0.65em;
+            background: rgba(52, 152, 219, 0.4);
+            border: 1px solid rgba(52, 152, 219, 0.6);
+            color: #3498db;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .viewer-3d-btn:hover {
+            background: rgba(52, 152, 219, 0.6);
+        }
+
+        .viewer-3d-btn.active {
+            background: rgba(52, 152, 219, 0.8);
+            color: white;
+        }
+
+        .viewer-3d-btn.viewer-3d-btn-expand {
+            margin-left: 6px;
+            padding: 4px 10px;
+        }
+
+        .viewer-3d-legend {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-size: 0.65em;
+            color: #aaa;
+        }
+
+        .viewer-3d-legend-bar {
+            height: 6px;
+            width: 80px;
+            margin-top: 4px;
+            border-radius: 3px;
+            background: linear-gradient(to right, #3498db, #2ecc71, #f1c40f, #e67e22, #e74c3c);
+        }
+    </style>
+    <!-- Three.js CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://unpkg.com/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <!-- Simplifié : Three.js pur sans React Three Fiber -->
+    <script src="https://unpkg.com/react@18.3.1/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="logo">
+            <span class="logo-icon">🦆</span>
+            <span class="logo-text">EURALIS - Système Gaveurs V3.0</span>
+        </div>
+        
+        <!-- Boutons de contrôle dans le header -->
+        <div class="header-controls">
+            <button class="control-btn btn-start" onclick="startDemo()">
+                ▶️ Démarrer
+            </button>
+            <button class="control-btn btn-stop" onclick="stopDemo()">
+                ⏹️ Arrêter
+            </button>
+            <button class="control-btn btn-scenario" onclick="showQRDemo()">
+                📱 Scanner QR
+            </button>
+        </div>
+        
+        <div class="live-indicator">
+            <span class="live-dot"></span>
+            <span class="live-text">LIVE</span>
+        </div>
+        <div class="connection-status">
+            <span class="status-dot status-connecting" id="ws-status"></span>
+            <span id="ws-status-text">Connexion...</span>
+        </div>
+    </header>
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toast-container"></div>
+
+    <!-- Main Grid -->
+    <div class="main-grid">
+
+        <!-- AI Insights Panel (Left) -->
+        <div class="panel ai-panel">
+            <div class="panel-header">
+                <span class="panel-title">🤖 Intelligence Artificielle</span>
+                <span class="panel-badge">6 Modèles Actifs</span>
+            </div>
+            <div class="panel-content" id="ai-insights">
+                <div class="ai-processing">
+                    <div class="ai-spinner"></div>
+                    <span>Analyse en cours...</span>
+                </div>
+
+                <div class="ai-insight">
+                    <div class="ai-insight-header">
+                        <span>🎯 Recommandation ITM</span>
+                        <span class="ai-insight-time">il y a 5s</span>
+                    </div>
+                    <div class="ai-insight-text">
+                        Lot LL-2024-047: Augmenter la dose de 5% pour les 2 derniers jours.
+                        Corrélation détectée avec satisfaction client +0.3 points.
+                    </div>
+                    <span class="ai-model-badge">PySR - Symbolic Regression</span>
+                </div>
+
+                <div class="ai-insight">
+                    <div class="ai-insight-header">
+                        <span>📊 Prédiction Production</span>
+                        <span class="ai-insight-time">il y a 12s</span>
+                    </div>
+                    <div class="ai-insight-text">
+                        Prévision 7 jours: +12% production site Bretagne.
+                        Confiance: 94%
+                    </div>
+                    <span class="ai-model-badge">Prophet - Forecasting</span>
+                </div>
+
+                <div class="ai-insight">
+                    <div class="ai-insight-header">
+                        <span>⚠️ Anomalie Détectée</span>
+                        <span class="ai-insight-time">il y a 28s</span>
+                    </div>
+                    <div class="ai-insight-text">
+                        Gaveur #42: Pattern inhabituel sur les 3 derniers lots.
+                        Score anomalie: 0.87
+                    </div>
+                    <span class="ai-model-badge">Isolation Forest</span>
+                </div>
+
+                <div class="ai-insight">
+                    <div class="ai-insight-header">
+                        <span>👥 Clustering Gaveurs</span>
+                        <span class="ai-insight-time">il y a 45s</span>
+                    </div>
+                    <div class="ai-insight-text">
+                        5 clusters identifiés. Cluster "Experts" (+18% qualité)
+                        partage technique avec Cluster "Débutants".
+                    </div>
+                    <span class="ai-model-badge">K-Means Clustering</span>
+                </div>
+
+                <div class="ai-insight">
+                    <div class="ai-insight-header">
+                        <span>🔄 Optimisation Feedback</span>
+                        <span class="ai-insight-time">il y a 1min</span>
+                    </div>
+                    <div class="ai-insight-text">
+                        Nouvelle courbe optimisée générée. Basée sur 847 feedbacks.
+                        Amélioration prédite: +0.4 étoiles satisfaction.
+                    </div>
+                    <span class="ai-model-badge">Random Forest Optimizer</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- SQAL Focus Panel (Center - Large) -->
+        <div class="panel sqal-panel">
+            <div class="panel-header">
+                <span class="panel-title">🔬 SQAL - Contrôle Qualité IoT Temps Réel</span>
+                <span class="panel-badge" id="sqal-device">ESP32_LL_01</span>
+            </div>
+            <div class="panel-content">
+                <div class="sqal-grid">
+                    <!-- ToF Sensor (VL53L8CH) - 3D Surface Viewer -->
+                    <div class="tof-container">
+                        <div class="tof-header">
+                            <span class="tof-title">📏 VL53L8CH Surface 3D</span>
+                            <span class="tof-stats" id="tof-stats">Vol: -- mm³</span>
+                        </div>
+                        <div class="viewer-3d-container" id="tof-3d-viewer">
+                            <!-- Enhanced 3D Surface Viewer sera inséré ici -->
+                            <div id="enhanced-3d-viewer" style="width: 100%; height: 300px; position: relative;">
+                                <!-- Le viewer React Three Fiber sera monté ici -->
+                                <div class="viewer-3d-settings" id="enhanced-3d-settings">
+                                    <div class="viewer-3d-settings-row">
+                                        <span>Hauteur capteur</span>
+                                        <span id="baseline-mm-value">200 mm</span>
+                                    </div>
+                                    <input id="baseline-mm" type="range" min="120" max="350" step="1" value="200" oninput="setEnhancedBaselineMm(this.value)" />
+                                    <div class="viewer-3d-settings-row">
+                                        <span>Orientation</span>
+                                        <span>
+                                            <button class="viewer-3d-btn" id="btn-flip-x" onclick="toggleEnhancedFlipX()" title="Miroir X">⇋X</button>
+                                            <button class="viewer-3d-btn" id="btn-flip-y" onclick="toggleEnhancedFlipY()" title="Miroir Y">⇅Y</button>
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="viewer-3d-legend">
+                                <div>Surface 3D Interactive</div>
+                                <div class="viewer-3d-legend-bar"></div>
+                                <div style="display: flex; justify-content: space-between; font-size: 0.9em; margin-top: 2px;">
+                                    <span>Bas</span><span>Haut</span>
+                                </div>
+                            </div>
+                            <div class="viewer-3d-controls">
+                                <button class="viewer-3d-btn active" onclick="setEnhancedView3D('perspective')" title="Vue perspective">3D</button>
+                                <button class="viewer-3d-btn" onclick="setEnhancedView3D('top')" title="Vue dessus">Dessus</button>
+                                <button class="viewer-3d-btn" onclick="setEnhancedView3D('front')" title="Vue face">Face</button>
+                                <button class="viewer-3d-btn" onclick="setEnhancedView3D('side')" title="Vue côté">Côté</button>
+                                <button class="viewer-3d-btn" onclick="toggleEnhancedAutoRotate()" id="btn-enhanced-rotate" title="Auto-rotation">↻</button>
+                                <button class="viewer-3d-btn" onclick="toggleEnhancedWireframe()" id="btn-enhanced-wireframe" title="Wireframe">▦</button>
+                                <button class="viewer-3d-btn" onclick="setEnhancedOverlay('height')" title="Hauteur">H</button>
+                                <button class="viewer-3d-btn" onclick="setEnhancedOverlay('reflectance')" title="Réflectance">R</button>
+                                <button class="viewer-3d-btn" onclick="setEnhancedOverlay('defects')" title="Défauts">D</button>
+                                <button class="viewer-3d-btn viewer-3d-btn-expand" onclick="openEnhanced3DModal()" title="Agrandir">⛶</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Spectral Sensor (AS7341) - SQAL Style -->
+                    <div class="spectral-container">
+                        <div class="spectral-header">
+                            <span class="spectral-title">🌈 AS7341 Spectral</span>
+                            <span class="spectral-index" id="freshness-index">Fraîcheur: --</span>
+                            <button class="viewer-3d-btn viewer-3d-btn-expand" onclick="openSpectralModal()" title="Agrandir">⛶</button>
+                        </div>
+                        <div class="spectral-bars" id="spectral-bars">
+                            <!-- Bars will be generated by JS -->
+                        </div>
+                    </div>
+
+                    <!-- Quality Grade -->
+                    <div class="grade-display">
+                        <h3 style="margin-bottom: 15px; color: #2ecc71;">🏆 Grade Qualité</h3>
+                        <div class="grade-circle grade-a-plus" id="grade-circle">
+                            <span id="grade-letter">A+</span>
+                        </div>
+                        <div class="grade-score" id="grade-score">96.5%</div>
+                        <div class="grade-label">Score SQAL Composite</div>
+                        <div style="margin-top: 20px; text-align: left; font-size: 0.85em;">
+                            <div style="display: flex; justify-content: space-between; margin: 5px 0;">
+                                <span>Dimensions:</span>
+                                <span style="color: #2ecc71;">98%</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; margin: 5px 0;">
+                                <span>Couleur:</span>
+                                <span style="color: #2ecc71;">95%</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; margin: 5px 0;">
+                                <span>Texture:</span>
+                                <span style="color: #27ae60;">92%</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; margin: 5px 0;">
+                                <span>Conformité:</span>
+                                <span style="color: #2ecc71;">✓</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Gavage Mini Stats -->
+                    <div class="gavage-mini">
+                        <h3 style="margin-bottom: 15px; color: #f39c12;">🌽 Gavage en Cours</h3>
+                        <div id="gavage-lots">
+                            <div class="gavage-lot">
+                                <div>
+                                    <span class="lot-name">Lot LL-2024-047</span>
+                                    <div class="lot-progress">
+                                        <div class="lot-progress-fill" style="width: 78%;"></div>
+                                    </div>
+                                </div>
+                                <span class="lot-itm">ITM: 16.8</span>
+                            </div>
+                            <div class="gavage-lot">
+                                <div>
+                                    <span class="lot-name">Lot LL-2024-048</span>
+                                    <div class="lot-progress">
+                                        <div class="lot-progress-fill" style="width: 45%;"></div>
+                                    </div>
+                                </div>
+                                <span class="lot-itm">ITM: 15.2</span>
+                            </div>
+                            <div class="gavage-lot">
+                                <div>
+                                    <span class="lot-name">Lot BR-2024-032</span>
+                                    <div class="lot-progress">
+                                        <div class="lot-progress-fill" style="width: 92%;"></div>
+                                    </div>
+                                </div>
+                                <span class="lot-itm">ITM: 17.4</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Consumer Feedback Panel (Right Top) -->
+        <div class="panel consumer-panel">
+            <div class="panel-header">
+                <span class="panel-title">⭐ Feedbacks Consommateurs</span>
+                <span class="panel-badge">Live</span>
+            </div>
+            <div class="panel-content" id="consumer-feedbacks">
+                <div class="feedback-item">
+                    <div class="feedback-header">
+                        <span class="feedback-stars">★★★★★</span>
+                        <span class="feedback-time">il y a 3s</span>
+                    </div>
+                    <div class="feedback-comment">"Excellent foie gras, fondant parfait!"</div>
+                    <div class="feedback-product">FG_LL_20260119_0012</div>
+                </div>
+                <div class="feedback-item">
+                    <div class="feedback-header">
+                        <span class="feedback-stars">★★★★☆</span>
+                        <span class="feedback-time">il y a 15s</span>
+                    </div>
+                    <div class="feedback-comment">"Très bon, texture agréable"</div>
+                    <div class="feedback-product">FG_BR_20260118_0089</div>
+                </div>
+                <div class="feedback-item">
+                    <div class="feedback-header">
+                        <span class="feedback-stars">★★★★★</span>
+                        <span class="feedback-time">il y a 32s</span>
+                    </div>
+                    <div class="feedback-comment">"Qualité exceptionnelle, je recommande!"</div>
+                    <div class="feedback-product">FG_LL_20260118_0156</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Blockchain Panel (Right Bottom) -->
+        <div class="panel blockchain-panel">
+            <div class="panel-header">
+                <span class="panel-title">🔗 Blockchain Live</span>
+                <span class="panel-badge" id="block-count">3 blocs</span>
+            </div>
+            <div class="panel-content" id="blockchain-blocks">
+                <div class="block">
+                    <div class="block-index">Bloc #1248</div>
+                    <div class="block-type">📦 consumer_product_registration</div>
+                    <div class="block-hash">Hash: e1d9bd23e705f42c...</div>
+                </div>
+                <div class="block">
+                    <div class="block-index">Bloc #1247</div>
+                    <div class="block-type">🔬 sqal_quality_control</div>
+                    <div class="block-hash">Hash: 46fb61511ca9cbc8...</div>
+                </div>
+                <div class="block">
+                    <div class="block-index">Bloc #1246</div>
+                    <div class="block-type">🌽 gavage</div>
+                    <div class="block-hash">Hash: dd813b066607a831...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Stats Bar (Bottom) -->
+        <div class="stats-bar">
+            <div class="stat-item">
+                <div class="stat-value" id="stat-lots">6</div>
+                <div class="stat-label">Lots Actifs</div>
+                <div class="stat-change stat-up">↑ 2 aujourd'hui</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value" id="stat-samples">1,247</div>
+                <div class="stat-label">Échantillons SQAL</div>
+                <div class="stat-change stat-up">↑ 89 cette heure</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value" id="stat-feedbacks">847</div>
+                <div class="stat-label">Feedbacks Reçus</div>
+                <div class="stat-change stat-up">↑ 12 aujourd'hui</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value" id="stat-rating">4.6</div>
+                <div class="stat-label">Note Moyenne</div>
+                <div class="stat-change stat-up">↑ 0.2 ce mois</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value" id="stat-blockchain">1,248</div>
+                <div class="stat-label">Blocs Blockchain</div>
+                <div class="stat-change stat-up">↑ 47 aujourd'hui</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value" id="stat-quality">A+</div>
+                <div class="stat-label">Grade Moyen</div>
+                <div class="stat-change stat-up">Stable</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="enhanced-3d-modal" style="display: none;" onclick="if(event.target===this) closeEnhanced3DModal()">
+        <div class="modal-content viewer-3d-modal-content" style="position: relative;" onclick="event.stopPropagation()">
+            <span class="modal-close" onclick="closeEnhanced3DModal()">&times;</span>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <h2 style="margin: 0;">📏 VL53L8CH Surface 3D</h2>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                    <button class="viewer-3d-btn active" onclick="setEnhancedView3D('perspective')" title="Vue perspective">3D</button>
+                    <button class="viewer-3d-btn" onclick="setEnhancedView3D('top')" title="Vue dessus">Dessus</button>
+                    <button class="viewer-3d-btn" onclick="setEnhancedView3D('front')" title="Vue face">Face</button>
+                    <button class="viewer-3d-btn" onclick="setEnhancedView3D('side')" title="Vue côté">Côté</button>
+                    <button class="viewer-3d-btn" onclick="toggleEnhancedAutoRotate()" id="btn-enhanced-rotate-modal" title="Auto-rotation">↻</button>
+                    <button class="viewer-3d-btn" onclick="toggleEnhancedWireframe()" id="btn-enhanced-wireframe-modal" title="Wireframe">▦</button>
+                </div>
+            </div>
+            <div id="enhanced-3d-settings-modal" style="position: relative;"></div>
+            <div id="enhanced-3d-viewer-modal" class="viewer-3d-modal-body"></div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="spectral-modal" style="display: none;" onclick="if(event.target===this) closeSpectralModal()">
+        <div class="modal-content viewer-3d-modal-content" style="position: relative;" onclick="event.stopPropagation()">
+            <span class="modal-close" onclick="closeSpectralModal()">&times;</span>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <h2 style="margin: 0;">🌈 AS7341 Spectral</h2>
+                <span class="spectral-index" id="freshness-index-modal" style="padding: 8px 12px;">Fraîcheur: --</span>
+            </div>
+            <div id="spectral-modal-body" class="spectral-modal-body"></div>
+        </div>
+    </div>
+
+    <!-- QR Modal -->
+    <div class="modal-overlay" id="qr-modal">
+        <div class="modal-content" style="position: relative;">
+            <span class="modal-close" onclick="closeModal()">&times;</span>
+            <h2 style="margin-bottom: 20px;">📱 Scan QR Code</h2>
+            <div class="qr-code-display" id="qr-display">
+                SQAL_34906_DEMO_001_FG_LL_20260119_0012_49735bc6
+            </div>
+            <p style="color: #888; margin: 15px 0;">Scannez ce QR code pour voir la traçabilité complète</p>
+            <button class="control-btn btn-scenario" onclick="simulateScan()" style="margin: 10px auto;">
+                Simuler Scan
+            </button>
+            <div id="scan-result" style="margin-top: 20px; text-align: left; display: none;">
+                <!-- Results will appear here -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Configuration
+        const API_BASE = 'http://localhost:8000'; // Backend Docker
+        const WS_BASE = 'ws://localhost:8000';
+        let simulationRunning = false;
+        let wsConnection = null;
+        let updateInterval = null;
+        let feedbackPollInterval = null;
+        let blockchainPollInterval = null;
+        let lastFeedbackId = 0;
+        let lastBlockIndex = 0;
+        let knownFeedbackIds = new Set();
+        let lastToFFrameAt = 0;
+        let lastSpectralFrameAt = 0;
+        let lastAnySensorFrameAt = 0;
+
+        // Spectral channels configuration (AS7341)
+        const spectralChannels = [
+            { name: 'F1', wavelength: '415nm', color: '#8B00FF' },
+            { name: 'F2', wavelength: '445nm', color: '#4B0082' },
+            { name: 'F3', wavelength: '480nm', color: '#0000FF' },
+            { name: 'F4', wavelength: '515nm', color: '#00FF00' },
+            { name: 'F5', wavelength: '555nm', color: '#ADFF2F' },
+            { name: 'F6', wavelength: '590nm', color: '#FFFF00' },
+            { name: 'F7', wavelength: '630nm', color: '#FFA500' },
+            { name: 'F8', wavelength: '680nm', color: '#FF0000' },
+            { name: 'Clear', wavelength: 'VIS', color: '#FFFFFF' },
+            { name: 'NIR', wavelength: '910nm', color: '#8B0000' }
+        ];
+
+    </script>
+
+    <!-- Script Three.js pur pour Enhanced 3D Viewer -->
+    <script>
+        // Enhanced 3D Viewer avec Three.js pur (plus simple et fiable)
+        class VL53L8CHEnhancedViewer {
+            constructor(containerId) {
+                this.container = document.getElementById(containerId);
+                this.scene = null;
+                this.camera = null;
+                this.renderer = null;
+                this.mesh = null;
+                this.controls = null;
+                this.autoRotate = false;
+                this.wireframe = false;
+                this.overlayMode = 'height';
+                this.currentMatrix = [];
+                this.baselineMm = 200;
+                this.heightScale = 0.18;
+                this.flipX = true;
+                this.flipY = true;
+                this.lastDistanceArray = null;
+                this.init();
+            }
+
+            init() {
+                if (!this.container) return;
+
+                // Scene setup
+                this.scene = new THREE.Scene();
+                this.scene.background = new THREE.Color(0x0a0a1a);
+
+                // Camera setup
+                const width = this.container.clientWidth;
+                const height = this.container.clientHeight;
+                this.camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
+                this.camera.position.set(15, 15, 15);
+
+                // Renderer setup
+                this.renderer = new THREE.WebGLRenderer({ antialias: true });
+                this.renderer.setSize(width, height, false);
+                this.container.appendChild(this.renderer.domElement);
+                this.renderer.domElement.style.width = '100%';
+                this.renderer.domElement.style.height = '100%';
+                this.renderer.domElement.style.maxWidth = '100%';
+                this.renderer.domElement.style.maxHeight = '100%';
+                this.renderer.domElement.style.display = 'block';
+
+                this.renderer.domElement.addEventListener('dblclick', () => {
+                    if (typeof openEnhanced3DModal === 'function') {
+                        openEnhanced3DModal();
+                    }
+                });
+
+                // OrbitControls (rotation + zoom + pan)
+                if (THREE.OrbitControls) {
+                    this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
+                    this.controls.enableDamping = true;
+                    this.controls.dampingFactor = 0.06;
+                    this.controls.rotateSpeed = 0.6;
+                    this.controls.zoomSpeed = 0.9;
+                    this.controls.panSpeed = 0.7;
+                    this.controls.enablePan = true;
+                    this.controls.screenSpacePanning = true;
+                    this.controls.minDistance = 6;
+                    this.controls.maxDistance = 80;
+                    this.controls.target.set(0, 0, 0);
+                    this.controls.update();
+                }
+
+                // Lighting
+                const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
+                this.scene.add(ambientLight);
+                const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+                directionalLight.position.set(10, 10, 5);
+                this.scene.add(directionalLight);
+
+                // Grid helper
+                const gridHelper = new THREE.GridHelper(50, 8, 0x888888, 0xcccccc);
+                this.scene.add(gridHelper);
+
+                // Initial surface
+                this.createSurface();
+
+                this.setupControls();
+
+                // Animation loop
+                this.animate();
+
+                // Handle resize
+                window.addEventListener('resize', () => this.onResize());
+            }
+
+            createSurface() {
+                // Generate test data 8x8
+                this.currentMatrix = Array(8).fill(null).map(() => Array(8).fill(0));
+                for (let i = 0; i < 8; i++) {
+                    for (let j = 0; j < 8; j++) {
+                        this.currentMatrix[i][j] = 50 + Math.sin(i * 0.5) * 20 + Math.cos(j * 0.5) * 15 + Math.random() * 10;
+                    }
+                }
+
+                // Create geometry
+                const geometry = new THREE.PlaneGeometry(50, 50, 7, 7);
+                const positions = geometry.attributes.position.array;
+
+                for (let i = 0; i < 8; i++) {
+                    for (let j = 0; j < 8; j++) {
+                        const idx = (i * 8 + j) * 3;
+                        const height = this.currentMatrix[i][j] * this.heightScale;
+                        positions[idx + 2] = height;
+                    }
+                }
+
+                geometry.computeVertexNormals();
+
+                // Create material with vertex colors
+                const material = new THREE.MeshStandardMaterial({
+                    vertexColors: true,
+                    wireframe: this.wireframe,
+                    side: THREE.DoubleSide
+                });
+
+                // Create mesh
+                if (this.mesh) {
+                    this.scene.remove(this.mesh);
+                }
+                this.mesh = new THREE.Mesh(geometry, material);
+                this.mesh.rotation.x = -Math.PI / 2;
+                this.scene.add(this.mesh);
+
+                // Add colors based on height
+                this.updateColors();
+            }
+
+            updateColors() {
+                if (!this.mesh) return;
+
+                const colors = [];
+                const flatValues = this.currentMatrix.flat();
+                const minValue = Math.min(...flatValues);
+                const maxValue = Math.max(...flatValues);
+
+                const defects = [
+                    { x: 2, y: 3 },
+                    { x: 5, y: 1 }
+                ];
+
+                for (let i = 0; i < 8; i++) {
+                    for (let j = 0; j < 8; j++) {
+                        const normalized = (this.currentMatrix[i][j] - minValue) / (maxValue - minValue);
+
+                        if (this.overlayMode === 'reflectance') {
+                            const v = 1 - normalized;
+                            colors.push(v, v, 1);
+                        } else if (this.overlayMode === 'defects') {
+                            const hasDefect = defects.some(d => d.x === j && d.y === i);
+                            colors.push(hasDefect ? 1 : 0.2, hasDefect ? 0 : 0.8, hasDefect ? 0 : 0.2);
+                        } else {
+                            colors.push(normalized, 0.5, 1 - normalized);
+                        }
+                    }
+                }
+
+                this.mesh.geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+            }
+
+            setOverlay(mode) {
+                this.overlayMode = mode || 'height';
+                this.updateColors();
+            }
+
+            setupControls() {
+                this.updateRotation = () => {
+                    if (this.controls) {
+                        this.controls.autoRotate = !!this.autoRotate;
+                        this.controls.autoRotateSpeed = 1.0;
+                        this.controls.update();
+                        return;
+                    }
+                    if (this.autoRotate && this.mesh) {
+                        this.mesh.rotation.z += 0.01;
+                    }
+                };
+            }
+
+            setContainer(containerEl) {
+                if (!containerEl || containerEl === this.container) return;
+                this.container = containerEl;
+                if (this.renderer && this.renderer.domElement) {
+                    this.container.replaceChildren(this.renderer.domElement);
+                    this.renderer.domElement.style.width = '100%';
+                    this.renderer.domElement.style.height = '100%';
+                    this.renderer.domElement.style.display = 'block';
+                }
+                if (this.controls && this.controls.domElement !== this.renderer.domElement) {
+                    this.controls.dispose();
+                    this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
+                    this.controls.enableDamping = true;
+                    this.controls.dampingFactor = 0.06;
+                    this.controls.rotateSpeed = 0.6;
+                    this.controls.zoomSpeed = 0.9;
+                    this.controls.panSpeed = 0.7;
+                    this.controls.enablePan = true;
+                    this.controls.screenSpacePanning = true;
+                    this.controls.minDistance = 6;
+                    this.controls.maxDistance = 80;
+                    this.controls.target.set(0, 0, 0);
+                    this.controls.update();
+                }
+                this.onResize();
+            }
+
+            animate() {
+                requestAnimationFrame(() => this.animate());
+                if (this.updateRotation) {
+                    this.updateRotation();
+                }
+                this.renderer.render(this.scene, this.camera);
+            }
+
+            onResize() {
+                const width = this.container.clientWidth;
+                const height = this.container.clientHeight;
+                this.camera.aspect = width / height;
+                this.camera.updateProjectionMatrix();
+                this.renderer.setSize(width, height, false);
+                if (this.renderer && this.renderer.domElement) {
+                    this.renderer.domElement.style.width = '100%';
+                    this.renderer.domElement.style.height = '100%';
+                    this.renderer.domElement.style.maxWidth = '100%';
+                    this.renderer.domElement.style.maxHeight = '100%';
+                    this.renderer.domElement.style.display = 'block';
+                }
+            }
+
+            updateData(data) {
+                if (data && Array.isArray(data)) {
+                    this.lastDistanceArray = data.slice(0);
+                    // Convert flat data to 8x8 matrix
+                    for (let i = 0; i < 8; i++) {
+                        for (let j = 0; j < 8; j++) {
+                            const srcI = this.flipY ? (7 - i) : i;
+                            const srcJ = this.flipX ? (7 - j) : j;
+                            const idx = srcI * 8 + srcJ;
+                            const d = Number(data[idx]);
+                            if (Number.isFinite(d)) {
+                                // distance_matrix = distance capteur->surface (mm)
+                                // capteur au-dessus (~20cm): plus proche => plus haut
+                                this.currentMatrix[i][j] = Math.max(0, this.baselineMm - d);
+                            } else {
+                                this.currentMatrix[i][j] = 80 + Math.random() * 80;
+                            }
+                        }
+                    }
+                    this.createSurface();
+                }
+            }
+
+            setBaselineMm(mm) {
+                const v = Number(mm);
+                if (!Number.isFinite(v)) return;
+                this.baselineMm = v;
+                if (this.lastDistanceArray) {
+                    this.updateData(this.lastDistanceArray);
+                }
+            }
+
+            toggleFlipX() {
+                this.flipX = !this.flipX;
+                if (this.lastDistanceArray) {
+                    this.updateData(this.lastDistanceArray);
+                }
+                return this.flipX;
+            }
+
+            toggleFlipY() {
+                this.flipY = !this.flipY;
+                if (this.lastDistanceArray) {
+                    this.updateData(this.lastDistanceArray);
+                }
+                return this.flipY;
+            }
+
+            setView(preset) {
+                switch(preset) {
+                    case 'top':
+                        this.camera.position.set(0, 20, 0);
+                        break;
+                    case 'front':
+                        this.camera.position.set(0, 0, 20);
+                        break;
+                    case 'side':
+                        this.camera.position.set(20, 0, 0);
+                        break;
+                    default:
+                        this.camera.position.set(15, 15, 15);
+                }
+                this.camera.lookAt(0, 0, 0);
+                if (this.controls) {
+                    this.controls.target.set(0, 0, 0);
+                    this.controls.update();
+                }
+            }
+
+            toggleAutoRotate() {
+                this.autoRotate = !this.autoRotate;
+            }
+
+            toggleWireframe() {
+                this.wireframe = !this.wireframe;
+                if (this.mesh) {
+                    this.mesh.material.wireframe = this.wireframe;
+                }
+            }
+        }
+
+        function renderSpectralRatios(values) {
+            if (!Array.isArray(values) || values.length !== 10) return;
+            const f1 = values[0] || 0;
+            const f2 = values[1] || 0;
+            const f3 = values[2] || 0;
+            const f4 = values[3] || 0;
+            const f5 = values[4] || 0;
+            const f6 = values[5] || 0;
+            const f7 = values[6] || 0;
+            const f8 = values[7] || 0;
+            const nir = values[9] || 0;
+
+            const safeDiv = (a, b) => (b && b !== 0) ? (a / b) : 0;
+
+            const ratios = {
+                red_nir: safeDiv(f8, nir),
+                red_orange: safeDiv(f8, f7),
+                green_red: safeDiv((f4 + f5) / 2, f8),
+                blue_green: safeDiv((f2 + f3) / 2, (f4 + f5) / 2)
+            };
+
+            const items = [
+                { key: 'red_nir', id: 'ratio-red-nir', fill: 'ratio-red-nir-fill', ref: 'ratio-red-nir-ref', reference: 2.0 },
+                { key: 'red_orange', id: 'ratio-red-orange', fill: 'ratio-red-orange-fill', ref: 'ratio-red-orange-ref', reference: 1.0 },
+                { key: 'green_red', id: 'ratio-green-red', fill: 'ratio-green-red-fill', ref: 'ratio-green-red-ref', reference: 0.8 },
+                { key: 'blue_green', id: 'ratio-blue-green', fill: 'ratio-blue-green-fill', ref: 'ratio-blue-green-ref', reference: 0.5 }
+            ];
+
+            // Scaling: keep readable with cap
+            items.forEach((it) => {
+                const v = ratios[it.key] || 0;
+                const vEl = document.getElementById(it.id);
+                const fillEl = document.getElementById(it.fill);
+                const refEl = document.getElementById(it.ref);
+                if (vEl) vEl.textContent = v ? v.toFixed(2) : '--';
+
+                // Map value to 0..100% based on reference*2 (heuristic)
+                const max = Math.max(it.reference * 2, 0.0001);
+                const pct = Math.max(0, Math.min(100, (v / max) * 100));
+                if (fillEl) fillEl.style.width = `${pct}%`;
+
+                const refPct = Math.max(0, Math.min(100, (it.reference / max) * 100));
+                if (refEl) refEl.style.left = `${refPct}%`;
+            });
+        }
+
+        // Global viewer instance
+        let enhancedViewer = null;
+
+        // Initialize Enhanced 3D Viewer
+        function initEnhanced3DViewer() {
+            enhancedViewer = new VL53L8CHEnhancedViewer('enhanced-3d-viewer');
+            window.enhancedViewer = enhancedViewer;
+            
+            // Expose control functions globally
+            window.setEnhancedView3D = (preset) => {
+                enhancedViewer.setView(preset);
+            };
+            window.setEnhancedOverlay = (mode) => {
+                enhancedViewer.setOverlay(mode);
+            };
+            window.toggleEnhancedAutoRotate = () => {
+                enhancedViewer.toggleAutoRotate();
+                const btn1 = document.getElementById('btn-enhanced-rotate');
+                const btn2 = document.getElementById('btn-enhanced-rotate-modal');
+                if (btn1) btn1.classList.toggle('active');
+                if (btn2) btn2.classList.toggle('active');
+            };
+            window.toggleEnhancedWireframe = () => {
+                enhancedViewer.toggleWireframe();
+                const btn1 = document.getElementById('btn-enhanced-wireframe');
+                const btn2 = document.getElementById('btn-enhanced-wireframe-modal');
+                if (btn1) btn1.classList.toggle('active');
+                if (btn2) btn2.classList.toggle('active');
+            };
+            window.setEnhancedBaselineMm = (mm) => {
+                enhancedViewer.setBaselineMm(mm);
+                const label = document.getElementById('baseline-mm-value');
+                if (label) label.textContent = `${Math.round(Number(mm) || 0)} mm`;
+            };
+            window.toggleEnhancedFlipX = () => {
+                const v = enhancedViewer.toggleFlipX();
+                const btn = document.getElementById('btn-flip-x');
+                if (btn) btn.classList.toggle('active', v);
+            };
+            window.toggleEnhancedFlipY = () => {
+                const v = enhancedViewer.toggleFlipY();
+                const btn = document.getElementById('btn-flip-y');
+                if (btn) btn.classList.toggle('active', v);
+            };
+            window.updateEnhancedViewer = (data, volumeMm3) => enhancedViewer.updateData(data);
+
+            const baselineInput = document.getElementById('baseline-mm');
+            if (baselineInput) {
+                window.setEnhancedBaselineMm(baselineInput.value);
+            }
+            const btnX = document.getElementById('btn-flip-x');
+            if (btnX) btnX.classList.toggle('active', enhancedViewer.flipX);
+            const btnY = document.getElementById('btn-flip-y');
+            if (btnY) btnY.classList.toggle('active', enhancedViewer.flipY);
+        }
+    </script>
+
+    <script>
+        // Fonctions globales pour l'initialisation
+        function initToFGrid() {
+            const grid = document.getElementById('tof-grid');
+            if (grid) {
+                grid.innerHTML = '';
+                for (let i = 0; i < 64; i++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'tof-cell';
+                    cell.id = `tof-cell-${i}`;
+                    cell.style.backgroundColor = getToFColor(100 + Math.random() * 100);
+                    grid.appendChild(cell);
+                }
+            }
+        }
+
+        function initSpectralBars() {
+            const container = document.getElementById('spectral-bars');
+            if (container) {
+                container.innerHTML = `
+                    <div id="spectral-wrapper">
+                        <div style="width: 100%; height: 190px; position: relative;">
+                            <canvas id="spectral-chart" style="width: 100%; height: 190px;"></canvas>
+                        </div>
+                        <div id="spectral-legend" style="margin-top: 10px; display: flex; flex-wrap: wrap; gap: 8px; justify-content: center;"></div>
+                        <div class="spectral-ratios" id="spectral-ratios">
+                            <div class="spectral-ratio">
+                                <div class="spectral-ratio-title">
+                                    <span style="color:#FF0000;">Red/NIR</span>
+                                    <span id="ratio-red-nir">--</span>
+                                </div>
+                                <div class="spectral-ratio-bar">
+                                    <div class="spectral-ratio-fill" id="ratio-red-nir-fill" style="background:#FF0000;"></div>
+                                    <div class="spectral-ratio-ref" id="ratio-red-nir-ref"></div>
+                                </div>
+                                <div style="margin-top:4px; font-size:0.7em; color:#777;">Indice de maturité</div>
+                            </div>
+
+                            <div class="spectral-ratio">
+                                <div class="spectral-ratio-title">
+                                    <span style="color:#FF4500;">Red/Orange</span>
+                                    <span id="ratio-red-orange">--</span>
+                                </div>
+                                <div class="spectral-ratio-bar">
+                                    <div class="spectral-ratio-fill" id="ratio-red-orange-fill" style="background:#FF4500;"></div>
+                                    <div class="spectral-ratio-ref" id="ratio-red-orange-ref"></div>
+                                </div>
+                                <div style="margin-top:4px; font-size:0.7em; color:#777;">Équilibre colorimétrique</div>
+                            </div>
+
+                            <div class="spectral-ratio">
+                                <div class="spectral-ratio-title">
+                                    <span style="color:#00FF00;">Green/Red</span>
+                                    <span id="ratio-green-red">--</span>
+                                </div>
+                                <div class="spectral-ratio-bar">
+                                    <div class="spectral-ratio-fill" id="ratio-green-red-fill" style="background:#00FF00;"></div>
+                                    <div class="spectral-ratio-ref" id="ratio-green-red-ref"></div>
+                                </div>
+                                <div style="margin-top:4px; font-size:0.7em; color:#777;">Fraîcheur relative</div>
+                            </div>
+
+                            <div class="spectral-ratio">
+                                <div class="spectral-ratio-title">
+                                    <span style="color:#0000FF;">Blue/Green</span>
+                                    <span id="ratio-blue-green">--</span>
+                                </div>
+                                <div class="spectral-ratio-bar">
+                                    <div class="spectral-ratio-fill" id="ratio-blue-green-fill" style="background:#0000FF;"></div>
+                                    <div class="spectral-ratio-ref" id="ratio-blue-green-ref"></div>
+                                </div>
+                                <div style="margin-top:4px; font-size:0.7em; color:#777;">Oxydation</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                const legend = document.getElementById('spectral-legend');
+                if (legend) {
+                    legend.innerHTML = '';
+                    spectralChannels.forEach((ch) => {
+                        const item = document.createElement('div');
+                        item.style.display = 'flex';
+                        item.style.alignItems = 'center';
+                        item.style.gap = '6px';
+                        item.innerHTML = `
+                            <span style="width: 10px; height: 10px; border-radius: 2px; background: ${ch.color}; display: inline-block;"></span>
+                            <span style="font-size: 0.75em; color: #aaa;">${ch.wavelength}</span>
+                        `;
+                        legend.appendChild(item);
+                    });
+                }
+            }
+        }
+
+        function renderSpectralChart(values) {
+            const canvas = document.getElementById('spectral-chart');
+            if (!canvas) return;
+
+            const parent = canvas.parentElement;
+            const cssW = parent ? parent.clientWidth : 400;
+            const cssH = parent ? parent.clientHeight : 190;
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = Math.max(1, Math.floor(cssW * dpr));
+            canvas.height = Math.max(1, Math.floor(cssH * dpr));
+            canvas.style.width = `${cssW}px`;
+            canvas.style.height = `${cssH}px`;
+
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return;
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+            const w = cssW;
+            const h = cssH;
+            const padL = 38;
+            const padR = 10;
+            const padT = 10;
+            const padB = 26;
+
+            ctx.clearRect(0, 0, w, h);
+
+            // Grid
+            ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+            ctx.lineWidth = 1;
+            for (let i = 0; i <= 4; i++) {
+                const y = padT + (i * (h - padT - padB)) / 4;
+                ctx.beginPath();
+                ctx.moveTo(padL, y);
+                ctx.lineTo(w - padR, y);
+                ctx.stroke();
+            }
+
+            const maxV = Math.max(...values, 1);
+            const minV = Math.min(...values, 0);
+
+            const x0 = padL;
+            const x1 = w - padR;
+            const y0 = h - padB;
+            const y1 = padT;
+
+            const n = values.length;
+            const stepX = n > 1 ? (x1 - x0) / (n - 1) : 0;
+            const normY = (v) => {
+                const t = (v - minV) / (maxV - minV || 1);
+                return y0 - t * (y0 - y1);
+            };
+
+            // Path
+            ctx.beginPath();
+            values.forEach((v, i) => {
+                const x = x0 + i * stepX;
+                const y = normY(v);
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            });
+
+            // Fill gradient
+            const grad = ctx.createLinearGradient(0, y1, 0, y0);
+            grad.addColorStop(0, 'rgba(136, 132, 216, 0.55)');
+            grad.addColorStop(1, 'rgba(136, 132, 216, 0.08)');
+
+            ctx.lineTo(x1, y0);
+            ctx.lineTo(x0, y0);
+            ctx.closePath();
+            ctx.fillStyle = grad;
+            ctx.fill();
+
+            // Stroke line
+            ctx.beginPath();
+            values.forEach((v, i) => {
+                const x = x0 + i * stepX;
+                const y = normY(v);
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            });
+            ctx.strokeStyle = '#8884d8';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Points
+            values.forEach((v, i) => {
+                const x = x0 + i * stepX;
+                const y = normY(v);
+                ctx.beginPath();
+                ctx.arc(x, y, 3, 0, Math.PI * 2);
+                ctx.fillStyle = spectralChannels[i]?.color || '#8884d8';
+                ctx.fill();
+            });
+
+            // Axes labels
+            ctx.fillStyle = 'rgba(255,255,255,0.65)';
+            ctx.font = '11px sans-serif';
+            ctx.fillText('Intensité', 6, 18);
+            ctx.fillText('Longueur d\'onde', w - 118, h - 8);
+        }
+
+        let lastSpectralValues = null;
+
+        function updateSpectralChart(values) {
+            if (!Array.isArray(values) || values.length !== 10) return;
+            lastSpectralValues = values.slice(0, 10);
+            renderSpectralChart(lastSpectralValues);
+        }
+
+        window.addEventListener('resize', () => {
+            if (lastSpectralValues) {
+                renderSpectralChart(lastSpectralValues);
+            }
+        });
+
+        function getToFColor(distance) {
+            // Map distance (50-200mm) to color gradient
+            const normalized = Math.max(0, Math.min(1, (distance - 50) / 150));
+            const r = Math.round(normalized * 255);
+            const g = Math.round((1 - Math.abs(normalized - 0.5) * 2) * 255);
+            const b = Math.round((1 - normalized) * 255);
+            return `rgb(${r}, ${g}, ${b})`;
+        }
+
+        // Update ToF visualization with Enhanced 3D Viewer
+        function updateToF(data, volumeMm3) {
+            if (Array.isArray(data) && data.length === 8 && Array.isArray(data[0])) {
+                data = data.flat();
+            }
+            if (!data) {
+                // Fallback uniquement si aucun frame ToF réel n'a été reçu récemment
+                const now = Date.now();
+                if (now - lastToFFrameAt < 5000) {
+                    return;
+                }
+                data = Array.from({ length: 64 }, () => 80 + Math.random() * 90);
+            }
+            if (volumeMm3 === undefined || volumeMm3 === null) {
+                const avg = data.reduce((acc, v) => acc + (Number(v) || 0), 0) / Math.max(1, data.length);
+                volumeMm3 = 30000 + avg * 220;
+            }
+            // Utiliser le Enhanced 3D Viewer
+            if (window.updateEnhancedViewer) {
+                window.updateEnhancedViewer(data, volumeMm3);
+            }
+            
+            // Mettre à jour les statistiques
+            if (volumeMm3) {
+                document.getElementById('tof-stats').textContent = `Vol: ${(volumeMm3 / 1000).toFixed(1)} cm³`;
+            } else {
+                document.getElementById('tof-stats').textContent = `Vol: ${(45 + Math.random() * 15).toFixed(1)} cm³`;
+            }
+        }
+
+        // Update Quality Grade
+        function updateGrade(score, grade = null) {
+            const circle = document.getElementById('grade-circle');
+            const letter = document.getElementById('grade-letter');
+            const scoreEl = document.getElementById('grade-score');
+
+            let gradeClass;
+            if (!grade) {
+                if (score >= 95) { grade = 'A+'; }
+                else if (score >= 85) { grade = 'A'; }
+                else if (score >= 70) { grade = 'B'; }
+                else if (score >= 55) { grade = 'C'; }
+                else { grade = 'D'; }
+            }
+
+            if (grade === 'A+') gradeClass = 'grade-a-plus';
+            else if (grade === 'A') gradeClass = 'grade-a';
+            else if (grade === 'B') gradeClass = 'grade-b';
+            else if (grade === 'C') gradeClass = 'grade-c';
+            else gradeClass = 'grade-d';
+
+            if (circle) circle.className = `grade-circle ${gradeClass}`;
+            if (letter) letter.textContent = grade;
+            if (scoreEl) scoreEl.textContent = `${score.toFixed(1)}%`;
+        }
+
+        // Toast notification
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            if (!container) return;
+            
+            const toast = document.createElement('div');
+            toast.className = `toast toast-${type}`;
+            toast.textContent = message;
+            container.appendChild(toast);
+
+            setTimeout(() => toast.remove(), 5000);
+        }
+
+        // Update Spectral visualization
+        function updateSpectral(data, freshnessIndex) {
+            if (!data) {
+                // Generate random data for demo
+                data = Array(10).fill(0).map(() => 1000 + Math.random() * 3000);
+                freshnessIndex = 0.7 + Math.random() * 0.25;
+            }
+            // Handle object format from API
+            if (typeof data === 'object' && !Array.isArray(data)) {
+                const channels = ['f1', 'f2', 'f3', 'f4', 'f5', 'f6', 'f7', 'f8', 'clear', 'nir'];
+                data = channels.map(ch => data[ch] || 0);
+            }
+            updateSpectralChart(data);
+            renderSpectralRatios(data);
+            // Update freshness index
+            const freshnessEl = document.getElementById('freshness-index');
+            if (freshnessEl && freshnessIndex !== undefined) {
+                const pct = (freshnessIndex * 100).toFixed(1);
+                freshnessEl.textContent = `Fraîcheur: ${pct}%`;
+                freshnessEl.style.background = freshnessIndex > 0.7 ? 'rgba(46, 204, 113, 0.2)' :
+                                               freshnessIndex > 0.5 ? 'rgba(241, 196, 15, 0.2)' : 'rgba(231, 76, 60, 0.2)';
+                freshnessEl.style.color = freshnessIndex > 0.7 ? '#2ecc71' :
+                                          freshnessIndex > 0.5 ? '#f1c40f' : '#e74c3c';
+            }
+
+            const freshnessModal = document.getElementById('freshness-index-modal');
+            const spectralModal = document.getElementById('spectral-modal');
+            if (freshnessModal && spectralModal && spectralModal.style.display === 'flex' && freshnessIndex !== undefined) {
+                const pct = (freshnessIndex * 100).toFixed(1);
+                freshnessModal.textContent = `Fraîcheur: ${pct}%`;
+                freshnessModal.style.background = freshnessIndex > 0.7 ? 'rgba(46, 204, 113, 0.2)' :
+                                                freshnessIndex > 0.5 ? 'rgba(241, 196, 15, 0.2)' : 'rgba(231, 76, 60, 0.2)';
+                freshnessModal.style.color = freshnessIndex > 0.7 ? '#2ecc71' :
+                                           freshnessIndex > 0.5 ? '#f1c40f' : '#e74c3c';
+            }
+        }
+
+        // Update Quality Grade
+        function updateGrade(score, grade = null) {
+            const circle = document.getElementById('grade-circle');
+            const letter = document.getElementById('grade-letter');
+            const scoreEl = document.getElementById('grade-score');
+
+            let gradeClass;
+            if (!grade) {
+                if (score >= 95) { grade = 'A+'; }
+                else if (score >= 85) { grade = 'A'; }
+                else if (score >= 70) { grade = 'B'; }
+                else if (score >= 55) { grade = 'C'; }
+                else { grade = 'D'; }
+            }
+
+            if (grade === 'A+') gradeClass = 'grade-a-plus';
+            else if (grade === 'A') gradeClass = 'grade-a';
+            else if (grade === 'B') gradeClass = 'grade-b';
+            else if (grade === 'C') gradeClass = 'grade-c';
+            else gradeClass = 'grade-d';
+
+            circle.className = `grade-circle ${gradeClass}`;
+            letter.textContent = grade;
+            scoreEl.textContent = `${score.toFixed(1)}%`;
+        }
+
+        // Add AI Insight
+        function addAIInsight(title, text, model, icon = '🤖') {
+            const container = document.getElementById('ai-insights');
+            const insight = document.createElement('div');
+            insight.className = 'ai-insight';
+            insight.innerHTML = `
+                <div class="ai-insight-header">
+                    <span>${icon} ${title}</span>
+                    <span class="ai-insight-time">maintenant</span>
+                </div>
+                <div class="ai-insight-text">${text}</div>
+                <span class="ai-model-badge">${model}</span>
+            `;
+
+            // Remove processing indicator if present
+            const processing = container.querySelector('.ai-processing');
+            if (processing) processing.remove();
+
+            // Add at the beginning
+            container.insertBefore(insight, container.firstChild);
+
+            // Keep only last 6 insights
+            while (container.children.length > 6) {
+                container.removeChild(container.lastChild);
+            }
+        }
+
+        // Add Consumer Feedback
+        function addFeedback(rating, comment, productId, time = null) {
+            const container = document.getElementById('consumer-feedbacks');
+            const stars = '★'.repeat(rating) + '☆'.repeat(5 - rating);
+            const timeStr = time ? formatTimeAgo(new Date(time)) : 'maintenant';
+
+            const feedback = document.createElement('div');
+            feedback.className = 'feedback-item';
+            feedback.innerHTML = `
+                <div class="feedback-header">
+                    <span class="feedback-stars">${stars}</span>
+                    <span class="feedback-time">${timeStr}</span>
+                </div>
+                <div class="feedback-comment">"${comment}"</div>
+                <div class="feedback-product">${productId}</div>
+            `;
+
+            container.insertBefore(feedback, container.firstChild);
+
+            // Keep only last 5 feedbacks
+            while (container.children.length > 5) {
+                container.removeChild(container.lastChild);
+            }
+        }
+
+        // Format time ago
+        function formatTimeAgo(date) {
+            const seconds = Math.floor((new Date() - date) / 1000);
+            if (seconds < 5) return 'maintenant';
+            if (seconds < 60) return `il y a ${seconds}s`;
+            if (seconds < 3600) return `il y a ${Math.floor(seconds / 60)}min`;
+            return `il y a ${Math.floor(seconds / 3600)}h`;
+        }
+
+        // Add Blockchain Block
+        function addBlock(index, type, hash) {
+            const container = document.getElementById('blockchain-blocks');
+            const typeIcons = {
+                'consumer_product_registration': '📦',
+                'sqal_quality_control': '🔬',
+                'gavage': '🌽',
+                'genesis': '🌟',
+                'initialisation_canard': '🦆'
+            };
+
+            const block = document.createElement('div');
+            block.className = 'block';
+            block.innerHTML = `
+                <div class="block-index">Bloc #${index}</div>
+                <div class="block-type">${typeIcons[type] || '📋'} ${type}</div>
+                <div class="block-hash">Hash: ${hash.substring(0, 16)}...</div>
+            `;
+
+            container.insertBefore(block, container.firstChild);
+
+            // Keep only last 5 blocks
+            while (container.children.length > 5) {
+                container.removeChild(container.lastChild);
+            }
+
+            // Update count
+            document.getElementById('block-count').textContent = `${index} blocs`;
+            document.getElementById('stat-blockchain').textContent = index.toLocaleString();
+        }
+
+        // Show Toast Notification
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast toast-${type}`;
+            toast.textContent = message;
+            container.appendChild(toast);
+
+            setTimeout(() => toast.remove(), 5000);
+        }
+
+        // Connect to WebSocket for real-time SQAL data
+        function connectWebSocket() {
+            if (wsConnection && wsConnection.readyState === WebSocket.OPEN) {
+                return;
+            }
+
+            document.getElementById('ws-status').className = 'status-dot status-connecting';
+            document.getElementById('ws-status-text').textContent = 'Connexion...';
+
+            wsConnection = new WebSocket(`${WS_BASE}/ws/realtime/`);
+
+            wsConnection.onopen = () => {
+                console.log('WebSocket connected');
+                document.getElementById('ws-status').className = 'status-dot status-connected';
+                document.getElementById('ws-status-text').textContent = 'Connecté (Live)';
+                showToast('🔌 WebSocket connecté - Données temps réel', 'success');
+            };
+
+            wsConnection.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    handleWebSocketMessage(data);
+                } catch (e) {
+                    console.error('Error parsing WebSocket message:', e);
+                }
+            };
+
+            wsConnection.onclose = () => {
+                console.log('WebSocket disconnected');
+                document.getElementById('ws-status').className = 'status-dot status-disconnected';
+                document.getElementById('ws-status-text').textContent = 'Déconnecté';
+
+                // Reconnect after 3 seconds if still running
+                if (simulationRunning) {
+                    setTimeout(connectWebSocket, 3000);
+                }
+            };
+
+            wsConnection.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                showToast('⚠️ Erreur WebSocket - Mode fallback', 'warning');
+            };
+        }
+
+        // Handle WebSocket messages
+        function handleWebSocketMessage(data) {
+            console.log('WS Message:', data);
+
+            if (data.type === 'connection_established') {
+                return;
+            }
+
+            if (data.type === 'sensor_update') {
+                lastAnySensorFrameAt = Date.now();
+                if (data.device_id) {
+                    const devEl = document.getElementById('sqal-device');
+                    if (devEl) devEl.textContent = data.device_id;
+                }
+
+                if (data.vl53l8ch) {
+                    const tofRaw = data.vl53l8ch?.raw?.distance_matrix;
+                    const volumeMm3 = data.vl53l8ch?.analysis?.volume_mm3;
+                    if (tofRaw) {
+                        lastToFFrameAt = Date.now();
+                        updateToF(tofRaw, volumeMm3);
+                    }
+                }
+
+                if (data.as7341) {
+                    const raw = data.as7341?.raw;
+                    const freshnessIndex = data.as7341?.analysis?.freshness_index;
+                    if (raw) {
+                        lastSpectralFrameAt = Date.now();
+                        // Convert raw dict like {"415nm": 1000, ..., "clear": 12000, "nir": 800}
+                        let spectralArr = null;
+                        if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+                            spectralArr = spectralChannels.map(ch => raw[ch.wavelength] ?? raw[ch.name] ?? 0);
+                        }
+                        updateSpectral(spectralArr || raw, freshnessIndex);
+                    }
+                }
+
+                if (data.fusion?.final_score !== undefined) {
+                    updateGrade((data.fusion.final_score || 0) * 100, data.fusion.final_grade);
+                }
+
+                return;
+            }
+
+            if (data.type === 'latest_sample' && data.data) {
+                const latest = data.data;
+                const tofRaw = latest?.vl53l8ch?.raw?.distance_matrix;
+                const vol = latest?.vl53l8ch?.analysis?.volume_mm3;
+                if (tofRaw) {
+                    lastToFFrameAt = Date.now();
+                    lastAnySensorFrameAt = Date.now();
+                    updateToF(tofRaw, vol);
+                }
+
+                const asRaw = latest?.as7341?.raw;
+                const freshness = latest?.as7341?.analysis?.freshness_index;
+                if (asRaw) {
+                    lastSpectralFrameAt = Date.now();
+                    lastAnySensorFrameAt = Date.now();
+                    handleWebSocketMessage({
+                        type: 'sensor_data',
+                        sensor: 'AS7341',
+                        data: { raw: asRaw, analysis: { freshness_index: freshness } }
+                    });
+                }
+
+                const fusion = latest?.fusion;
+                if (fusion?.final_score !== undefined) {
+                    updateGrade((fusion.final_score || 0) * 100, fusion.final_grade);
+                }
+
+                return;
+            }
+
+            if (data.type === 'sensor_data' && data.sensor === 'VL53L8CH') {
+                lastToFFrameAt = Date.now();
+                lastAnySensorFrameAt = Date.now();
+                const tofRaw = data?.data?.raw?.distance_matrix;
+                const volumeMm3 = data?.data?.analysis?.volume_mm3;
+                updateToF(tofRaw, volumeMm3);
+                if (data.device_id) {
+                    document.getElementById('sqal-device').textContent = data.device_id;
+                }
+                return;
+            }
+
+            if (data.type === 'sensor_data' && data.sensor === 'AS7341') {
+                lastSpectralFrameAt = Date.now();
+                lastAnySensorFrameAt = Date.now();
+                const raw = data?.data?.raw;
+                const freshnessIndex = data?.data?.analysis?.freshness_index;
+
+                // Convert raw dict like {"415nm": 1000, ..., "clear": 12000, "nir": 800}
+                // to array aligned with spectralChannels
+                let spectralArr = null;
+                if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+                    spectralArr = spectralChannels.map(ch => raw[ch.wavelength] ?? raw[ch.name] ?? 0);
+                }
+                updateSpectral(spectralArr || raw, freshnessIndex);
+                return;
+            }
+
+            if (data.type === 'analysis_result' && data.data) {
+                const score = (data.data.final_score || 0) * 100;
+                const grade = data.data.final_grade;
+                updateGrade(score, grade);
+                return;
+            }
+
+            if (data.type === 'sensor_data' || data.sensor_data) {
+                const sensorData = data.sensor_data || data;
+
+                // Update ToF if present
+                if (sensorData.vl53l8ch_matrix || sensorData.tof_matrix || sensorData.vl53l8ch) {
+                    const tofRaw = sensorData.vl53l8ch_matrix || sensorData.tof_matrix ||
+                                   (sensorData.vl53l8ch?.raw?.distance_matrix);
+                    const volumeMm3 = sensorData.vl53l8ch?.analysis?.volume_mm3 || sensorData.volume_mm3;
+                    lastToFFrameAt = Date.now();
+                    updateToF(tofRaw, volumeMm3);
+                    document.getElementById('sqal-device').textContent = sensorData.device_id || 'ESP32_LL_01';
+                }
+
+                // Update Spectral if present
+                if (sensorData.as7341_channels || sensorData.spectral_data || sensorData.as7341) {
+                    const spectralRaw = sensorData.as7341_channels || sensorData.spectral_data ||
+                                        sensorData.as7341?.raw;
+                    const freshnessIndex = sensorData.as7341?.analysis?.freshness_index || sensorData.freshness_index;
+                    updateSpectral(spectralRaw, freshnessIndex);
+                }
+
+                // Update quality grade if present
+                if (sensorData.quality_score !== undefined || sensorData.fusion) {
+                    const score = sensorData.quality_score || sensorData.fusion?.final_score || 0;
+                    const grade = sensorData.quality_grade || sensorData.fusion?.final_grade;
+                    updateGrade(score * 100, grade);
+                }
+            }
+
+            if (data.type === 'quality_update') {
+                updateGrade(data.score * 100, data.grade);
+                addAIInsight(
+                    'Analyse SQAL',
+                    `Nouvel échantillon analysé. Score: ${(data.score * 100).toFixed(1)}% - Grade: ${data.grade}`,
+                    'SQAL IoT Sensors',
+                    '🔬'
+                );
+            }
+
+            if (data.type === 'alert') {
+                showToast(`⚠️ ${data.message}`, 'warning');
+            }
+        }
+
+        // Fetch real feedbacks from API
+        async function fetchRealFeedbacks() {
+            try {
+                const response = await fetch(`${API_BASE}/api/consumer/feedbacks?limit=10`);
+                if (response.ok) {
+                    const feedbacks = await response.json();
+
+                    // Process new feedbacks (reverse to show oldest first)
+                    feedbacks.reverse().forEach(fb => {
+                        if (!knownFeedbackIds.has(fb.id)) {
+                            knownFeedbackIds.add(fb.id);
+                            addFeedback(fb.rating, fb.comment, fb.product_id, fb.created_at);
+                        }
+                    });
+
+                    // Update stats
+                    document.getElementById('stat-feedbacks').textContent = feedbacks.length.toString();
+
+                    // Calculate average rating
+                    if (feedbacks.length > 0) {
+                        const avgRating = feedbacks.reduce((sum, fb) => sum + fb.overall_rating, 0) / feedbacks.length;
+                        document.getElementById('stat-rating').textContent = avgRating.toFixed(1);
+                    }
+                } else {
+                    // Silently handle 404 and other errors - use demo data
+                    console.log('Backend not available for feedbacks, using demo data');
+                }
+            } catch (e) {
+                // Network error or backend not available
+                console.log('Network error for feedbacks, using demo data');
+            }
+        }
+
+        // Fetch real blockchain data from API
+        async function fetchBlockchainData() {
+            try {
+                const response = await fetch(`${API_BASE}/api/consumer/blockchain/recent?limit=5`);
+                if (response.ok) {
+                    const blocks = await response.json();
+
+                    // Clear existing blocks and add new ones
+                    const container = document.getElementById('blockchain-blocks');
+                    container.innerHTML = '';
+
+                    blocks.forEach(block => {
+                        addBlock(block.index, block.type_evenement, block.hash_actuel);
+                        lastBlockIndex = Math.max(lastBlockIndex, block.index);
+                    });
+
+                    document.getElementById('stat-blockchain').textContent = lastBlockIndex.toLocaleString();
+                } else {
+                    // Silently handle 404 and other errors - use demo data
+                    console.log('Backend not available for blockchain, using demo data');
+                }
+            } catch (e) {
+                // Network error or backend not available
+                console.log('Network error for blockchain, using demo data');
+            }
+        }
+
+        // Fetch real stats from API
+        async function fetchStats() {
+            try {
+                // Fetch products count
+                const productsRes = await fetch(`${API_BASE}/api/consumer/products`);
+                if (productsRes.ok) {
+                    const products = await productsRes.json();
+                    document.getElementById('stat-lots').textContent = products.length.toString();
+                }
+
+                // SQAL samples count endpoint n'existe pas - utiliser les produits comme approximation
+                // L'endpoint /api/sqal/samples/count n'est pas disponible dans ce backend
+                const samplesCount = Math.floor(Math.random() * 500) + 1000; // Valeur de démo réaliste
+                document.getElementById('stat-samples').textContent = samplesCount.toLocaleString();
+            } catch (e) {
+                // Network error or backend not available
+                console.log('Network error for stats, using demo values');
+                // Keep existing demo values
+            }
+        }
+
+        // Start Demo Simulation with real data
+        async function startDemo() {
+            if (simulationRunning) return;
+            simulationRunning = true;
+
+            showToast('🚀 Connexion aux simulateurs réels...', 'success');
+
+            // Connect to WebSocket for real-time SQAL data
+            connectWebSocket();
+
+            // Fetch initial data
+            await fetchRealFeedbacks();
+            await fetchBlockchainData();
+            await fetchStats();
+
+            // Poll for new feedbacks every 5 seconds
+            feedbackPollInterval = setInterval(fetchRealFeedbacks, 5000);
+
+            // Poll for blockchain data every 10 seconds
+            blockchainPollInterval = setInterval(fetchBlockchainData, 10000);
+
+            // Fallback: if WebSocket doesn't send data, generate random sensor data
+            updateInterval = setInterval(() => {
+                if (!simulationRunning) return;
+
+                // Only update sensors if no WS data received recently
+                // This serves as a fallback for demo purposes
+                if (!wsConnection || wsConnection.readyState !== WebSocket.OPEN) {
+                    updateToF();
+                    updateSpectral();
+                    const score = 85 + Math.random() * 15;
+                    updateGrade(score);
+                }
+            }, 3000);
+
+            // Periodic AI insights based on real patterns
+            const aiInsights = [
+                { title: 'Optimisation Détectée', text: 'Corrélation positive entre température ambiante et texture finale. Recommandation: maintenir 18-20°C.', model: 'Random Forest', icon: '🎯' },
+                { title: 'Prédiction Qualité', text: 'Lot en cours: probabilité 89% d\'obtenir grade A+ basé sur les métriques actuelles.', model: 'Gradient Boosting', icon: '📈' },
+                { title: 'Pattern Identifié', text: 'Les lots du matin (6h-10h) montrent +7% qualité vs après-midi. Facteur: fraîcheur produit.', model: 'Time Series Analysis', icon: '🔍' },
+                { title: 'Alerte Préventive', text: 'Capteur spectral F7 (630nm) en limite basse. Calibration recommandée sous 24h.', model: 'Anomaly Detection', icon: '⚠️' },
+                { title: 'Feedback Loop', text: 'Nouvelle courbe ITM générée. Intègre les derniers feedbacks. Delta satisfaction: +0.15 étoiles.', model: 'Feedback Optimizer', icon: '🔄' },
+                { title: 'Clustering Gaveurs', text: '5 clusters identifiés. Top performers partagent technique avec débutants.', model: 'K-Means Clustering', icon: '👥' }
+            ];
+
+            let aiIndex = 0;
+            setInterval(() => {
+                if (!simulationRunning) return;
+                const insight = aiInsights[aiIndex % aiInsights.length];
+                addAIInsight(insight.title, insight.text, insight.model, insight.icon);
+                aiIndex++;
+            }, 10000);
+        }
+
+        // Stop Demo
+        async function stopDemo() {
+            simulationRunning = false;
+
+            if (updateInterval) {
+                clearInterval(updateInterval);
+                updateInterval = null;
+            }
+            if (feedbackPollInterval) {
+                clearInterval(feedbackPollInterval);
+                feedbackPollInterval = null;
+            }
+            if (blockchainPollInterval) {
+                clearInterval(blockchainPollInterval);
+                blockchainPollInterval = null;
+            }
+            if (wsConnection) {
+                wsConnection.close();
+                wsConnection = null;
+            }
+
+            document.getElementById('ws-status').className = 'status-dot status-disconnected';
+            document.getElementById('ws-status-text').textContent = 'Déconnecté';
+
+            showToast('⏹️ Simulation arrêtée', 'warning');
+        }
+
+        // Show QR Demo Modal
+        async function showQRDemo() {
+            document.getElementById('qr-modal').style.display = 'flex';
+
+            // Try to get a real product QR code
+            try {
+                const response = await fetch(`${API_BASE}/api/consumer/products`);
+                if (response.ok) {
+                    const products = await response.json();
+                    if (products.length > 0) {
+                        const product = products[0];
+                        document.getElementById('qr-display').textContent = product.qr_code;
+                    }
+                }
+            } catch (e) {
+                console.log('Could not fetch product for QR demo');
+            }
+        }
+
+        // Close Modal
+        function closeModal() {
+            document.getElementById('qr-modal').style.display = 'none';
+            document.getElementById('scan-result').style.display = 'none';
+        }
+
+        // Simulate QR Scan with real API
+        async function simulateScan() {
+            const resultDiv = document.getElementById('scan-result');
+            const qrCode = document.getElementById('qr-display').textContent;
+
+            resultDiv.style.display = 'block';
+            resultDiv.innerHTML = '<div class="ai-processing"><div class="ai-spinner"></div><span>Scan en cours...</span></div>';
+
+            try {
+                const response = await fetch(`${API_BASE}/api/consumer/scan/${encodeURIComponent(qrCode)}`);
+                const data = await response.json();
+
+                if (data.success && data.traceability) {
+                    const t = data.traceability;
+                    resultDiv.innerHTML = `
+                        <div style="background: rgba(46, 204, 113, 0.2); padding: 15px; border-radius: 10px; border-left: 4px solid #2ecc71;">
+                            <h3 style="color: #2ecc71; margin-bottom: 15px;">✅ Produit Authentique</h3>
+                            <p><strong>Produit:</strong> ${t.product_id}</p>
+                            <p><strong>Site:</strong> ${t.site_name || 'N/A'} (${t.region || 'N/A'})</p>
+                            <p><strong>Grade SQAL:</strong> ${t.sqal_grade || 'B'} (${((t.sqal_quality_score || 0.8) * 100).toFixed(1)}%)</p>
+                            <p><strong>Production:</strong> ${t.production_date ? new Date(t.production_date).toLocaleDateString('fr-FR') : 'N/A'}</p>
+                            <p><strong>Certifications:</strong> ${(t.certifications || ['IGP', 'Label Rouge']).join(', ')}</p>
+                            <p style="margin-top: 10px; font-family: monospace; font-size: 0.8em; color: #888;">
+                                <strong>Blockchain:</strong> ${t.blockchain_hash ? t.blockchain_hash.substring(0, 24) + '...' : 'N/A'}
+                                ${t.blockchain_verified ? ' ✓ Vérifié' : ''}
+                            </p>
+                        </div>
+                    `;
+                    showToast('✅ Scan réussi - Produit vérifié sur blockchain', 'success');
+                } else {
+                    throw new Error('Invalid response');
+                }
+            } catch (e) {
+                resultDiv.innerHTML = `
+                    <div style="background: rgba(231, 76, 60, 0.2); padding: 15px; border-radius: 10px; border-left: 4px solid #e74c3c;">
+                        <h3 style="color: #e74c3c;">❌ Erreur de scan</h3>
+                        <p>Impossible de vérifier le produit. Vérifiez que le backend est en cours d'exécution sur ${API_BASE}</p>
+                    </div>
+                `;
+            }
+        }
+
+        // Initialize on load
+        document.addEventListener('DOMContentLoaded', async () => {
+            initToFGrid();
+            initSpectralBars();
+            initEnhanced3DViewer(); // Initialiser le Enhanced 3D Viewer
+
+            // Initial data
+            updateToF();
+            updateSpectral();
+            updateGrade(96.5);
+
+            // Try to load initial real data
+            try {
+                await fetchRealFeedbacks();
+                await fetchBlockchainData();
+                await fetchStats();
+                showToast('📊 Données initiales chargées', 'success');
+            } catch (e) {
+                console.log('Could not load initial data, using demo mode');
+            }
+        });
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 's' && e.ctrlKey) {
+                e.preventDefault();
+                startDemo();
+            }
+            if (e.key === 'Escape') {
+                closeModal();
+                closeEnhanced3DModal();
+                closeSpectralModal();
+            }
+        });
+    </script>
+
+    <!-- Script JavaScript standard pour les fonctions globales des boutons -->
+    <script>
+        // Fonctions globales pour les boutons HTML
+        function startDemo() {
+            if (window.simulationRunning) return;
+            window.simulationRunning = true;
+
+            showToast('🚀 Connexion aux simulateurs réels...', 'success');
+
+            // Connect to WebSocket for real-time SQAL data
+            if (window.connectWebSocket) {
+                window.connectWebSocket();
+            }
+
+            // Start polling for real feedbacks
+            if (window.feedbackPollInterval) {
+                clearInterval(window.feedbackPollInterval);
+            }
+            window.feedbackPollInterval = setInterval(() => {
+                if (window.fetchRealFeedbacks) window.fetchRealFeedbacks();
+            }, 5000);
+
+            // Poll for blockchain data every 10 seconds
+            if (window.blockchainPollInterval) {
+                clearInterval(window.blockchainPollInterval);
+            }
+            window.blockchainPollInterval = setInterval(() => {
+                if (window.fetchBlockchainData) window.fetchBlockchainData();
+            }, 10000);
+
+            // Fallback: if WebSocket doesn't send data, generate random sensor data
+            if (window.updateInterval) {
+                clearInterval(window.updateInterval);
+            }
+            window.updateInterval = setInterval(() => {
+                if (!window.simulationRunning) return;
+
+                // Only update sensors if no WS data received recently
+                if (!window.wsConnection || window.wsConnection.readyState !== WebSocket.OPEN) {
+                    if (window.updateToF) window.updateToF();
+                    if (window.updateSpectral) window.updateSpectral();
+                    const score = 85 + Math.random() * 15;
+                    if (window.updateGrade) window.updateGrade(score);
+                }
+            }, 3000);
+
+            // AI Insights
+            const aiInsights = [
+                { title: 'Optimisation Détectée', text: 'Corrélation positive entre température ambiante et texture finale. Recommandation: maintenir 18-20°C.', model: 'Random Forest', icon: '🎯' },
+                { title: 'Prédiction Qualité', text: 'Lot en cours: probabilité 89% d\'obtenir grade A+ basé sur les métriques actuelles.', model: 'Gradient Boosting', icon: '📈' },
+                { title: 'Pattern Identifié', text: 'Les lots du matin (6h-10h) montrent +7% qualité vs après-midi. Facteur: fraîcheur produit.', model: 'Time Series Analysis', icon: '🔍' },
+                { title: 'Alerte Préventive', text: 'Capteur spectral F7 (630nm) en limite basse. Calibration recommandée sous 24h.', model: 'Anomaly Detection', icon: '⚠️' },
+                { title: 'Feedback Loop', text: 'Nouvelle courbe ITM générée. Intègre les derniers feedbacks. Delta satisfaction: +0.15 étoiles.', model: 'Feedback Optimizer', icon: '🔄' },
+                { title: 'Clustering Gaveurs', text: '5 clusters identifiés. Top performers partagent technique avec débutants.', model: 'K-Means Clustering', icon: '👥' }
+            ];
+
+            let aiIndex = 0;
+            setInterval(() => {
+                if (!window.simulationRunning) return;
+                const insight = aiInsights[aiIndex % aiInsights.length];
+                if (window.addAIInsight) window.addAIInsight(insight.title, insight.text, insight.model, insight.icon);
+                aiIndex++;
+            }, 10000);
+        }
+
+        function stopDemo() {
+            window.simulationRunning = false;
+
+            if (window.updateInterval) {
+                clearInterval(window.updateInterval);
+                window.updateInterval = null;
+            }
+
+            if (window.feedbackPollInterval) {
+                clearInterval(window.feedbackPollInterval);
+                window.feedbackPollInterval = null;
+            }
+
+            if (window.blockchainPollInterval) {
+                clearInterval(window.blockchainPollInterval);
+                window.blockchainPollInterval = null;
+            }
+
+            if (window.wsConnection) {
+                window.wsConnection.close();
+                window.wsConnection = null;
+            }
+
+            const wsStatus = document.getElementById('ws-status');
+            const wsStatusText = document.getElementById('ws-status-text');
+            if (wsStatus) wsStatus.className = 'status-dot status-disconnected';
+            if (wsStatusText) wsStatusText.textContent = 'Déconnecté';
+
+            showToast('⏹️ Simulation arrêtée', 'warning');
+        }
+
+        function showQRDemo() {
+            const modal = document.getElementById('qr-modal');
+            if (modal) modal.style.display = 'flex';
+        }
+
+        function openEnhanced3DModal() {
+            const modal = document.getElementById('enhanced-3d-modal');
+            const target = document.getElementById('enhanced-3d-viewer-modal');
+            const settingsSlot = document.getElementById('enhanced-3d-settings-modal');
+            const settings = document.getElementById('enhanced-3d-settings');
+            if (!modal || !target || !window.enhancedViewer) return;
+            modal.style.display = 'flex';
+            document.body.style.overflow = 'hidden';
+            window.enhancedViewer.setContainer(target);
+            if (settingsSlot && settings) {
+                settingsSlot.replaceChildren(settings);
+            }
+            setTimeout(() => window.enhancedViewer.onResize(), 0);
+        }
+
+        function closeEnhanced3DModal() {
+            const modal = document.getElementById('enhanced-3d-modal');
+            const target = document.getElementById('enhanced-3d-viewer');
+            const settingsHome = document.getElementById('enhanced-3d-viewer');
+            const settings = document.getElementById('enhanced-3d-settings');
+            if (modal) modal.style.display = 'none';
+            document.body.style.overflow = '';
+            if (target && window.enhancedViewer) {
+                window.enhancedViewer.setContainer(target);
+                setTimeout(() => window.enhancedViewer.onResize(), 0);
+            }
+
+            if (settingsHome && settings) {
+                settingsHome.appendChild(settings);
+            }
+
+            if (lastSpectralValues) {
+                setTimeout(() => renderSpectralChart(lastSpectralValues), 0);
+            }
+        }
+
+        function openSpectralModal() {
+            const modal = document.getElementById('spectral-modal');
+            const body = document.getElementById('spectral-modal-body');
+            const wrapper = document.getElementById('spectral-wrapper');
+            if (!modal || !body || !wrapper) return;
+
+            modal.style.display = 'flex';
+            document.body.style.overflow = 'hidden';
+            body.replaceChildren(wrapper);
+
+            const freshnessEl = document.getElementById('freshness-index');
+            const freshnessModal = document.getElementById('freshness-index-modal');
+            if (freshnessEl && freshnessModal) {
+                freshnessModal.textContent = freshnessEl.textContent;
+                freshnessModal.style.background = freshnessEl.style.background;
+                freshnessModal.style.color = freshnessEl.style.color;
+            }
+
+            if (lastSpectralValues) {
+                setTimeout(() => renderSpectralChart(lastSpectralValues), 0);
+            }
+        }
+
+        function closeSpectralModal() {
+            const modal = document.getElementById('spectral-modal');
+            const container = document.getElementById('spectral-bars');
+            const wrapper = document.getElementById('spectral-wrapper');
+            if (modal) modal.style.display = 'none';
+            document.body.style.overflow = '';
+            if (container && wrapper) {
+                container.replaceChildren(wrapper);
+            }
+            if (lastSpectralValues) {
+                setTimeout(() => renderSpectralChart(lastSpectralValues), 0);
+            }
+        }
+
+        function closeModal() {
+            const modal = document.getElementById('qr-modal');
+            if (modal) modal.style.display = 'none';
+        }
+
+        function simulateScan() {
+            showToast('📱 Scan simulé - Produit vérifié', 'success');
+            closeModal();
+        }
+    </script>
+</body>
+</html>

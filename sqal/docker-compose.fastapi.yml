@@ -1,0 +1,265 @@
+version: '3.8'
+
+services:
+  # TimescaleDB (PostgreSQL with time-series extensions)
+  timescaledb:
+    image: timescale/timescaledb:latest-pg15
+    container_name: sqal_timescaledb
+    environment:
+      POSTGRES_DB: sqal_db
+      POSTGRES_USER: sqal_user
+      POSTGRES_PASSWORD: sqal_password
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "5432:5432"
+    volumes:
+      - timescaledb_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sqal_user -d sqal_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - sqal_network
+    restart: unless-stopped
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: sqal_redis
+    ports:
+      - "6379:6379"
+    networks:
+      - sqal_network
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  # FastAPI Backend
+  backend:
+    build:
+      context: ./backend_new
+      dockerfile: Dockerfile
+    container_name: sqal_backend
+    environment:
+      # Database
+      DATABASE_URL: postgresql+asyncpg://sqal_user:sqal_password@timescaledb:5432/sqal_db
+      # Redis
+      REDIS_URL: redis://redis:6379
+      # CORS
+      CORS_ORIGINS: "http://localhost:5173,http://localhost:3000,http://localhost:8080"
+    ports:
+      - "8000:8000"
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - sqal_network
+    volumes:
+      - ./backend_new/app:/app/app
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Data Generator (Sensor Simulator)
+  simulator:
+    build:
+      context: ./simulator
+      dockerfile: Dockerfile
+    container_name: sqal_simulator
+    environment:
+      BACKEND_WS_URL: ws://backend:8000/ws/sensors/
+      CONFIG_PATH: config_foiegras.yaml
+      GENERATION_INTERVAL: "5"  # seconds
+      DEVICE_ID: ESP32_SIM_001
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - sqal_network
+    volumes:
+      - ./simulator:/app
+    restart: unless-stopped
+
+  # Frontend (React + Vite)
+  frontend:
+    image: node:18-alpine
+    container_name: sqal_frontend
+    working_dir: /app
+    environment:
+      VITE_API_BASE_URL: http://localhost:8000
+      VITE_WS_URL: ws://localhost:8000
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./sqal:/app
+      - /app/node_modules
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    networks:
+      - sqal_network
+    restart: unless-stopped
+
+services:
+  # ============================================================================
+  # Prometheus - Metrics Collection & Storage
+  # ============================================================================
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: sqal_prometheus
+    restart: unless-stopped
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/alert-rules.yml:/etc/prometheus/alert-rules.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'  # Keep metrics for 30 days
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--web.enable-lifecycle'  # Enable reload via HTTP POST /-/reload
+    ports:
+      - "9090:9090"
+    networks:
+      - sqal_network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ============================================================================
+  # Grafana - Visualization & Dashboards
+  # ============================================================================
+  grafana:
+    image: grafana/grafana:10.2.2
+    container_name: sqal_grafana
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=sqal_admin_2024  # CHANGE IN PRODUCTION!
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_ROOT_URL=http://localhost:3000
+      - GF_INSTALL_PLUGINS=redis-datasource
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    networks:
+      - sqal_network
+    depends_on:
+      - prometheus
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ============================================================================
+  # Alertmanager - Alert Routing & Notifications
+  # ============================================================================
+  alertmanager:
+    image: prom/alertmanager:v0.26.0
+    container_name: sqal_alertmanager
+    restart: unless-stopped
+    volumes:
+      - ./prometheus/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_data:/alertmanager
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+      - '--web.external-url=http://localhost:9093'
+    ports:
+      - "9093:9093"
+    networks:
+      - sqal_network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9093/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ============================================================================
+  # Node Exporter - System Metrics (Optional)
+  # ============================================================================
+  node_exporter:
+    image: prom/node-exporter:v1.7.0
+    container_name: sqal_node_exporter
+    restart: unless-stopped
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--path.rootfs=/rootfs'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    ports:
+      - "9100:9100"
+    networks:
+      - sqal_network
+
+  # ============================================================================
+  # Redis Exporter - Redis Metrics (Optional)
+  # ============================================================================
+  redis_exporter:
+    image: oliver006/redis_exporter:v1.55.0
+    container_name: sqal_redis_exporter
+    restart: unless-stopped
+    environment:
+      - REDIS_ADDR=redis:6379
+    ports:
+      - "9121:9121"
+    networks:
+      - sqal_network
+    depends_on:
+      - redis
+
+  # ============================================================================
+  # Postgres Exporter - TimescaleDB Metrics (Optional)
+  # ============================================================================
+  postgres_exporter:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    container_name: sqal_postgres_exporter
+    restart: unless-stopped
+    environment:
+      - DATA_SOURCE_NAME=postgresql://sqal_user:sqal_password@timescaledb:5432/sqal_db?sslmode=disable
+    ports:
+      - "9187:9187"
+    networks:
+      - sqal_network
+    depends_on:
+      - timescaledb
+
+
+volumes:
+  timescaledb_data:
+  redis_data:
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+  alertmanager_data:
+    driver: local
+networks:
+  sqal_network:
+    driver: bridge
+    external: true
+    name: sqal_network

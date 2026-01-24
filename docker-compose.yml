@@ -1,0 +1,669 @@
+# version: '3.8'  # Obsolete - removed as per Docker Compose v2 spec
+
+# ==============================================================================
+# Docker Compose for Système Gaveurs V3.0
+# ==============================================================================
+# Complete orchestration for all services
+# Usage:
+#   docker-compose up -d         # Start all services
+#   docker-compose down          # Stop all services
+#   docker-compose logs -f       # Follow logs
+#   docker-compose ps            # Show status
+# ==============================================================================
+
+services:
+  # ============================================================================
+  # Database - TimescaleDB
+  # ============================================================================
+  timescaledb:
+    image: timescale/timescaledb:latest-pg15
+    container_name: gaveurs_timescaledb
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: gaveurs_db
+      POSTGRES_USER: gaveurs_admin
+      POSTGRES_PASSWORD: gaveurs_secure_2024
+      POSTGRES_INITDB_ARGS: "-E UTF8"
+    ports:
+      - "5432:5432"
+    volumes:
+      - timescaledb_data:/var/lib/postgresql/data
+      - ./backend-api/scripts:/docker-entrypoint-initdb.d:ro
+    networks:
+      - gaveurs_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gaveurs_admin -d gaveurs_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================================================
+  # Redis - Cache
+  # ============================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: gaveurs_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - gaveurs_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+
+  # ============================================================================
+  # Backend - FastAPI (with Julia for PySR v2)
+  # ============================================================================
+  backend:
+    build:
+      context: ./backend-api
+      dockerfile: Dockerfile.julia
+    container_name: gaveurs_backend
+    restart: unless-stopped
+    environment:
+      # Database
+      DATABASE_HOST: timescaledb
+      DATABASE_PORT: 5432
+      DATABASE_NAME: gaveurs_db
+      DATABASE_USER: gaveurs_admin
+      DATABASE_PASSWORD: gaveurs_secure_2024
+
+      # Redis Cache
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+
+      # Keycloak Auth
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_REALM: gaveurs-production
+      KEYCLOAK_CLIENT_ID: backend-api
+      KEYCLOAK_CLIENT_SECRET: JBrF0CkXH9xPop9n3EGGqiLhZT9GDrK2
+      VERIFY_TOKEN_ISSUER: "false"  # Allow tokens from localhost:8080 (external) and keycloak:8080 (Docker)
+      DISABLE_AUTH: "true"
+      REDIS_URL: redis://redis:6379
+
+      # Application
+      APP_ENV: production
+      LOG_LEVEL: info
+
+      # PySR Configuration
+      PYSR_USE_NUMPY: "true"  # true = NumPy pure (pas Julia), false = PySR avec Julia
+
+      # CORS
+      CORS_ORIGINS: "http://localhost:3000,http://localhost:3001,http://localhost:5173"
+
+      # JWT (for future authentication)
+      SECRET_KEY: "your-secret-key-change-in-production"
+    ports:
+      - "8000:8000"
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - gaveurs_network
+    volumes:
+      - ./backend-api/app:/app/app:ro
+      - ./backend-api/models:/app/models:ro  # Mount ML models directory
+      - backend_logs:/app/logs
+      - ./simulators:/simulators:ro
+      - ./simulator-sqal:/simulator-sqal:ro
+      - /var/run/docker.sock:/var/run/docker.sock:rw  # Allow Docker API access for control panel
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ============================================================================
+  # Frontend Euralis - Next.js
+  # ============================================================================
+  frontend-euralis:
+    build:
+      context: ./euralis-frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8000
+    container_name: gaveurs_frontend_euralis
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+      NODE_ENV: production
+    ports:
+      - "3001:3001"
+    depends_on:
+      - backend
+    networks:
+      - gaveurs_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ============================================================================
+  # Frontend Gaveurs - Next.js
+  # ============================================================================
+  frontend-gaveurs:
+    build:
+      context: ./gaveurs-frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8000
+    container_name: gaveurs_frontend_gaveurs
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+      NODE_ENV: production
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    networks:
+      - gaveurs_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ============================================================================
+  # Frontend Traçabilité - Next.js (Public - Consommateurs)
+  # ============================================================================
+  frontend-traceability:
+    build:
+      context: ./frontend-traceability
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8000
+    container_name: gaveurs_frontend_traceability
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+      NEXT_PUBLIC_APP_NAME: "Traçabilité Euralis"
+      NEXT_PUBLIC_APP_VERSION: "2.1.0"
+      NODE_ENV: production
+    ports:
+      - "3002:3000"
+    depends_on:
+      - backend
+    networks:
+      - gaveurs_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ============================================================================
+  # Frontend SQAL - React + Vite
+  # ============================================================================
+  frontend-sqal:
+    build:
+      context: ./sqal/frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: http://localhost:8000
+        VITE_WS_URL: ws://localhost:8000
+    container_name: gaveurs_frontend_sqal
+    restart: unless-stopped
+    environment:
+      VITE_API_URL: http://localhost:8000
+      VITE_WS_URL: ws://localhost:8000
+      NODE_ENV: production
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+    networks:
+      - gaveurs_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ============================================================================
+  # Frontend Control Panel - React + Vite (SQAL Simulators Management)
+  # ============================================================================
+  control-panel:
+    build:
+      context: ./control-panel-v2
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: http://localhost:8000
+        VITE_WS_URL: ws://localhost:8000
+    container_name: gaveurs_control_panel
+    restart: unless-stopped
+    environment:
+      VITE_API_URL: http://localhost:8000
+      VITE_WS_URL: ws://localhost:8000
+      NODE_ENV: production
+    ports:
+      - "5174:80"
+    depends_on:
+      - backend
+    networks:
+      - gaveurs_network
+    volumes:
+      # Mount Docker socket to allow control panel to manage containers
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ============================================================================
+  # Celery Workers - Async Task Processing
+  # ============================================================================
+  celery-worker:
+    build:
+      context: ./backend-api
+      dockerfile: Dockerfile
+    container_name: gaveurs_celery_worker
+    restart: unless-stopped
+    environment:
+      # Database
+      DATABASE_URL: postgresql://gaveurs_admin:gaveurs_secure_2024@timescaledb:5432/gaveurs_db
+
+      # Redis (Celery Broker)
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+
+      # Application
+      APP_ENV: production
+      LOG_LEVEL: info
+
+      # SMTP (pour notifications)
+      SMTP_HOST: smtp.gmail.com
+      SMTP_PORT: 587
+      SMTP_USER: noreply@euralis.com
+      SMTP_PASSWORD: your_smtp_password
+
+      # SMS API (pour alertes)
+      SMS_API_URL: https://api.sms-provider.com/send
+      SMS_API_KEY: your_sms_api_key
+
+      # Backup
+      BACKUP_DIR: /app/backups
+    command: celery -A app.tasks.celery_app worker --loglevel=info --concurrency=4 --queues=ml_heavy,ml_light,exports,notifications,default
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - gaveurs_network
+    volumes:
+      - ./backend-api/app:/app/app:ro
+      - backend_logs:/app/logs
+      - celery_backups:/app/backups
+    healthcheck:
+      test: ["CMD", "celery", "-A", "app.tasks.celery_app", "inspect", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Celery Beat - Task Scheduler
+  celery-beat:
+    build:
+      context: ./backend-api
+      dockerfile: Dockerfile
+    container_name: gaveurs_celery_beat
+    restart: unless-stopped
+    environment:
+      # Database
+      DATABASE_URL: postgresql://gaveurs_admin:gaveurs_secure_2024@timescaledb:5432/gaveurs_db
+
+      # Redis (Celery Broker)
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+
+      # Application
+      APP_ENV: production
+      LOG_LEVEL: info
+    command: celery -A app.tasks.celery_app beat --loglevel=info
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - gaveurs_network
+    volumes:
+      - ./backend-api/app:/app/app:ro
+      - backend_logs:/app/logs
+
+  # Flower - Celery Monitoring UI
+  flower:
+    build:
+      context: ./backend-api
+      dockerfile: Dockerfile
+    container_name: gaveurs_flower
+    restart: unless-stopped
+    environment:
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      FLOWER_PORT: 5555
+      FLOWER_BASIC_AUTH: admin:gaveurs_flower_2024
+    command: celery -A app.tasks.celery_app flower --port=5555
+    ports:
+      - "5555:5555"
+    depends_on:
+      - redis
+      - celery-worker
+    networks:
+      - gaveurs_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5555/healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ============================================================================
+  # Simulateurs - Gavage + SQAL (nouvelle structure unifiée)
+  # ============================================================================
+
+  # Simulateur Gavage - Données métier (one-shot)
+  simulator-gavage:
+    build:
+      context: .
+      dockerfile: simulators/Dockerfile.gavage
+    container_name: gaveurs_simulator_gavage
+    restart: "no"
+    environment:
+      TZ: Europe/Paris
+    volumes:
+      - ./simulators/data:/data
+      - ./Simulator:/app/simulator_original:ro
+    command: >
+      python main.py
+      --nb-lots 100
+      --nb-gaveurs 65
+      --output /data/simulated_gavage_data.csv
+      --start-date 2024-01-01
+    networks:
+      - gaveurs_network
+    profiles:
+      - simulators
+
+# Simulateur Consumer Feedback (continuous)
+  # Simule des feedbacks consommateurs réalistes basés sur la qualité SQAL
+  simulator-consumer:
+    build:
+      context: .
+      dockerfile: simulators/Dockerfile.consumer
+    container_name: gaveurs_simulator_consumer
+    restart: unless-stopped
+    environment:
+      TZ: Europe/Paris
+      API_URL: http://backend:8000
+      INTERVAL: 30
+      LOG_LEVEL: info
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - gaveurs_network
+    command: >
+      python main.py
+      --api-url http://backend:8000
+      --interval 30
+
+  # Simulateur SQAL - Capteurs IoT (continuous)
+  simulator-sqal:
+    build:
+      context: .
+      dockerfile: simulators/Dockerfile.sqal
+    container_name: gaveurs_simulator_sqal
+    restart: unless-stopped
+    environment:
+      TZ: Europe/Paris
+      BACKEND_WS_URL: ws://backend:8000/ws/sensors/
+      DEVICE_ID: ESP32_DOCKER_01
+      LOG_LEVEL: info
+    volumes:
+      - ./simulator-sqal:/app/simulator_original:ro
+    command: >
+      python main.py
+      --device ESP32_DOCKER_01
+      --location "Ligne A - Docker"
+      --backend-url ws://backend:8000/ws/sensors/
+      --interval 30
+      --config-profile foiegras_standard_barquette
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - gaveurs_network
+
+  # Simulateur SQAL #2 - Ligne B (optional)
+  simulator-sqal-ligne-b:
+    build:
+      context: .
+      dockerfile: simulators/Dockerfile.sqal
+    container_name: gaveurs_simulator_sqal_ligne_b
+    restart: unless-stopped
+    environment:
+      TZ: Europe/Paris
+      BACKEND_WS_URL: ws://backend:8000/ws/sensors/
+      DEVICE_ID: ESP32_DOCKER_02
+      LOG_LEVEL: info
+    volumes:
+      - ./simulator-sqal:/app/simulator_original:ro
+    command: >
+      python main.py
+      --device ESP32_DOCKER_02
+      --location "Ligne B - Docker"
+      --backend-url ws://backend:8000/ws/sensors/
+      --interval 45
+      --config-profile foiegras_standard_barquette
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - gaveurs_network
+    profiles:
+      - simulators-extra
+
+  # Simulateur Gavage Temps Réel (continuous realtime)
+  simulator-gavage-realtime:
+    build:
+      context: .
+      dockerfile: simulators/Dockerfile.gavage_realtime
+    container_name: gaveurs_simulator_gavage_realtime
+    restart: unless-stopped
+    environment:
+      TZ: Europe/Paris
+      BACKEND_WS_URL: ws://backend:8000/ws/gavage
+      LOG_LEVEL: info
+      # Accélération: 1440 = 1 jour réel en 60s (test), 1 = temps réel (production)
+      ACCELERATION: "1440"
+      NB_LOTS: "3"
+    command: >
+      python main.py
+      --backend-url ws://backend:8000/ws/gavage
+      --nb-lots 3
+      --acceleration 1440
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - gaveurs_network
+
+  # ============================================================================
+  # Nginx Reverse Proxy (Optional)
+  # ============================================================================
+  nginx:
+    image: nginx:alpine
+    container_name: gaveurs_nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - backend
+      - frontend-euralis
+      - frontend-gaveurs
+      - frontend-sqal
+    networks:
+      - gaveurs_network
+    profiles:
+      - production
+
+  # ============================================================================
+  # Prometheus - Monitoring (Optional)
+  # ============================================================================
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: gaveurs_prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    networks:
+      - gaveurs_network
+    profiles:
+      - monitoring
+
+  # ============================================================================
+  # Grafana - Dashboards (Optional)
+  # ============================================================================
+  grafana:
+    image: grafana/grafana:latest
+    container_name: gaveurs_grafana
+    restart: unless-stopped
+    ports:
+      - "3030:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: gaveurs_admin_2024
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    depends_on:
+      - prometheus
+    networks:
+      - gaveurs_network
+    profiles:
+      - monitoring
+
+  # ============================================================================
+  # Keycloak Database
+  # ============================================================================
+  keycloak-db:
+    image: postgres:15
+    container_name: gaveurs-keycloak-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: keycloak_secure_2024
+    volumes:
+      - keycloak_db_data:/var/lib/postgresql/data
+    networks:
+      - gaveurs_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloak"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================================================
+  # Keycloak - Authentication Server
+  # ============================================================================
+  keycloak:
+    image: quay.io/keycloak/keycloak:23.0
+    container_name: gaveurs-keycloak
+    restart: unless-stopped
+    environment:
+      # Database
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://keycloak-db:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: keycloak_secure_2024
+
+      # Keycloak Admin
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin_secure_2024
+
+      # Hostname
+      KC_HOSTNAME: localhost
+      KC_HOSTNAME_PORT: 8080
+      KC_HOSTNAME_STRICT: false
+      KC_HOSTNAME_STRICT_HTTPS: false
+
+      # HTTP
+      KC_HTTP_ENABLED: true
+      KC_HTTP_PORT: 8080
+
+      # Health
+      KC_HEALTH_ENABLED: true
+      KC_METRICS_ENABLED: true
+
+      # Logging
+      KC_LOG_LEVEL: INFO
+    command:
+      - start-dev
+    ports:
+      - "8080:8080"
+    depends_on:
+      keycloak-db:
+        condition: service_healthy
+    networks:
+      - gaveurs_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health/ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+# ==============================================================================
+# Networks
+# ==============================================================================
+networks:
+  gaveurs_network:
+    driver: bridge
+    name: gaveurs_network
+
+# ==============================================================================
+# Volumes
+# ==============================================================================
+volumes:
+  timescaledb_data:
+    name: gaveurs_timescaledb_data
+  redis_data:
+    name: gaveurs_redis_data
+  backend_logs:
+    name: gaveurs_backend_logs
+  celery_backups:
+    name: gaveurs_celery_backups
+  keycloak_db_data:
+    name: gaveurs_keycloak_db_data
+  prometheus_data:
+    name: gaveurs_prometheus_data
+  grafana_data:
+    name: gaveurs_grafana_data

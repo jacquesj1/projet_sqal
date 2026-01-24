@@ -1,0 +1,156 @@
+# ============================================================================
+# Requirements.txt Centralisé - Système Gaveurs V3.0
+# ============================================================================
+# Installation complète de toutes les dépendances Python du projet
+# Usage: pip install -r requirements.txt
+# ============================================================================
+
+# ============================================================================
+# CORE FRAMEWORK - FastAPI & Server
+# ============================================================================
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+pydantic==2.6.0
+pydantic-settings==2.1.0
+email-validator==2.1.0
+python-multipart==0.0.6
+
+# ============================================================================
+# DATABASE - PostgreSQL/TimescaleDB
+# ============================================================================
+asyncpg==0.29.0
+
+# ============================================================================
+# AUTHENTICATION & SECURITY - Keycloak + JWT
+# ============================================================================
+python-keycloak==3.9.0
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+
+# ============================================================================
+# WEBSOCKETS - Real-time Communication
+# ============================================================================
+websockets==12.0
+
+# ============================================================================
+# CACHE - Redis
+# ============================================================================
+redis==5.0.1
+
+# ============================================================================
+# MACHINE LEARNING & AI - Core Libraries
+# ============================================================================
+# Symbolic Regression
+pysr==0.18.1
+
+# Machine Learning Core
+scikit-learn==1.4.0
+numpy==1.26.3
+pandas==2.2.0
+scipy>=1.10.1
+
+# Time Series Forecasting
+prophet==1.1.5
+
+# Deep Learning
+tensorflow==2.18.0  # Updated for Python 3.12 compatibility
+torch==2.5.0  # Updated for Python 3.12 compatibility
+torchvision==0.15.2
+torchaudio==2.0.2
+
+# Computer Vision
+pillow==10.0.0
+
+# Voice Assistant (Whisper)
+openai-whisper==20231117
+pydub==0.25.1
+
+# Multi-Objective Optimization (NSGA-II)
+deap==1.4.1
+
+# ============================================================================
+# SMS SERVICE - Twilio
+# ============================================================================
+twilio==8.11.1
+
+# ============================================================================
+# HTTP REQUESTS
+# ============================================================================
+requests==2.31.0
+
+# ============================================================================
+# BLOCKCHAIN - Cryptography
+# ============================================================================
+pycryptodome==3.20.0
+# Note: hashlib is built-in to Python
+
+# ============================================================================
+# MONITORING - Prometheus
+# ============================================================================
+prometheus-client==0.19.0
+
+# ============================================================================
+# TESTING - Core Framework
+# ============================================================================
+pytest==7.4.4
+pytest-asyncio==0.23.3
+pytest-cov==4.1.0
+pytest-timeout==2.2.0
+pytest-xdist==3.5.0
+pytest-mock==3.12.0
+
+# HTTP Testing
+httpx==0.26.0
+
+# Test Data Generation
+faker==20.1.0
+
+# Load Testing
+locust==2.20.0
+
+# ============================================================================
+# CODE QUALITY - Linting & Formatting
+# ============================================================================
+black==23.12.1
+flake8==7.0.0
+mypy==1.8.0
+pylint==3.0.3
+
+# ============================================================================
+# COVERAGE REPORTING
+# ============================================================================
+coverage==7.4.0
+
+# ============================================================================
+# SIMULATORS - Time Series & IoT
+# ============================================================================
+python-dateutil>=2.8.0
+pyyaml>=6.0
+aiofiles>=23.0
+python-dotenv>=1.0.0
+
+# ============================================================================
+# NOTES D'INSTALLATION
+# ============================================================================
+#
+# 1. Créer un environnement virtuel:
+#    python -m venv venv
+#    source venv/bin/activate  # Linux/Mac
+#    venv\Scripts\activate     # Windows
+#
+# 2. Installer les dépendances:
+#    pip install --upgrade pip
+#    pip install -r requirements.txt
+#
+# 3. Pour l'installation GPU (optionnel):
+#    pip install tensorflow-gpu==2.18.0
+#
+# 4. Pour PySR (nécessite Julia):
+#    - Installer Julia: https://julialang.org/downloads/
+#    - Puis: pip install pysr
+#    - PySR installera automatiquement les packages Julia nécessaires
+#
+# 5. Vérifier l'installation:
+#    python -c "import fastapi, tensorflow, torch, prophet; print('OK')"
+#
+# ============================================================================

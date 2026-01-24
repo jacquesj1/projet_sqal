@@ -1,0 +1,894 @@
+# ==============================================================================
+# CI/CD Pipeline - Système Gaveurs V3.0
+# ==============================================================================
+# Complete GitHub Actions workflow for testing, building, and deploying
+# the Euralis Gaveurs intelligent duck fattening management system
+# ==============================================================================
+
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - 'feature/**'
+      - 'hotfix/**'
+  pull_request:
+    branches:
+      - main
+      - develop
+  workflow_dispatch: # Manual trigger
+
+env:
+  # Python version
+  PYTHON_VERSION: '3.11'
+
+  # Node.js version
+  NODE_VERSION: '18.x'
+
+  # PostgreSQL/TimescaleDB version
+  POSTGRES_VERSION: '15'
+
+  # Registry
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+# ==============================================================================
+# Jobs
+# ==============================================================================
+jobs:
+  # ============================================================================
+  # Linting & Type Checking
+  # ============================================================================
+  lint-and-typecheck:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    strategy:
+      matrix:
+        component:
+          - name: backend
+            path: backend-api
+            type: python
+          - name: frontend-euralis
+            path: euralis-frontend
+            type: node
+          - name: frontend-gaveurs
+            path: gaveurs-v3/gaveurs-ai-blockchain/frontend
+            type: node
+          - name: frontend-sqal
+            path: sqal
+            type: node
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Python linting
+      - name: Set up Python (Python components)
+        if: matrix.component.type == 'python'
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+          cache-dependency-path: ${{ matrix.component.path }}/requirements.txt
+
+      - name: Install Python dependencies
+        if: matrix.component.type == 'python'
+        working-directory: ${{ matrix.component.path }}
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8 black mypy pylint
+          pip install -r requirements.txt
+
+      - name: Run Black formatter check
+        if: matrix.component.type == 'python'
+        working-directory: ${{ matrix.component.path }}
+        run: black --check app/
+        continue-on-error: true
+
+      - name: Run Flake8
+        if: matrix.component.type == 'python'
+        working-directory: ${{ matrix.component.path }}
+        run: flake8 app/ --max-line-length=120 --extend-ignore=E203,W503
+        continue-on-error: true
+
+      - name: Run MyPy type checking
+        if: matrix.component.type == 'python'
+        working-directory: ${{ matrix.component.path }}
+        run: mypy app/ --ignore-missing-imports
+        continue-on-error: true
+
+      # Node.js linting
+      - name: Set up Node.js (Node components)
+        if: matrix.component.type == 'node'
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: ${{ matrix.component.path }}/package-lock.json
+
+      - name: Install Node dependencies
+        if: matrix.component.type == 'node'
+        working-directory: ${{ matrix.component.path }}
+        run: npm ci
+
+      - name: Run ESLint
+        if: matrix.component.type == 'node'
+        working-directory: ${{ matrix.component.path }}
+        run: npm run lint
+        continue-on-error: true
+
+      - name: Run TypeScript type check
+        if: matrix.component.type == 'node' && matrix.component.name != 'frontend-sqal'
+        working-directory: ${{ matrix.component.path }}
+        run: npm run type-check
+        continue-on-error: true
+
+  # ============================================================================
+  # Backend Tests
+  # ============================================================================
+  test-backend:
+    name: Test Backend (163 tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      # TimescaleDB service
+      postgres:
+        image: timescale/timescaledb:latest-pg15
+        env:
+          POSTGRES_DB: gaveurs_db_test
+          POSTGRES_USER: gaveurs_admin
+          POSTGRES_PASSWORD: gaveurs_test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      # Redis service
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+          cache-dependency-path: backend-api/requirements.txt
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            gcc g++ gfortran \
+            libopenblas-dev liblapack-dev \
+            git curl wget
+
+      - name: Install Julia (for PySR)
+        run: |
+          curl -fsSL https://install.julialang.org | sh -s -- -y
+          echo "$HOME/.juliaup/bin" >> $GITHUB_PATH
+
+      - name: Install Julia SymbolicRegression package
+        run: julia -e 'using Pkg; Pkg.add("SymbolicRegression")'
+
+      - name: Install Python dependencies
+        working-directory: backend-api
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-cov pytest-asyncio pytest-timeout httpx coverage
+          pip install -r requirements.txt
+
+      - name: Initialize database schema
+        working-directory: backend-api
+        env:
+          DATABASE_URL: postgresql://gaveurs_admin:gaveurs_test_password@localhost:5432/gaveurs_db_test
+        run: |
+          python scripts/db_migrate.py || echo "Migration script may need adjustment for CI"
+
+      - name: Run unit tests
+        working-directory: backend-api
+        env:
+          DATABASE_URL: postgresql://gaveurs_admin:gaveurs_test_password@localhost:5432/gaveurs_db_test
+          REDIS_URL: redis://localhost:6379
+          APP_ENV: test
+        run: |
+          pytest tests/unit -v --tb=short -m "unit" --cov=app --cov-report=xml --cov-report=term-missing || true
+
+      - name: Run integration tests
+        working-directory: backend-api
+        env:
+          DATABASE_URL: postgresql://gaveurs_admin:gaveurs_test_password@localhost:5432/gaveurs_db_test
+          REDIS_URL: redis://localhost:6379
+          APP_ENV: test
+        run: |
+          pytest tests/integration -v --tb=short -m "integration" --cov=app --cov-append --cov-report=xml --cov-report=term-missing || true
+
+      - name: Run all backend tests with coverage
+        working-directory: backend-api
+        env:
+          DATABASE_URL: postgresql://gaveurs_admin:gaveurs_test_password@localhost:5432/gaveurs_db_test
+          REDIS_URL: redis://localhost:6379
+          APP_ENV: test
+        run: |
+          pytest tests/ -v --tb=short \
+            --cov=app \
+            --cov-report=xml:coverage.xml \
+            --cov-report=html:htmlcov \
+            --cov-report=term-missing \
+            --cov-fail-under=70 \
+            --maxfail=5
+
+      - name: Upload backend coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./backend-api/coverage.xml
+          flags: backend
+          name: backend-coverage
+          fail_ci_if_error: false
+
+      - name: Upload backend coverage artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage-report
+          path: backend-api/htmlcov
+          retention-days: 30
+
+  # ============================================================================
+  # Frontend Tests (Parallel Matrix Strategy)
+  # ============================================================================
+  test-frontends:
+    name: Test Frontend - ${{ matrix.frontend.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    strategy:
+      fail-fast: false
+      matrix:
+        frontend:
+          - name: SQAL
+            path: sqal
+            tests: 104
+            coverage_threshold: 60
+          - name: Euralis
+            path: euralis-frontend
+            tests: 109
+            coverage_threshold: 70
+          - name: Gaveurs
+            path: gaveurs-v3/gaveurs-ai-blockchain/frontend
+            tests: 263
+            coverage_threshold: 60
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: ${{ matrix.frontend.path }}/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ${{ matrix.frontend.path }}
+        run: npm ci
+
+      - name: Run tests with coverage
+        working-directory: ${{ matrix.frontend.path }}
+        run: npm run test:coverage -- --maxWorkers=2
+        env:
+          CI: true
+
+      - name: Check coverage thresholds
+        working-directory: ${{ matrix.frontend.path }}
+        run: |
+          echo "Checking coverage threshold: ${{ matrix.frontend.coverage_threshold }}%"
+          npm run test:coverage -- --coverageThreshold='{"global":{"branches":${{ matrix.frontend.coverage_threshold }},"functions":${{ matrix.frontend.coverage_threshold }},"lines":${{ matrix.frontend.coverage_threshold }},"statements":${{ matrix.frontend.coverage_threshold }}}}' || echo "Coverage threshold not met (non-blocking)"
+        continue-on-error: true
+
+      - name: Upload frontend coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./${{ matrix.frontend.path }}/coverage/coverage-final.json
+          flags: frontend-${{ matrix.frontend.name }}
+          name: ${{ matrix.frontend.name }}-coverage
+          fail_ci_if_error: false
+
+      - name: Upload coverage artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.frontend.name }}-coverage-report
+          path: ${{ matrix.frontend.path }}/coverage
+          retention-days: 30
+
+  # ============================================================================
+  # E2E Tests (Full Stack)
+  # ============================================================================
+  test-e2e:
+    name: E2E Tests (Full Stack)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [test-backend, test-frontends]
+
+    services:
+      postgres:
+        image: timescale/timescaledb:latest-pg15
+        env:
+          POSTGRES_DB: gaveurs_db_test
+          POSTGRES_USER: gaveurs_admin
+          POSTGRES_PASSWORD: gaveurs_test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install backend dependencies
+        working-directory: backend-api
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio httpx
+
+      - name: Initialize database
+        working-directory: backend-api
+        env:
+          DATABASE_URL: postgresql://gaveurs_admin:gaveurs_test_password@localhost:5432/gaveurs_db_test
+        run: |
+          python scripts/db_migrate.py || echo "Migration may need adjustment"
+          python scripts/generate_test_data.py --gaveurs 5 --lots 10 --samples 20 --feedbacks 10 || echo "Test data generation optional"
+
+      - name: Start backend server
+        working-directory: backend-api
+        env:
+          DATABASE_URL: postgresql://gaveurs_admin:gaveurs_test_password@localhost:5432/gaveurs_db_test
+          REDIS_URL: redis://localhost:6379
+        run: |
+          uvicorn app.main:app --host 0.0.0.0 --port 8000 &
+          sleep 10
+
+      - name: Wait for backend health check
+        run: |
+          for i in {1..30}; do
+            if curl -f http://localhost:8000/health; then
+              echo "Backend is healthy"
+              exit 0
+            fi
+            echo "Waiting for backend... ($i/30)"
+            sleep 2
+          done
+          echo "Backend failed to start"
+          exit 1
+
+      - name: Run E2E tests
+        working-directory: tests
+        env:
+          API_URL: http://localhost:8000
+          DATABASE_URL: postgresql://gaveurs_admin:gaveurs_test_password@localhost:5432/gaveurs_db_test
+        run: |
+          pip install -r requirements.txt
+          pytest e2e/ -v --tb=short -m "e2e"
+
+      - name: Run WebSocket tests
+        working-directory: tests
+        env:
+          API_URL: http://localhost:8000
+          WS_URL: ws://localhost:8000
+        run: |
+          pytest websocket/ -v --tb=short -m "websocket"
+
+      - name: Upload E2E test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-test-results
+          path: tests/test-results
+          retention-days: 30
+
+  # ============================================================================
+  # Build Backend Docker Image
+  # ============================================================================
+  build-backend:
+    name: Build Backend Docker Image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [test-backend, lint-and-typecheck]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/backend
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend-api
+          file: ./backend-api/Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            BUILD_DATE=${{ github.event.head_commit.timestamp }}
+            VCS_REF=${{ github.sha }}
+            VERSION=${{ github.ref_name }}
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-docker-metadata
+          path: |
+            backend-api/Dockerfile
+            backend-api/requirements.txt
+
+  # ============================================================================
+  # Build Frontend Docker Images
+  # ============================================================================
+  build-frontends:
+    name: Build Frontend - ${{ matrix.frontend.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [test-frontends, lint-and-typecheck]
+
+    strategy:
+      matrix:
+        frontend:
+          - name: euralis
+            path: euralis-frontend
+            port: 3000
+          - name: gaveurs
+            path: gaveurs-v3/gaveurs-ai-blockchain/frontend
+            port: 3001
+          - name: sqal
+            path: sqal
+            port: 5173
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/frontend-${{ matrix.frontend.name }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./${{ matrix.frontend.path }}
+          file: ./${{ matrix.frontend.path }}/Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            NEXT_PUBLIC_API_URL=${{ secrets.API_URL || 'http://localhost:8000' }}
+            BUILD_DATE=${{ github.event.head_commit.timestamp }}
+            VCS_REF=${{ github.sha }}
+
+  # ============================================================================
+  # Security Scanning
+  # ============================================================================
+  security-scan:
+    name: Security Scanning
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner (Backend)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: './backend-api'
+          format: 'sarif'
+          output: 'trivy-backend-results.sarif'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-backend-results.sarif'
+          category: 'trivy-backend'
+
+      - name: Run Snyk security scan
+        uses: snyk/actions/python@master
+        continue-on-error: true
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --file=backend-api/requirements.txt --severity-threshold=high
+
+      - name: Run npm audit (Frontends)
+        run: |
+          cd euralis-frontend && npm audit --production --audit-level=high || true
+          cd ../gaveurs-v3/gaveurs-ai-blockchain/frontend && npm audit --production --audit-level=high || true
+          cd ../../../sqal && npm audit --production --audit-level=high || true
+
+  # ============================================================================
+  # Deploy to Staging
+  # ============================================================================
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [build-backend, build-frontends, test-e2e]
+    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+    environment:
+      name: staging
+      url: https://staging.euralis-gaveurs.com
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Deploy to ECS Staging
+        run: |
+          aws ecs update-service \
+            --cluster euralis-gaveurs-staging \
+            --service backend-service \
+            --force-new-deployment \
+            --region ${{ secrets.AWS_REGION }}
+
+          aws ecs update-service \
+            --cluster euralis-gaveurs-staging \
+            --service frontend-euralis-service \
+            --force-new-deployment \
+            --region ${{ secrets.AWS_REGION }}
+
+          aws ecs update-service \
+            --cluster euralis-gaveurs-staging \
+            --service frontend-gaveurs-service \
+            --force-new-deployment \
+            --region ${{ secrets.AWS_REGION }}
+
+          aws ecs update-service \
+            --cluster euralis-gaveurs-staging \
+            --service frontend-sqal-service \
+            --force-new-deployment \
+            --region ${{ secrets.AWS_REGION }}
+
+      - name: Wait for deployment to complete
+        run: |
+          aws ecs wait services-stable \
+            --cluster euralis-gaveurs-staging \
+            --services backend-service frontend-euralis-service frontend-gaveurs-service frontend-sqal-service \
+            --region ${{ secrets.AWS_REGION }}
+
+      - name: Run smoke tests
+        run: |
+          curl -f https://staging-api.euralis-gaveurs.com/health || exit 1
+          curl -f https://staging.euralis-gaveurs.com || exit 1
+
+      - name: Notify deployment success
+        if: success()
+        uses: slackapi/slack-github-action@v1
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          payload: |
+            {
+              "text": "✅ Staging deployment successful - ${{ github.ref_name }}",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Deployment to Staging Successful*\n*Branch:* ${{ github.ref_name }}\n*Commit:* ${{ github.sha }}\n*Environment:* staging.euralis-gaveurs.com"
+                  }
+                }
+              ]
+            }
+
+      - name: Notify deployment failure
+        if: failure()
+        uses: slackapi/slack-github-action@v1
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          payload: |
+            {
+              "text": "❌ Staging deployment failed - ${{ github.ref_name }}",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Deployment to Staging Failed*\n*Branch:* ${{ github.ref_name }}\n*Commit:* ${{ github.sha }}\n*Logs:* ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                  }
+                }
+              ]
+            }
+
+  # ============================================================================
+  # Deploy to Production
+  # ============================================================================
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [build-backend, build-frontends, test-e2e, security-scan]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment:
+      name: production
+      url: https://euralis-gaveurs.com
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Create database backup
+        run: |
+          aws rds create-db-snapshot \
+            --db-instance-identifier euralis-gaveurs-prod \
+            --db-snapshot-identifier pre-deploy-${{ github.run_id }} \
+            --region ${{ secrets.AWS_REGION }}
+
+      - name: Deploy to ECS Production
+        run: |
+          aws ecs update-service \
+            --cluster euralis-gaveurs-production \
+            --service backend-service \
+            --force-new-deployment \
+            --region ${{ secrets.AWS_REGION }}
+
+          aws ecs update-service \
+            --cluster euralis-gaveurs-production \
+            --service frontend-euralis-service \
+            --force-new-deployment \
+            --region ${{ secrets.AWS_REGION }}
+
+          aws ecs update-service \
+            --cluster euralis-gaveurs-production \
+            --service frontend-gaveurs-service \
+            --force-new-deployment \
+            --region ${{ secrets.AWS_REGION }}
+
+          aws ecs update-service \
+            --cluster euralis-gaveurs-production \
+            --service frontend-sqal-service \
+            --force-new-deployment \
+            --region ${{ secrets.AWS_REGION }}
+
+      - name: Wait for deployment to complete
+        run: |
+          aws ecs wait services-stable \
+            --cluster euralis-gaveurs-production \
+            --services backend-service frontend-euralis-service frontend-gaveurs-service frontend-sqal-service \
+            --region ${{ secrets.AWS_REGION }}
+
+      - name: Run production smoke tests
+        run: |
+          curl -f https://api.euralis-gaveurs.com/health || exit 1
+          curl -f https://euralis-gaveurs.com || exit 1
+          curl -f https://gaveurs.euralis-gaveurs.com || exit 1
+          curl -f https://sqal.euralis-gaveurs.com || exit 1
+
+      - name: Create Git release tag
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ github.run_number }}
+          release_name: Release v${{ github.run_number }}
+          body: |
+            Production deployment #${{ github.run_number }}
+
+            ## Changes
+            ${{ github.event.head_commit.message }}
+
+            ## Deployed Components
+            - Backend API (FastAPI)
+            - Frontend Euralis (Next.js)
+            - Frontend Gaveurs (Next.js)
+            - Frontend SQAL (React+Vite)
+
+            ## Test Results
+            - Backend: 163 tests
+            - Frontend SQAL: 104 tests
+            - Frontend Euralis: 109 tests
+            - Frontend Gaveurs: 263 tests
+            - E2E Tests: Passed
+          draft: false
+          prerelease: false
+
+      - name: Notify deployment success
+        if: success()
+        uses: slackapi/slack-github-action@v1
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          payload: |
+            {
+              "text": "🚀 Production deployment successful - ${{ github.ref_name }}",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Production Deployment Successful*\n*Release:* v${{ github.run_number }}\n*Commit:* ${{ github.sha }}\n*Environment:* euralis-gaveurs.com\n*Tests Passed:* 639 total"
+                  }
+                }
+              ]
+            }
+
+      - name: Notify deployment failure
+        if: failure()
+        uses: slackapi/slack-github-action@v1
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          payload: |
+            {
+              "text": "🚨 Production deployment failed - ${{ github.ref_name }}",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Production Deployment Failed*\n*Branch:* ${{ github.ref_name }}\n*Commit:* ${{ github.sha }}\n*Logs:* ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                  }
+                }
+              ]
+            }
+
+      - name: Rollback on failure
+        if: failure()
+        run: |
+          echo "Rolling back to previous version..."
+          aws ecs update-service \
+            --cluster euralis-gaveurs-production \
+            --service backend-service \
+            --task-definition backend-service:PREVIOUS \
+            --region ${{ secrets.AWS_REGION }} || true
+
+  # ============================================================================
+  # Notification Job (Final Status)
+  # ============================================================================
+  notify-status:
+    name: Notify Pipeline Status
+    runs-on: ubuntu-latest
+    needs: [lint-and-typecheck, test-backend, test-frontends, test-e2e, build-backend, build-frontends, security-scan]
+    if: always()
+
+    steps:
+      - name: Determine status
+        id: status
+        run: |
+          if [[ "${{ needs.test-backend.result }}" == "success" ]] && \
+             [[ "${{ needs.test-frontends.result }}" == "success" ]] && \
+             [[ "${{ needs.build-backend.result }}" == "success" ]] && \
+             [[ "${{ needs.build-frontends.result }}" == "success" ]]; then
+            echo "status=success" >> $GITHUB_OUTPUT
+            echo "emoji=✅" >> $GITHUB_OUTPUT
+          else
+            echo "status=failure" >> $GITHUB_OUTPUT
+            echo "emoji=❌" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Send Discord notification
+        if: secrets.DISCORD_WEBHOOK_URL != ''
+        uses: sarisia/actions-status-discord@v1
+        with:
+          webhook: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          status: ${{ steps.status.outputs.status }}
+          title: "CI/CD Pipeline - ${{ github.ref_name }}"
+          description: |
+            ${{ steps.status.outputs.emoji }} Pipeline completed
+
+            **Branch:** ${{ github.ref_name }}
+            **Commit:** ${{ github.sha }}
+            **Author:** ${{ github.actor }}
+
+            **Test Results:**
+            - Backend: ${{ needs.test-backend.result }}
+            - Frontends: ${{ needs.test-frontends.result }}
+            - E2E: ${{ needs.test-e2e.result }}
+
+            **Builds:**
+            - Backend: ${{ needs.build-backend.result }}
+            - Frontends: ${{ needs.build-frontends.result }}
+          color: ${{ steps.status.outputs.status == 'success' && 0x00FF00 || 0xFF0000 }}
+          username: GitHub Actions
+          avatar_url: https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png

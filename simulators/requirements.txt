@@ -1,0 +1,19 @@
+# Simulateurs Unifiés - Dépendances Python
+
+# Commun aux deux simulateurs
+pandas>=2.0.0
+numpy>=1.24.0
+python-dateutil>=2.8.0
+
+# Simulateur Gavage
+# (utilise seulement pandas, numpy)
+
+# Simulateur SQAL - IoT
+websockets>=12.0
+pyyaml>=6.0
+aiofiles>=23.0
+scipy>=1.10.0
+matplotlib>=3.7.0
+
+# Logging et utils
+python-dotenv>=1.0.0

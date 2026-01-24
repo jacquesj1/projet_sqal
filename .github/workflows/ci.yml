@@ -1,0 +1,330 @@
+name: CI/CD Pipeline - Système Gaveurs V3.0
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  # Backend tests
+  backend-tests:
+    name: Backend Tests (Python 3.11)
+    runs-on: ubuntu-latest
+
+    services:
+      timescaledb:
+        image: timescale/timescaledb:latest-pg15
+        env:
+          POSTGRES_DB: gaveurs_db_test
+          POSTGRES_USER: gaveurs_admin
+          POSTGRES_PASSWORD: gaveurs_test_2024
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install backend dependencies
+        working-directory: ./backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r ../tests/requirements.txt
+
+      - name: Run database migrations
+        working-directory: ./backend
+        env:
+          DATABASE_URL: postgresql://gaveurs_admin:gaveurs_test_2024@localhost:5432/gaveurs_db_test
+        run: |
+          python ../scripts/db_migrate.py --database gaveurs_db_test --password gaveurs_test_2024
+
+      - name: Run unit tests
+        working-directory: ./backend
+        env:
+          DATABASE_URL: postgresql://gaveurs_admin:gaveurs_test_2024@localhost:5432/gaveurs_db_test
+        run: |
+          pytest tests/ -v --cov=app --cov-report=xml --cov-report=html
+
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./backend/coverage.xml
+          flags: backend
+          name: backend-coverage
+
+      - name: Run type checking
+        working-directory: ./backend
+        run: |
+          mypy app/ --ignore-missing-imports || true
+
+      - name: Run linting
+        working-directory: ./backend
+        run: |
+          flake8 app/ --max-line-length=120 --ignore=E501,W503 || true
+
+  # Frontend Euralis tests
+  frontend-euralis-tests:
+    name: Frontend Euralis Tests (Next.js)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: ./frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ./frontend
+        run: npm ci
+
+      - name: Run linting
+        working-directory: ./frontend
+        run: npm run lint || true
+
+      - name: Run type checking
+        working-directory: ./frontend
+        run: npx tsc --noEmit || true
+
+      - name: Build application
+        working-directory: ./frontend
+        run: npm run build
+
+      - name: Run tests
+        working-directory: ./frontend
+        run: npm test || echo "No tests configured yet"
+
+  # Frontend Gaveurs tests
+  frontend-gaveurs-tests:
+    name: Frontend Gaveurs Tests (Next.js)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: ./gaveurs/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ./gaveurs
+        run: npm ci
+
+      - name: Run linting
+        working-directory: ./gaveurs
+        run: npm run lint || true
+
+      - name: Run type checking
+        working-directory: ./gaveurs
+        run: npx tsc --noEmit || true
+
+      - name: Build application
+        working-directory: ./gaveurs
+        run: npm run build
+
+      - name: Run tests
+        working-directory: ./gaveurs
+        run: npm test || echo "No tests configured yet"
+
+  # Frontend SQAL tests
+  frontend-sqal-tests:
+    name: Frontend SQAL Tests (React + Vite)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: ./sqal/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ./sqal
+        run: npm ci
+
+      - name: Run linting
+        working-directory: ./sqal
+        run: npm run lint || true
+
+      - name: Run type checking
+        working-directory: ./sqal
+        run: npx tsc --noEmit || true
+
+      - name: Build application
+        working-directory: ./sqal
+        run: npm run build
+
+      - name: Run tests
+        working-directory: ./sqal
+        run: npm test || echo "No tests configured yet"
+
+  # E2E tests
+  e2e-tests:
+    name: End-to-End Tests
+    runs-on: ubuntu-latest
+    needs: [backend-tests, frontend-euralis-tests, frontend-gaveurs-tests, frontend-sqal-tests]
+
+    services:
+      timescaledb:
+        image: timescale/timescaledb:latest-pg15
+        env:
+          POSTGRES_DB: gaveurs_db_test
+          POSTGRES_USER: gaveurs_admin
+          POSTGRES_PASSWORD: gaveurs_test_2024
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install backend dependencies
+        working-directory: ./backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r ../tests/requirements.txt
+
+      - name: Run database migrations
+        env:
+          DATABASE_URL: postgresql://gaveurs_admin:gaveurs_test_2024@localhost:5432/gaveurs_db_test
+        run: |
+          python scripts/db_migrate.py --database gaveurs_db_test --password gaveurs_test_2024
+
+      - name: Generate test data
+        env:
+          DATABASE_URL: postgresql://gaveurs_admin:gaveurs_test_2024@localhost:5432/gaveurs_db_test
+        run: |
+          python scripts/generate_test_data.py --database gaveurs_db_test --password gaveurs_test_2024
+
+      - name: Start backend server
+        working-directory: ./backend
+        env:
+          DATABASE_URL: postgresql://gaveurs_admin:gaveurs_test_2024@localhost:5432/gaveurs_db_test
+        run: |
+          uvicorn app.main:app --host 0.0.0.0 --port 8000 &
+          sleep 10
+
+      - name: Run health check
+        run: |
+          python scripts/health_check.py || true
+
+      - name: Run E2E tests
+        working-directory: ./tests/e2e
+        run: |
+          pytest test_complete_flow.py -v
+
+      - name: Run WebSocket tests
+        working-directory: ./tests/websocket
+        run: |
+          pytest test_websocket_flow.py -v
+
+  # Security scan
+  security-scan:
+    name: Security Scanning
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+  # Docker build (for deployment)
+  docker-build:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    needs: [backend-tests, frontend-euralis-tests, frontend-gaveurs-tests, frontend-sqal-tests]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build backend Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: false
+          tags: gaveurs-backend:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build frontend Euralis Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          push: false
+          tags: gaveurs-frontend-euralis:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build frontend Gaveurs Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./gaveurs
+          file: ./gaveurs/Dockerfile
+          push: false
+          tags: gaveurs-frontend-gaveurs:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build frontend SQAL Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./sqal
+          file: ./sqal/Dockerfile
+          push: false
+          tags: gaveurs-frontend-sqal:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

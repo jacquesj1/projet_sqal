@@ -1,0 +1,144 @@
+# ==============================================================================
+# Docker Compose for Development - DB + Backend + Control Panel ONLY
+# ==============================================================================
+# Minimal setup for testing simulators without frontends
+# Usage:
+#   docker-compose -f docker-compose.dev.yml up -d
+#   docker-compose -f docker-compose.dev.yml down
+# ==============================================================================
+
+services:
+  # ============================================================================
+  # Database - TimescaleDB
+  # ============================================================================
+  timescaledb:
+    image: timescale/timescaledb:latest-pg15
+    container_name: gaveurs_timescaledb
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: gaveurs_db
+      POSTGRES_USER: gaveurs_admin
+      POSTGRES_PASSWORD: gaveurs_secure_2024
+      POSTGRES_INITDB_ARGS: "-E UTF8"
+    ports:
+      - "5432:5432"
+    volumes:
+      - timescaledb_data:/var/lib/postgresql/data
+      - ./backend-api/scripts:/docker-entrypoint-initdb.d:ro
+    networks:
+      - gaveurs_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gaveurs_admin -d gaveurs_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================================================
+  # Redis - Cache
+  # ============================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: gaveurs_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - gaveurs_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+
+  # ============================================================================
+  # Backend - FastAPI
+  # ============================================================================
+  backend:
+    build:
+      context: ./backend-api
+      dockerfile: Dockerfile
+    container_name: gaveurs_backend
+    restart: unless-stopped
+    environment:
+      DATABASE_HOST: timescaledb
+      DATABASE_PORT: 5432
+      DATABASE_NAME: gaveurs_db
+      DATABASE_USER: gaveurs_admin
+      DATABASE_PASSWORD: gaveurs_secure_2024
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_URL: redis://redis:6379
+      DISABLE_AUTH: "true"
+      APP_ENV: development
+      LOG_LEVEL: info
+      CORS_ORIGINS: "http://localhost:3000,http://localhost:3001,http://localhost:5173,http://localhost:5174"
+    ports:
+      - "8000:8000"
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - gaveurs_network
+    volumes:
+      - ./backend-api/app:/app/app:ro
+      - backend_logs:/app/logs
+      - /var/run/docker.sock:/var/run/docker.sock:rw
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ============================================================================
+  # Control Panel - React + Vite
+  # ============================================================================
+  control-panel:
+    build:
+      context: ./control-panel-frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: http://localhost:8000
+        VITE_WS_URL: ws://localhost:8000
+    container_name: gaveurs_control_panel
+    restart: unless-stopped
+    environment:
+      VITE_API_URL: http://localhost:8000
+      VITE_WS_URL: ws://localhost:8000
+      NODE_ENV: production
+    ports:
+      - "5174:80"
+    depends_on:
+      - backend
+    networks:
+      - gaveurs_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+# ==============================================================================
+# Networks
+# ==============================================================================
+networks:
+  gaveurs_network:
+    driver: bridge
+    name: gaveurs_network
+
+# ==============================================================================
+# Volumes
+# ==============================================================================
+volumes:
+  timescaledb_data:
+    name: gaveurs_timescaledb_data
+  redis_data:
+    name: gaveurs_redis_data
+  backend_logs:
+    name: gaveurs_backend_logs

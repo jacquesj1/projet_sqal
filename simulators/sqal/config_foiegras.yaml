@@ -1,0 +1,938 @@
+# ============================================================================
+# CONFIGURATION INSPECTION FOIE GRAS - VL53L8CH ToF + AS7341 Spectral Sensors
+# ============================================================================
+# Ce fichier contient tous les paramètres de simulation et d'inspection
+# Utilisez les profils prédéfinis ou créez vos propres configurations
+
+# Profil actif par défaut
+default_profile: "foiegras_standard_barquette"
+
+# ============================================================================
+# PROFILS PRÉDÉFINIS
+# ============================================================================
+
+profiles:
+  # --------------------------------------------------------------------------
+  # 1. Foie Gras Standard dans Barquette (RECOMMANDÉ)
+  # --------------------------------------------------------------------------
+  foiegras_standard_barquette:
+    description: "Foie gras entier 200x100mm dans barquette 300x180mm"
+
+    # Configuration produit
+    product:
+      length_mm: 200        # Longueur du foie gras (direction X)
+      width_mm: 100         # Largeur du foie gras (direction Y)
+      margin_percent: 15    # Marge de sécurité (15% recommandé pour rotation)
+      type: "normal"        # Type: normal, irregular, defective
+
+    # Configuration barquette/container
+    container:
+      enabled: true         # Activer le mode barquette
+      length_mm: 300        # Longueur de la barquette
+      width_mm: 180         # Largeur de la barquette
+      height_mm: 5          # Épaisseur du fond de barquette
+
+    # Configuration capteur VL53L8CH (ToF)
+    sensor_vl53l8ch:
+      resolution: 8         # Grille 8x8 pixels (64 zones)
+      height_mm: 100        # Hauteur du capteur au-dessus du tapis
+      n_bins: 128          # Nombre de bins temporels (histogramme ToF)
+      bin_size_mm: 37.5    # Taille d'un bin en mm
+
+    # Configuration capteur AS7341 (Spectral)
+    sensor_as7341:
+      enabled: true         # Activer le capteur spectral
+      integration_time_ms: 100  # Temps d'intégration (50-500ms)
+      gain: 4               # Gain du capteur (1, 4, 16, 64)
+      noise_std: 5.0        # Écart-type du bruit gaussien
+
+    # Paramètres de qualité (variabilité réaliste - Distribution mixte)
+    # Le simulateur va choisir aléatoirement parmi plusieurs profils de qualité
+    quality:
+      # Profil sera sélectionné aléatoirement avec probabilités:
+      # - premium: 15% (A+ attendu)
+      # - good: 40% (A attendu)
+      # - acceptable: 30% (B attendu)
+      # - low: 10% (C attendu)
+      # - defective: 5% (REJECT attendu)
+
+      premium:              # Grade attendu: A+ (score > 0.85)
+        weight: 0.15        # 15% de chance
+        freshness:
+          min: 0.90
+          max: 1.0
+          mean: 0.95
+        fat_quality:
+          min: 0.90
+          max: 1.0
+          mean: 0.95
+        oxidation_level:
+          min: 0.0
+          max: 0.1
+          mean: 0.05
+        temperature:
+          min: 19.0
+          max: 21.0
+          mean: 20.0
+        ambient_light:
+          min: 95.0
+          max: 105.0
+          mean: 100.0
+        surface_uniformity:
+          min: 0.85
+          max: 0.98
+          mean: 0.92
+        thickness_variation:
+          min: 0.5
+          max: 2.0
+          mean: 1.0
+
+      good:                 # Grade attendu: A (score > 0.75)
+        weight: 0.40        # 40% de chance
+        freshness:
+          min: 0.75
+          max: 0.95
+          mean: 0.85
+        fat_quality:
+          min: 0.75
+          max: 0.95
+          mean: 0.85
+        oxidation_level:
+          min: 0.05
+          max: 0.25
+          mean: 0.15
+        temperature:
+          min: 18.0
+          max: 22.0
+          mean: 20.0
+        ambient_light:
+          min: 85.0
+          max: 115.0
+          mean: 100.0
+        surface_uniformity:
+          min: 0.75
+          max: 0.90
+          mean: 0.82
+        thickness_variation:
+          min: 1.5
+          max: 3.5
+          mean: 2.5
+
+      acceptable:           # Grade attendu: B (score > 0.65)
+        weight: 0.30        # 30% de chance
+        freshness:
+          min: 0.60
+          max: 0.80
+          mean: 0.70
+        fat_quality:
+          min: 0.60
+          max: 0.80
+          mean: 0.70
+        oxidation_level:
+          min: 0.20
+          max: 0.40
+          mean: 0.30
+        temperature:
+          min: 17.0
+          max: 23.0
+          mean: 20.0
+        ambient_light:
+          min: 75.0
+          max: 125.0
+          mean: 100.0
+        surface_uniformity:
+          min: 0.65
+          max: 0.85
+          mean: 0.75
+        thickness_variation:
+          min: 2.5
+          max: 4.5
+          mean: 3.5
+
+      low:                  # Grade attendu: C (score > 0.50)
+        weight: 0.10        # 10% de chance
+        freshness:
+          min: 0.45
+          max: 0.65
+          mean: 0.55
+        fat_quality:
+          min: 0.45
+          max: 0.65
+          mean: 0.55
+        oxidation_level:
+          min: 0.35
+          max: 0.55
+          mean: 0.45
+        temperature:
+          min: 16.0
+          max: 24.0
+          mean: 20.0
+        ambient_light:
+          min: 70.0
+          max: 130.0
+          mean: 100.0
+        surface_uniformity:
+          min: 0.55
+          max: 0.75
+          mean: 0.65
+        thickness_variation:
+          min: 3.5
+          max: 5.5
+          mean: 4.5
+
+      defective:            # Grade attendu: REJECT (score < 0.50)
+        weight: 0.05        # 5% de chance
+        freshness:
+          min: 0.20
+          max: 0.50
+          mean: 0.35
+        fat_quality:
+          min: 0.20
+          max: 0.50
+          mean: 0.35
+        oxidation_level:
+          min: 0.50
+          max: 0.80
+          mean: 0.65
+        temperature:
+          min: 15.0
+          max: 25.0
+          mean: 20.0
+        ambient_light:
+          min: 60.0
+          max: 140.0
+          mean: 100.0
+        surface_uniformity:
+          min: 0.40
+          max: 0.60
+          mean: 0.50
+        thickness_variation:
+          min: 5.0
+          max: 7.0
+          mean: 6.0
+
+    # Défauts à simuler (optionnel, null = défauts aléatoires)
+    defects:
+      foreign_body:
+        position: [3, 5]
+        radius: 1.5
+        height_change: -15
+      deformation:
+        position: [6, 2]
+        radius: 2
+        depth: 10
+
+  foiegras_demo_barquette:
+    description: "Foie gras démo (barquette) - peu de défauts, plus de conformes"
+
+    product:
+      length_mm: 200
+      width_mm: 100
+      margin_percent: 15
+      type: "normal"
+
+    container:
+      enabled: true
+      length_mm: 300
+      width_mm: 180
+      height_mm: 5
+
+    sensor_vl53l8ch:
+      resolution: 8
+      height_mm: 100
+      n_bins: 128
+      bin_size_mm: 37.5
+
+    vl53l8ch_analyzer:
+      distance_defect_threshold_mm: 45.0
+      critical_foreign_body_severity_threshold: 1.01
+      texture_threshold: 0.60
+      density_threshold: 500.0
+      consistency_threshold: 0.90
+      defect_penalty_weight: 0.0
+
+    sensor_as7341:
+      enabled: true
+      integration_time_ms: 100
+      gain: 4
+      noise_std: 3.0
+
+    quality:
+      premium:
+        weight: 0.35
+        freshness:
+          min: 0.90
+          max: 1.0
+          mean: 0.95
+        fat_quality:
+          min: 0.90
+          max: 1.0
+          mean: 0.95
+        oxidation_level:
+          min: 0.0
+          max: 0.1
+          mean: 0.05
+        temperature:
+          min: 19.0
+          max: 21.0
+          mean: 20.0
+        ambient_light:
+          min: 95.0
+          max: 105.0
+          mean: 100.0
+        surface_uniformity:
+          min: 0.88
+          max: 0.98
+          mean: 0.93
+        thickness_variation:
+          min: 0.5
+          max: 2.0
+          mean: 1.0
+
+      good:
+        weight: 0.50
+        freshness:
+          min: 0.75
+          max: 0.95
+          mean: 0.85
+        fat_quality:
+          min: 0.75
+          max: 0.95
+          mean: 0.85
+        oxidation_level:
+          min: 0.05
+          max: 0.25
+          mean: 0.15
+        temperature:
+          min: 18.0
+          max: 22.0
+          mean: 20.0
+        ambient_light:
+          min: 85.0
+          max: 115.0
+          mean: 100.0
+        surface_uniformity:
+          min: 0.78
+          max: 0.92
+          mean: 0.85
+        thickness_variation:
+          min: 1.0
+          max: 3.0
+          mean: 2.0
+
+      acceptable:
+        weight: 0.15
+        freshness:
+          min: 0.60
+          max: 0.80
+          mean: 0.70
+        fat_quality:
+          min: 0.60
+          max: 0.80
+          mean: 0.70
+        oxidation_level:
+          min: 0.20
+          max: 0.40
+          mean: 0.30
+        temperature:
+          min: 17.0
+          max: 23.0
+          mean: 20.0
+        ambient_light:
+          min: 75.0
+          max: 125.0
+          mean: 100.0
+        surface_uniformity:
+          min: 0.65
+          max: 0.85
+          mean: 0.75
+        thickness_variation:
+          min: 2.5
+          max: 4.5
+          mean: 3.5
+
+      low:
+        weight: 0.00
+        freshness:
+          min: 0.45
+          max: 0.65
+          mean: 0.55
+        fat_quality:
+          min: 0.45
+          max: 0.65
+          mean: 0.55
+        oxidation_level:
+          min: 0.35
+          max: 0.55
+          mean: 0.45
+        temperature:
+          min: 16.0
+          max: 24.0
+          mean: 20.0
+        ambient_light:
+          min: 70.0
+          max: 130.0
+          mean: 100.0
+        surface_uniformity:
+          min: 0.55
+          max: 0.75
+          mean: 0.65
+        thickness_variation:
+          min: 3.5
+          max: 5.5
+          mean: 4.5
+
+      defective:
+        weight: 0.00
+        freshness:
+          min: 0.20
+          max: 0.50
+          mean: 0.35
+        fat_quality:
+          min: 0.20
+          max: 0.50
+          mean: 0.35
+        oxidation_level:
+          min: 0.50
+          max: 0.80
+          mean: 0.65
+        temperature:
+          min: 15.0
+          max: 25.0
+          mean: 20.0
+        ambient_light:
+          min: 60.0
+          max: 140.0
+          mean: 100.0
+        surface_uniformity:
+          min: 0.40
+          max: 0.60
+          mean: 0.50
+        thickness_variation:
+          min: 5.0
+          max: 7.0
+          mean: 6.0
+
+    defects: null
+
+  # --------------------------------------------------------------------------
+  # 2. Foie Gras Standard SANS Barquette
+  # --------------------------------------------------------------------------
+  foiegras_standard_seul:
+    description: "Foie gras seul 200x100mm sans barquette"
+
+    product:
+      length_mm: 200
+      width_mm: 100
+      margin_percent: 15
+      type: "normal"
+
+    container:
+      enabled: false        # Pas de barquette
+
+    sensor_vl53l8ch:
+      resolution: 8
+      height_mm: 100
+      n_bins: 128
+      bin_size_mm: 37.5
+
+    sensor_as7341:
+      enabled: true
+      integration_time_ms: 100
+      gain: 4
+      noise_std: 5.0
+
+    defects: null           # Défauts aléatoires
+
+  # --------------------------------------------------------------------------
+  # 3. Foie Gras Mi-Cuit (plus petit)
+  # --------------------------------------------------------------------------
+  foiegras_micuit:
+    description: "Foie gras mi-cuit 180x90mm dans barquette 280x160mm"
+
+    product:
+      length_mm: 180
+      width_mm: 90
+      margin_percent: 15
+      type: "normal"
+
+    container:
+      enabled: true
+      length_mm: 280
+      width_mm: 160
+      height_mm: 4
+
+    sensor_vl53l8ch:
+      resolution: 8
+      height_mm: 100
+      n_bins: 128
+      bin_size_mm: 37.5
+
+    sensor_as7341:
+      enabled: true
+      integration_time_ms: 100
+      gain: 4
+      noise_std: 5.0
+
+    defects: null
+
+  # --------------------------------------------------------------------------
+  # 4. Bloc de Foie Gras (plus compact)
+  # --------------------------------------------------------------------------
+  foiegras_bloc:
+    description: "Bloc de foie gras 150x120mm dans barquette 250x200mm"
+
+    product:
+      length_mm: 150
+      width_mm: 120
+      margin_percent: 20    # Plus de marge pour forme plus carrée
+      type: "normal"
+
+    container:
+      enabled: true
+      length_mm: 250
+      width_mm: 200
+      height_mm: 6
+
+    sensor_vl53l8ch:
+      resolution: 8
+      height_mm: 100
+      n_bins: 128
+      bin_size_mm: 37.5
+
+    sensor_as7341:
+      enabled: true
+      integration_time_ms: 100
+      gain: 4
+      noise_std: 5.0
+
+    defects: null
+
+  # --------------------------------------------------------------------------
+  # 5. Test Haute Résolution (32x32)
+  # --------------------------------------------------------------------------
+  foiegras_haute_resolution:
+    description: "Foie gras avec capteur haute résolution 32x32"
+
+    product:
+      length_mm: 200
+      width_mm: 100
+      margin_percent: 15
+      type: "normal"
+
+    container:
+      enabled: true
+      length_mm: 300
+      width_mm: 180
+      height_mm: 5
+
+    sensor_vl53l8ch:
+      resolution: 32        # Haute résolution 32x32 = 1024 zones
+      height_mm: 100
+      n_bins: 128
+      bin_size_mm: 37.5
+
+    sensor_as7341:
+      enabled: true
+      integration_time_ms: 100
+      gain: 4
+      noise_std: 5.0
+
+    defects: null
+
+  # --------------------------------------------------------------------------
+  # 6. Produit Irrégulier (pour tests qualité)
+  # --------------------------------------------------------------------------
+  foiegras_irregular:
+    description: "Foie gras de forme irrégulière avec défauts"
+
+    product:
+      length_mm: 200
+      width_mm: 100
+      margin_percent: 20    # Plus de marge pour variabilité
+      type: "irregular"     # Forme et dimensions variables
+
+    container:
+      enabled: true
+      length_mm: 300
+      width_mm: 180
+      height_mm: 5
+
+    sensor_vl53l8ch:
+      resolution: 8
+      height_mm: 100
+      n_bins: 128
+      bin_size_mm: 37.5
+
+    sensor_as7341:
+      enabled: true
+      integration_time_ms: 100
+      gain: 4
+      noise_std: 5.0
+
+    defects: null           # Défauts aléatoires variés
+
+  # --------------------------------------------------------------------------
+  # 7. Produit Défectueux (pour tests rejet)
+  # --------------------------------------------------------------------------
+  foiegras_defectueux:
+    description: "Foie gras avec défauts majeurs (test système de rejet)"
+
+    product:
+      length_mm: 200
+      width_mm: 100
+      margin_percent: 15
+      type: "defective"     # Beaucoup de défauts
+
+    container:
+      enabled: true
+      length_mm: 300
+      width_mm: 180
+      height_mm: 5
+
+    sensor_vl53l8ch:
+      resolution: 8
+      height_mm: 100
+      n_bins: 128
+      bin_size_mm: 37.5
+
+    sensor_as7341:
+      enabled: true
+      integration_time_ms: 100
+      gain: 4
+      noise_std: 5.0
+
+    defects:                # Défauts spécifiques
+      foreign_body:
+        position: [4, 4]
+        radius: 2
+        height_change: -20
+      deformation:
+        position: [6, 6]
+        radius: 3
+        depth: 15
+      edge_damage:
+        severity: 0.8
+
+# ============================================================================
+# RÉFÉRENCES MÉTIER FOIE GRAS - CONTRÔLE QUALITÉ
+# ============================================================================
+# Ces paramètres définissent les seuils et références pour l'analyse qualité
+# Source de vérité pour tous les analyseurs et le simulateur
+
+quality_references:
+  # --------------------------------------------------------------------------
+  # CONTRÔLE DIMENSIONNEL (VL53L8CH ToF)
+  # --------------------------------------------------------------------------
+  dimensional:
+    # Classification par épaisseur du lobe (produit cru)
+    thickness_categories:
+      extra:
+        min_mm: 45
+        max_mm: 60
+        description: "Extra - Lobe épais premium"
+      premier_choix:
+        min_mm: 35
+        max_mm: 45
+        description: "1er Choix - Lobe standard"
+      deuxieme_choix:
+        min_mm: 25
+        max_mm: 35
+        description: "2ème Choix - Lobe fin"
+      hors_norme:
+        min_mm: 0
+        max_mm: 25
+        description: "Hors norme - Rejet"
+    
+    # Homogénéité d'épaisseur
+    thickness_homogeneity:
+      excellent_std_mm: 3.0      # Écart-type < 3mm = excellent
+      acceptable_std_mm: 5.0     # Écart-type < 5mm = acceptable
+      irregular_std_mm: 5.0      # Écart-type > 5mm = irrégulier (pénalité)
+    
+    # Volume estimé (corrélation poids)
+    volume_weight_correlation:
+      density_g_cm3: 0.95        # Densité foie gras cru ≈ 0.95 g/cm³
+      extra_min_volume_cm3: 400  # Volume minimum pour Extra
+      premier_min_volume_cm3: 300
+      deuxieme_min_volume_cm3: 200
+    
+    # Niveau de remplissage terrine/bocal (produit fini)
+    fill_level:
+      standard_mm: 50.0          # Niveau de remplissage standard
+      tolerance_mm: 3.0          # Tolérance ±3mm
+      critical_deviation_mm: 5.0 # Écart critique (alerte)
+      min_percent: 92.0          # Minimum 92% du standard
+      max_percent: 108.0         # Maximum 108% du standard
+    
+    # Hauteur après cuisson
+    cooking_settlement:
+      max_settlement_mm: 8.0     # Tassement max acceptable
+      excessive_settlement_mm: 12.0  # Affaissement excessif (rejet)
+      normal_settlement_percent: 10.0  # Tassement normal ≈ 10%
+    
+    # Scores de conformité dimensionnelle
+    conformity_scoring:
+      extra_score: 100           # Score pour Extra
+      premier_score: 90          # Score pour 1er choix
+      deuxieme_score: 75         # Score pour 2ème choix
+      irregular_penalty: 15      # Pénalité irrégularité
+      fill_penalty: 20           # Pénalité non-conformité remplissage
+
+  # --------------------------------------------------------------------------
+  # CONTRÔLE COULEUR (AS7341 Spectral - L*a*b*)
+  # --------------------------------------------------------------------------
+  color:
+    # Références L*a*b* par type de produit
+    lab_references:
+      cru_extra:
+        L_star: 70.0             # Luminosité cru Extra
+        a_star: 5.0              # Rouge-Vert cru
+        b_star: 20.0             # Jaune-Bleu cru (beige)
+        description: "Foie gras cru Extra - Couleur beige rosé"
+      
+      cru_standard:
+        L_star: 68.0
+        a_star: 6.0
+        b_star: 18.0
+        description: "Foie gras cru Standard"
+      
+      cuit_extra:
+        L_star: 75.0             # Luminosité cuit Extra
+        a_star: 3.0              # Moins rouge après cuisson
+        b_star: 25.0             # Plus jaune après cuisson
+        description: "Foie gras cuit Extra - Couleur beige doré"
+      
+      cuit_standard:
+        L_star: 73.0
+        a_star: 4.0
+        b_star: 23.0
+        description: "Foie gras cuit Standard"
+    
+    # Plages acceptables L*a*b*
+    lab_ranges:
+      cru:
+        L_min: 65.0              # Luminosité min cru
+        L_max: 75.0              # Luminosité max cru
+        a_min: 2.0               # a* min (pas trop vert)
+        a_max: 10.0              # a* max (pas trop rouge)
+        b_min: 15.0              # b* min (beige)
+        b_max: 25.0              # b* max (pas trop jaune)
+      
+      cuit:
+        L_min: 70.0              # Luminosité min cuit
+        L_max: 80.0              # Luminosité max cuit
+        a_min: 1.0
+        a_max: 8.0
+        b_min: 20.0
+        b_max: 30.0
+    
+    # Delta E (écart couleur vs référence)
+    delta_e_thresholds:
+      excellent: 2.0             # ΔE < 2 = Excellent (imperceptible)
+      acceptable: 5.0            # ΔE < 5 = Acceptable (perceptible mais OK)
+      critical: 8.0              # ΔE > 8 = Critique (rejet)
+    
+    # Score couleur premium (0-100)
+    color_scoring:
+      delta_e_0_2: 100           # ΔE < 2 → 100 points
+      delta_e_2_5: 70            # ΔE 2-5 → 70-100 points (linéaire)
+      delta_e_5_plus: 50         # ΔE > 5 → < 70 points
+      l_star_bonus_range:        # Bonus si L* dans plage idéale
+        min: 68.0
+        max: 77.0
+        bonus: 5.0
+
+  # --------------------------------------------------------------------------
+  # DÉTECTION DÉFAUTS VISUELS (AS7341 Spectral)
+  # --------------------------------------------------------------------------
+  defects:
+    # Hématomes/Ecchymoses (zones rouges/violacées)
+    hematoma:
+      ratio_rb_threshold: 2.5    # Ratio Rouge/Bleu > 2.5 = suspect
+      severity_low: 2.5
+      severity_medium: 3.5
+      severity_high: 5.0
+      penalty_score: 20          # Pénalité score qualité
+    
+    # Traces de fiel (zones verdâtres)
+    bile_traces:
+      ratio_gr_threshold: 1.3    # Ratio Vert/Rouge > 1.3 = suspect
+      severity_low: 1.3
+      severity_medium: 1.6
+      severity_high: 2.0
+      penalty_score: 25          # Pénalité score qualité
+    
+    # Oxydation (brunissement excessif)
+    oxidation:
+      b_star_deviation_threshold: 8.0  # Écart b* > 8 = oxydation
+      severity_low: 8.0
+      severity_medium: 12.0
+      severity_high: 16.0
+      penalty_score: 15          # Pénalité score qualité
+    
+    # Vaisseaux sanguins apparents
+    blood_vessels:
+      texture_variance_threshold: 0.15  # Variance texture spectrale
+      penalty_score: 10
+    
+    # Taux de défauts global
+    defect_rate_thresholds:
+      acceptable_percent: 10.0   # < 10% défauts = acceptable
+      critical_percent: 25.0     # > 25% défauts = rejet
+
+  # --------------------------------------------------------------------------
+  # INDICATEURS FRAÎCHEUR/QUALITÉ (AS7341 Spectral)
+  # --------------------------------------------------------------------------
+  freshness:
+    # Indice d'oxydation (ratio spectral)
+    oxidation_index:
+      excellent_max: 0.1         # < 0.1 = excellent
+      acceptable_max: 0.3        # < 0.3 = acceptable
+      critical_max: 0.5          # > 0.5 = critique
+    
+    # Homogénéité chromatique (écart-type couleur)
+    chromatic_homogeneity:
+      excellent_std: 2.0         # Écart-type ΔE < 2
+      acceptable_std: 5.0        # Écart-type ΔE < 5
+      poor_std: 8.0              # Écart-type ΔE > 8
+    
+    # Score texture optique (corrélation fondant)
+    optical_texture:
+      smooth_score_min: 80.0     # Texture lisse = fondant
+      grainy_score_max: 60.0     # Texture granuleuse = moins fondant
+
+  # --------------------------------------------------------------------------
+  # SUIVI LIPIDIQUE (AS7341 NIR)
+  # --------------------------------------------------------------------------
+  lipid:
+    # Teneur en gras (via réflectance NIR)
+    fat_content:
+      extra_min_percent: 50.0    # Minimum 50% MG pour Extra
+      premier_min_percent: 45.0  # Minimum 45% MG pour 1er choix
+      deuxieme_min_percent: 40.0 # Minimum 40% MG pour 2ème choix
+      nir_calibration_slope: 0.8 # Pente calibration NIR
+      nir_calibration_intercept: 20.0
+    
+    # Corrélation fonte à la cuisson
+    melting_correlation:
+      excellent_min: 0.8         # Corrélation > 0.8 = excellent
+      acceptable_min: 0.6        # Corrélation > 0.6 = acceptable
+
+  # --------------------------------------------------------------------------
+  # KPIs GLOBAUX & ALERTES
+  # --------------------------------------------------------------------------
+  kpis:
+    # Taux de conformité
+    conformity_targets:
+      global_target_percent: 98.0      # Objectif > 98%
+      dimensional_target_percent: 99.0
+      color_target_percent: 97.0
+    
+    # Taux de déclassement acceptable
+    downgrade_thresholds:
+      acceptable_percent: 5.0    # < 5% déclassement = OK
+      critical_percent: 10.0     # > 10% déclassement = problème
+    
+    # Taux de rejet acceptable
+    reject_thresholds:
+      acceptable_percent: 2.0    # < 2% rejet = OK
+      critical_percent: 5.0      # > 5% rejet = problème
+    
+    # Cadence contrôle
+    control_cadence:
+      target_per_hour: 100       # Objectif 100 lobes/h
+      min_per_hour: 60           # Minimum 60 lobes/h
+    
+    # Alertes temps réel
+    alerts:
+      critical_color_deviation_delta_e: 8.0  # ΔE > 8
+      underfill_deviation_mm: 5.0            # Écart > 5mm
+      oxidation_trend_threshold: 0.4         # Tendance oxydation
+
+  # --------------------------------------------------------------------------
+  # TRAÇABILITÉ & CONFORMITÉ LABELS
+  # --------------------------------------------------------------------------
+  traceability:
+    # Conformité IGP (Indication Géographique Protégée)
+    igp_requirements:
+      origin_regions:
+        - "Sud-Ouest"
+        - "Alsace"
+        - "Périgord"
+      min_fat_content_percent: 50.0
+      max_oxidation_index: 0.2
+    
+    # Conformité Label Rouge
+    label_rouge_requirements:
+      min_thickness_mm: 40.0
+      min_fat_content_percent: 52.0
+      max_defect_rate_percent: 5.0
+      max_delta_e: 5.0
+
+# ============================================================================
+# PARAMÈTRES GLOBAUX (appliqués à tous les profils si non spécifiés)
+# ============================================================================
+
+global_defaults:
+  # Paramètres de simulation
+  random_seed: null         # null = aléatoire, ou nombre pour reproductibilité
+  include_bins: true        # Inclure les histogrammes ToF (plus lent)
+
+  # Paramètres bruit et réalisme
+  multi_echo_prob: 0.18     # Probabilité de multi-échos
+  reflectance_threshold: 30 # Seuil de réflectance
+  noise_factor_low_reflect: 0.06
+  noise_factor_high_reflect: 0.03
+
+# ============================================================================
+# PARAMÈTRES DE VISUALISATION
+# ============================================================================
+
+visualization:
+  # Modes 3D disponibles
+  display_modes:
+    - "height"              # Surface 3D des hauteurs
+    - "reflectance"         # Propriétés optiques
+    - "amplitude"           # Consistance du signal
+    - "texture"             # Variations de texture
+    - "density"             # Variations de densité
+    - "defects"             # Carte des défauts
+
+  # Style de rendu 3D
+  style: "surface"          # surface, wireframe, scatter, contour3d
+
+  # Options
+  show_defects: true        # Afficher marqueurs défauts
+  interpolate_surface: true # Interpoler pour surface lisse
+
+  # Colormaps par mode
+  colormaps:
+    height: "viridis"
+    reflectance: "RdYlBu_r"
+    amplitude: "plasma"
+    texture: "magma"
+    density: "cividis"
+    defects: "Reds"
+
+# ============================================================================
+# NOTES ET RECOMMANDATIONS
+# ============================================================================
+#
+# MARGES PRODUIT:
+#   - 0%  : Pas de rotation possible, produit remplit 100% de la grille
+#   - 10% : Rotation limitée (~10-15°)
+#   - 15% : Rotation standard recommandée (~20-25°) ← DÉFAUT
+#   - 20-25%: Rotation complète (45°) et désalignement important
+#
+# RÉSOLUTION CAPTEUR:
+#   - 8x8   : Standard, rapide (64 zones)
+#   - 16x16 : Moyenne résolution (256 zones)
+#   - 32x32 : Haute résolution (1024 zones), plus lent
+#
+# HAUTEUR BARQUETTE:
+#   - 3-5mm : Barquette plastique fine (standard)
+#   - 5-8mm : Barquette carton
+#   - 2-4mm : Barquette aluminium
+#
+# ============================================================================

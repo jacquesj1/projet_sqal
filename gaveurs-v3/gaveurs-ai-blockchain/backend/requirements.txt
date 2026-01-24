@@ -1,0 +1,35 @@
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+pydantic==2.6.0
+pydantic-settings==2.1.0
+asyncpg==0.29.0
+python-multipart==0.0.6
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+websockets==12.0
+redis==5.0.1
+
+# Machine Learning & IA
+pysr==0.18.1
+scikit-learn==1.4.0
+numpy==1.26.3
+pandas==2.2.0
+prophet==1.1.5
+tensorflow==2.15.0
+torch==2.1.2
+
+# SMS Service
+twilio==8.11.1
+requests==2.31.0
+
+# Blockchain
+pycryptodome==3.20.0
+# hashlib is built-in to Python, no need to install
+
+# Monitoring
+prometheus-client==0.19.0
+
+# Testing
+pytest==7.4.4
+pytest-asyncio==0.23.3
+httpx==0.26.0

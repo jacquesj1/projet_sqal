@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Système Gaveurs V3.0 - Architecture & Pipeline</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;600;700;800&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-brand">
+            <span class="logo">🦆</span>
+            <span class="brand-text">Système Gaveurs V3.0</span>
+        </div>
+        <ul class="nav-links">
+            <li><a href="index.html" class="active">Accueil</a></li>
+            <li><a href="boucle-fermee.html">Pipeline end-to-end</a></li>
+            <li><a href="sqal.html">SQAL (IoT)</a></li>
+            <li><a href="blockchain.html">Traçabilité (Blockchain)</a></li>
+            <li><a href="commercial.html">KPIs & Déploiement</a></li>
+        </ul>
+    </nav>
+
+    <!-- Hero Section -->
+    <header class="hero">
+        <div class="hero-overlay"></div>
+        <div class="hero-content">
+            <h1 class="hero-title">
+                <span class="highlight">Architecture</span> & Orchestration<br>
+                d'un pipeline end-to-end
+            </h1>
+            <p class="hero-subtitle">
+                Chaîne de traitement : <strong>Gavage</strong> → <strong>SQAL</strong> → <strong>Traçabilité</strong> → <strong>Feedback</strong>.
+                Objectif : relier les données terrain, les résultats capteurs et les événements de traçabilité à un identifiant lot.
+            </p>
+            <div class="hero-stats">
+                <div class="stat-item">
+                    <span class="stat-number">API</span>
+                    <span class="stat-label">FastAPI + TimescaleDB</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-number">WS</span>
+                    <span class="stat-label">Temps réel (gavage / capteurs)</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-number">E2E</span>
+                    <span class="stat-label">Orchestration via Control Panel</span>
+                </div>
+            </div>
+            <a href="boucle-fermee.html" class="cta-button">Voir le pipeline →</a>
+        </div>
+    </header>
+
+    <!-- Le Problème -->
+    <section class="section problem-section">
+        <div class="container">
+            <h2 class="section-title">Problèmes adressés (côté données)</h2>
+            <div class="problem-grid">
+                <div class="problem-card">
+                    <div class="problem-icon">📉</div>
+                    <h3>Variabilité Qualité</h3>
+                    <p>Hétérogénéité des résultats qualité et difficulté à relier les écarts aux événements de production.</p>
+                </div>
+                <div class="problem-card">
+                    <div class="problem-icon">🔍</div>
+                    <h3>Traçabilité Limitée</h3>
+                    <p>Absence de chaînage robuste entre lot, mesures capteurs, traçabilité et feedback consommateur.</p>
+                </div>
+                <div class="problem-card">
+                    <div class="problem-icon">⚠️</div>
+                    <h3>Mortalité Élevée</h3>
+                    <p>Signal faible détecté tard. Besoin d'alerting et de supervision (dashboard + WS).</p>
+                </div>
+                <div class="problem-card">
+                    <div class="problem-icon">📋</div>
+                    <h3>Paperasse Manuelle</h3>
+                    <p>Données terrain peu structurées, difficilement exploitables. Besoin d'un flux standardisé et versionné.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Notre Solution -->
+    <section class="section solution-section">
+        <div class="container">
+            <h2 class="section-title">Composants du système</h2>
+            <p class="section-intro">
+                Architecture modulaire qui connecte simulateurs, ingestion temps réel, calculs qualité, traçabilité et restitution front.
+            </p>
+
+            <div class="solution-pillars">
+                <div class="pillar">
+                    <div class="pillar-icon">🤖</div>
+                    <h3>Intelligence Artificielle</h3>
+                    <p>Services ML (suggestions, prédictions, alerting) consommés par les frontends.</p>
+                    <ul>
+                        <li>Courbes de gavage personnalisées</li>
+                        <li>Prédiction de mortalité J+7</li>
+                        <li>Optimisation multi-objectifs</li>
+                    </ul>
+                </div>
+                <div class="pillar featured">
+                    <div class="pillar-badge">Innovation Clé</div>
+                    <div class="pillar-icon">🔬</div>
+                    <h3>SQAL - Contrôle Qualité IoT</h3>
+                    <p>Ingestion capteurs (ToF + spectral) et scoring qualité stockés en base et exposés via API.</p>
+                    <ul>
+                        <li>Capteur ToF VL53L8CH (matrice 8×8)</li>
+                        <li>Spectromètre AS7341 (10 canaux)</li>
+                        <li>Grading automatique A+ → D</li>
+                    </ul>
+                    <a href="sqal.html" class="pillar-link">En savoir plus →</a>
+                </div>
+                <div class="pillar">
+                    <div class="pillar-icon">🔗</div>
+                    <h3>Blockchain Traçabilité</h3>
+                    <p>Ancrage (hash) et vérification : conservation d'une preuve intégrité des événements de lot.</p>
+                    <ul>
+                        <li>QR Code par lot</li>
+                        <li>Historique certifié</li>
+                        <li>Feedback consommateur</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Schéma Boucle Fermée -->
+    <section class="section loop-preview">
+        <div class="container">
+            <h2 class="section-title">Chaînage des événements (E2E)</h2>
+            <div class="loop-diagram">
+                <div class="loop-step">
+                    <div class="step-number">1</div>
+                    <div class="step-icon">👨‍🌾</div>
+                    <h4>GAVEUR</h4>
+                    <p>Saisie vocale/OCR des doses</p>
+                </div>
+                <div class="loop-arrow">→</div>
+                <div class="loop-step">
+                    <div class="step-number">2</div>
+                    <div class="step-icon">🏭</div>
+                    <h4>EURALIS</h4>
+                    <p>Supervision multi-sites</p>
+                </div>
+                <div class="loop-arrow">→</div>
+                <div class="loop-step">
+                    <div class="step-number">3</div>
+                    <div class="step-icon">🔬</div>
+                    <h4>SQAL</h4>
+                    <p>Contrôle qualité IoT</p>
+                </div>
+                <div class="loop-arrow">→</div>
+                <div class="loop-step">
+                    <div class="step-number">4</div>
+                    <div class="step-icon">📱</div>
+                    <h4>CONSOMMATEUR</h4>
+                    <p>Scan QR + Feedback</p>
+                </div>
+                <div class="loop-arrow loop-return">↩</div>
+                <div class="loop-step feedback-step">
+                    <div class="step-number">5</div>
+                    <div class="step-icon">🤖</div>
+                    <h4>IA OPTIMISATION</h4>
+                    <p>Nouvelles courbes générées</p>
+                </div>
+            </div>
+            <p class="loop-caption">
+                Objectif : propagater un identifiant lot commun et permettre l'audit du flux bout-en-bout.
+            </p>
+            <a href="boucle-fermee.html" class="cta-button secondary">Voir le détail du pipeline →</a>
+        </div>
+    </section>
+
+    <!-- Chiffres Clés -->
+    <section class="section stats-section">
+        <div class="container">
+            <h2 class="section-title">Indicateurs (exemples)</h2>
+            <div class="stats-grid">
+                <div class="big-stat">
+                    <span class="big-number">E2E</span>
+                    <span class="big-label">Lot → sample → product → QR</span>
+                    <p>Chaînage sur `code_lot`, `lot_id`, `sample_id`</p>
+                </div>
+                <div class="big-stat">
+                    <span class="big-number">WS</span>
+                    <span class="big-label">Ingestion temps réel</span>
+                    <p>Flux `ws://localhost:8000/ws/*`</p>
+                </div>
+                <div class="big-stat">
+                    <span class="big-number">API</span>
+                    <span class="big-label">Endpoints de contrôle</span>
+                    <p>`/api/control/*`, `/api/consumer/*`</p>
+                </div>
+                <div class="big-stat">
+                    <span class="big-number">DB</span>
+                    <span class="big-label">TimescaleDB/PostgreSQL</span>
+                    <p>Tables lots, samples SQAL, consumer products</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- CTA Final -->
+    <section class="section cta-section">
+        <div class="container">
+            <h2>Exécuter le scénario E2E</h2>
+            <p>Runbook et liens vers les composants (frontends, API, simulateurs).</p>
+            <div class="cta-buttons">
+                <a href="boucle-fermee.html" class="cta-button">Pipeline end-to-end</a>
+                <a href="sqal.html" class="cta-button secondary">SQAL (IoT)</a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-brand">
+                    <span class="logo">🦆</span>
+                    <span>Système Gaveurs V3.0</span>
+                </div>
+                <p>Architecture: ML + IoT + Traceability + Blockchain proof</p>
+                <p class="copyright">© 2024 - Projet Euralis Gaveurs</p>
+            </div>
+        </div>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+</html>

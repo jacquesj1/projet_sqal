@@ -1,0 +1,3 @@
+# API Docker Control - Dépendances Python
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0

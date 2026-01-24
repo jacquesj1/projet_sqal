@@ -1,0 +1,706 @@
+"""
+Service Layer pour SQAL - Opérations base de données TimescaleDB
+"""
+
+import asyncpg
+import json
+from typing import List, Optional, Dict, Any
+from datetime import datetime, timedelta
+import logging
+
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy import desc, select
+
+from app.models.sqal import (
+    SensorDataMessage,
+    AlertCreate,
+    SensorSampleDB,
+    DeviceDB,
+    HourlyStatsDB,
+    SiteStatsDB,
+    AlertDB
+)
+
+from app.db.sqlalchemy import AsyncSessionLocal
+from app.db.models.sensor_sample import SensorSample
+
+logger = logging.getLogger(__name__)
+
+
+class SQALService:
+    """
+    Service pour opérations SQAL sur TimescaleDB
+
+    Méthodes:
+    - save_sensor_sample: Sauvegarde échantillon capteur
+    - create_alert: Crée une alerte
+    - get_latest_sample: Récupère dernier échantillon
+    - get_device_stats: Statistiques par dispositif
+    - get_site_stats: Statistiques par site
+    """
+
+    def __init__(self):
+        self.pool: Optional[asyncpg.Pool] = None
+
+    async def init_pool(self, database_url: str):
+        """Initialise le pool de connexions PostgreSQL"""
+        self.pool = await asyncpg.create_pool(database_url, min_size=2, max_size=10)
+        logger.info("Pool de connexions SQAL initialisé")
+
+    async def close_pool(self):
+        """Ferme le pool de connexions"""
+        if self.pool:
+            await self.pool.close()
+            logger.info("Pool de connexions SQAL fermé")
+
+    async def save_sensor_sample(self, sensor_data: SensorDataMessage) -> bool:
+        """
+        Sauvegarde un échantillon capteur dans sqal_sensor_samples
+
+        Args:
+            sensor_data: Données capteur validées
+
+        Returns:
+            True si sauvegarde réussie, False sinon
+        """
+        try:
+            async with self.pool.acquire() as conn:
+                # Convertit matrices 8x8 en JSONB
+                distance_json = json.dumps(sensor_data.vl53l8ch.raw.distance_matrix)
+                reflectance_json = json.dumps(sensor_data.vl53l8ch.raw.reflectance_matrix)
+                amplitude_json = json.dumps(sensor_data.vl53l8ch.raw.amplitude_matrix)
+
+                # Convertit channels en JSONB (raw peut être dict ou AS7341RawData)
+                if isinstance(sensor_data.as7341.raw, dict):
+                    channels_json = json.dumps(sensor_data.as7341.raw)
+                else:
+                    channels_json = json.dumps(sensor_data.as7341.raw.to_dict())
+
+                # Extract grades
+                vl53_grade = str(sensor_data.vl53l8ch.analysis.grade.value) if hasattr(sensor_data.vl53l8ch.analysis.grade, 'value') else str(sensor_data.vl53l8ch.analysis.grade)
+                fusion_grade = str(sensor_data.fusion.final_grade.value) if hasattr(sensor_data.fusion.final_grade, 'value') else str(sensor_data.fusion.final_grade)
+
+                await conn.execute(
+                    """
+                    INSERT INTO sqal_sensor_samples (
+                        time, sample_id, device_id, lot_id,
+                        vl53l8ch_distance_matrix, vl53l8ch_reflectance_matrix, vl53l8ch_amplitude_matrix,
+                        vl53l8ch_volume_mm3, vl53l8ch_surface_uniformity, vl53l8ch_quality_score, vl53l8ch_grade,
+                        as7341_channels, as7341_freshness_index, as7341_fat_quality_index,
+                        as7341_oxidation_index, as7341_quality_score,
+                        fusion_final_score, fusion_final_grade, fusion_is_compliant
+                    )
+                    VALUES (
+                        $1, $2, $3, $4,
+                        $5, $6, $7,
+                        $8, $9, $10, $11,
+                        $12, $13, $14, $15, $16,
+                        $17, $18, $19
+                    )
+                    """,
+                    sensor_data.timestamp,
+                    sensor_data.sample_id,
+                    sensor_data.device_id,
+                    sensor_data.lot_id,
+                    distance_json,
+                    reflectance_json,
+                    amplitude_json,
+                    sensor_data.vl53l8ch.analysis.volume_mm3,
+                    sensor_data.vl53l8ch.analysis.surface_uniformity,
+                    sensor_data.vl53l8ch.analysis.quality_score,
+                    vl53_grade,
+                    channels_json,
+                    sensor_data.as7341.analysis.freshness_index,
+                    sensor_data.as7341.analysis.fat_quality_index,
+                    sensor_data.as7341.analysis.oxidation_index,
+                    sensor_data.as7341.analysis.quality_score,
+                    sensor_data.fusion.final_score,
+                    fusion_grade,
+                    sensor_data.fusion.is_compliant
+                )
+
+                try:
+                    async with AsyncSessionLocal() as session:
+                        sample = SensorSample(
+                            timestamp=sensor_data.timestamp,
+                            device_id=sensor_data.device_id,
+                            sample_id=sensor_data.sample_id,
+                            lot_id=sensor_data.lot_id,
+                            vl53l8ch_distance_matrix=sensor_data.vl53l8ch.raw.distance_matrix,
+                            vl53l8ch_reflectance_matrix=sensor_data.vl53l8ch.raw.reflectance_matrix,
+                            vl53l8ch_amplitude_matrix=sensor_data.vl53l8ch.raw.amplitude_matrix,
+                            vl53l8ch_volume_mm3=sensor_data.vl53l8ch.analysis.volume_mm3,
+                            vl53l8ch_surface_uniformity=sensor_data.vl53l8ch.analysis.surface_uniformity,
+                            vl53l8ch_quality_score=sensor_data.vl53l8ch.analysis.quality_score,
+                            vl53l8ch_grade=vl53_grade,
+                            as7341_channels=(sensor_data.as7341.raw if isinstance(sensor_data.as7341.raw, dict) else sensor_data.as7341.raw.to_dict()),
+                            as7341_freshness_index=sensor_data.as7341.analysis.freshness_index,
+                            as7341_fat_quality_index=sensor_data.as7341.analysis.fat_quality_index,
+                            as7341_oxidation_index=sensor_data.as7341.analysis.oxidation_index,
+                            as7341_quality_score=sensor_data.as7341.analysis.quality_score,
+                            fusion_final_score=sensor_data.fusion.final_score,
+                            fusion_final_grade=fusion_grade,
+                            created_at=datetime.utcnow(),
+                        )
+
+                        session.add(sample)
+                        await session.commit()
+
+                except IntegrityError:
+                    logger.info(f"ORM sensor_samples: sample_id already exists ({sensor_data.sample_id})")
+                except Exception as e:
+                    logger.warning(f"ORM sensor_samples insert failed: {e}")
+
+                # Met à jour last_seen du device
+                await conn.execute(
+                    """
+                    UPDATE sqal_devices
+                    SET last_seen = $1
+                    WHERE device_id = $2
+                    """,
+                    sensor_data.timestamp,
+                    sensor_data.device_id
+                )
+
+                logger.debug(f"✅ Échantillon sauvegardé: {sensor_data.sample_id}")
+                return True
+
+        except Exception as e:
+            logger.error(f"❌ Erreur sauvegarde échantillon: {e}", exc_info=True)
+            return False
+
+    async def create_alert(self, alert: AlertCreate) -> Optional[int]:
+        """
+        Crée une alerte dans sqal_alerts
+
+        Args:
+            alert: Données d'alerte
+
+        Returns:
+            ID de l'alerte créée, ou None si échec
+        """
+        try:
+            async with self.pool.acquire() as conn:
+                data_context_json = json.dumps(alert.data_context) if alert.data_context else None
+
+                alert_id = await conn.fetchval(
+                    """
+                    INSERT INTO sqal_alerts (
+                        time, device_id, sample_id, alert_type, severity, message, data_context
+                    )
+                    VALUES ($1, $2, $3, $4, $5, $6, $7)
+                    RETURNING alert_id
+                    """,
+                    datetime.utcnow(),
+                    alert.device_id,
+                    alert.sample_id,
+                    alert.alert_type,
+                    alert.severity,
+                    alert.message,
+                    data_context_json
+                )
+
+                logger.info(f"🚨 Alerte créée: {alert_id} - {alert.alert_type}")
+                return alert_id
+
+        except Exception as e:
+            logger.error(f"❌ Erreur création alerte: {e}", exc_info=True)
+            return None
+
+    async def get_latest_sample(self, device_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """
+        Récupère le dernier échantillon
+
+        Args:
+            device_id: Filtrer par device (optionnel)
+
+        Returns:
+            Dictionnaire avec données échantillon, ou None
+        """
+        try:
+            try:
+                async with AsyncSessionLocal() as session:
+                    stmt = select(SensorSample).order_by(desc(SensorSample.timestamp)).limit(1)
+                    if device_id:
+                        stmt = stmt.where(SensorSample.device_id == device_id)
+
+                    sample = await session.scalar(stmt)
+
+                    if sample:
+                        logger.debug("get_latest_sample: ORM sensor_samples")
+                        return {
+                            "time": sample.timestamp,
+                            "sample_id": sample.sample_id,
+                            "device_id": sample.device_id,
+                            "lot_id": sample.lot_id,
+                            "vl53l8ch_distance_matrix": sample.vl53l8ch_distance_matrix,
+                            "vl53l8ch_reflectance_matrix": sample.vl53l8ch_reflectance_matrix,
+                            "vl53l8ch_amplitude_matrix": sample.vl53l8ch_amplitude_matrix,
+                            "vl53l8ch_integration_time": None,
+                            "vl53l8ch_temperature_c": None,
+                            "vl53l8ch_volume_mm3": sample.vl53l8ch_volume_mm3,
+                            "vl53l8ch_avg_height_mm": sample.vl53l8ch_avg_height_mm,
+                            "vl53l8ch_max_height_mm": sample.vl53l8ch_max_height_mm,
+                            "vl53l8ch_min_height_mm": sample.vl53l8ch_min_height_mm,
+                            "vl53l8ch_surface_uniformity": sample.vl53l8ch_surface_uniformity,
+                            "vl53l8ch_bins_analysis": sample.vl53l8ch_bins_analysis,
+                            "vl53l8ch_reflectance_analysis": sample.vl53l8ch_reflectance_analysis,
+                            "vl53l8ch_amplitude_consistency": sample.vl53l8ch_amplitude_consistency,
+                            "vl53l8ch_quality_score": sample.vl53l8ch_quality_score,
+                            "vl53l8ch_grade": sample.vl53l8ch_grade,
+                            "vl53l8ch_score_breakdown": sample.vl53l8ch_score_breakdown,
+                            "vl53l8ch_defects": sample.vl53l8ch_defects,
+                            "as7341_channels": sample.as7341_channels,
+                            "as7341_integration_time": sample.as7341_integration_time,
+                            "as7341_gain": sample.as7341_gain,
+                            "as7341_freshness_index": sample.as7341_freshness_index,
+                            "as7341_fat_quality_index": sample.as7341_fat_quality_index,
+                            "as7341_oxidation_index": sample.as7341_oxidation_index,
+                            "as7341_spectral_analysis": sample.as7341_spectral_analysis,
+                            "as7341_color_analysis": sample.as7341_color_analysis,
+                            "as7341_quality_score": sample.as7341_quality_score,
+                            "as7341_grade": sample.as7341_grade,
+                            "as7341_score_breakdown": sample.as7341_score_breakdown,
+                            "as7341_defects": sample.as7341_defects,
+                            "fusion_final_score": sample.fusion_final_score,
+                            "fusion_final_grade": sample.fusion_final_grade,
+                            "fusion_vl53l8ch_score": sample.fusion_vl53l8ch_score,
+                            "fusion_as7341_score": sample.fusion_as7341_score,
+                            "fusion_defects": sample.fusion_defects,
+                            "fusion_is_compliant": (sample.fusion_final_grade != "REJECT") if sample.fusion_final_grade else None,
+                            "meta_firmware_version": sample.meta_firmware_version,
+                            "meta_temperature_c": sample.meta_temperature_c,
+                            "meta_humidity_percent": sample.meta_humidity_percent,
+                            "meta_config_profile": sample.meta_config_profile,
+                            "created_at": sample.created_at,
+                            "poids_foie_estime_g": None,
+                        }
+
+            except Exception as e:
+                logger.warning(f"ORM sensor_samples read failed: {e}")
+
+            async with self.pool.acquire() as conn:
+                logger.debug("get_latest_sample: legacy sqal_sensor_samples")
+                if device_id:
+                    row = await conn.fetchrow(
+                        """
+                        SELECT * FROM sqal_sensor_samples
+                        WHERE device_id = $1
+                        ORDER BY time DESC
+                        LIMIT 1
+                        """,
+                        device_id
+                    )
+                else:
+                    row = await conn.fetchrow(
+                        """
+                        SELECT * FROM sqal_sensor_samples
+                        ORDER BY time DESC
+                        LIMIT 1
+                        """
+                    )
+
+                if row:
+                    return dict(row)
+                return None
+
+        except Exception as e:
+            logger.error(f"❌ Erreur récupération dernier échantillon: {e}")
+            return None
+
+    async def get_samples_period(
+        self,
+        start_time: datetime,
+        end_time: datetime,
+        device_id: Optional[str] = None,
+        limit: int = 1000
+    ) -> List[Dict[str, Any]]:
+        """
+        Récupère les échantillons sur une période
+
+        Args:
+            start_time: Début période
+            end_time: Fin période
+            device_id: Filtrer par device (optionnel)
+            limit: Nombre max résultats
+
+        Returns:
+            Liste de dictionnaires
+        """
+        try:
+            try:
+                async with AsyncSessionLocal() as session:
+                    stmt = (
+                        select(SensorSample)
+                        .where(SensorSample.timestamp.between(start_time, end_time))
+                        .order_by(desc(SensorSample.timestamp))
+                        .limit(limit)
+                    )
+                    if device_id:
+                        stmt = stmt.where(SensorSample.device_id == device_id)
+
+                    samples = (await session.scalars(stmt)).all()
+
+                    if samples:
+                        logger.debug("get_samples_period: ORM sensor_samples")
+                        results: List[Dict[str, Any]] = []
+                        for sample in samples:
+                            results.append(
+                                {
+                                    "time": sample.timestamp,
+                                    "sample_id": sample.sample_id,
+                                    "device_id": sample.device_id,
+                                    "lot_id": sample.lot_id,
+                                    "vl53l8ch_distance_matrix": sample.vl53l8ch_distance_matrix,
+                                    "vl53l8ch_reflectance_matrix": sample.vl53l8ch_reflectance_matrix,
+                                    "vl53l8ch_amplitude_matrix": sample.vl53l8ch_amplitude_matrix,
+                                    "vl53l8ch_integration_time": None,
+                                    "vl53l8ch_temperature_c": None,
+                                    "vl53l8ch_volume_mm3": sample.vl53l8ch_volume_mm3,
+                                    "vl53l8ch_avg_height_mm": sample.vl53l8ch_avg_height_mm,
+                                    "vl53l8ch_max_height_mm": sample.vl53l8ch_max_height_mm,
+                                    "vl53l8ch_min_height_mm": sample.vl53l8ch_min_height_mm,
+                                    "vl53l8ch_surface_uniformity": sample.vl53l8ch_surface_uniformity,
+                                    "vl53l8ch_bins_analysis": sample.vl53l8ch_bins_analysis,
+                                    "vl53l8ch_reflectance_analysis": sample.vl53l8ch_reflectance_analysis,
+                                    "vl53l8ch_amplitude_consistency": sample.vl53l8ch_amplitude_consistency,
+                                    "vl53l8ch_quality_score": sample.vl53l8ch_quality_score,
+                                    "vl53l8ch_grade": sample.vl53l8ch_grade,
+                                    "vl53l8ch_score_breakdown": sample.vl53l8ch_score_breakdown,
+                                    "vl53l8ch_defects": sample.vl53l8ch_defects,
+                                    "as7341_channels": sample.as7341_channels,
+                                    "as7341_integration_time": sample.as7341_integration_time,
+                                    "as7341_gain": sample.as7341_gain,
+                                    "as7341_freshness_index": sample.as7341_freshness_index,
+                                    "as7341_fat_quality_index": sample.as7341_fat_quality_index,
+                                    "as7341_oxidation_index": sample.as7341_oxidation_index,
+                                    "as7341_spectral_analysis": sample.as7341_spectral_analysis,
+                                    "as7341_color_analysis": sample.as7341_color_analysis,
+                                    "as7341_quality_score": sample.as7341_quality_score,
+                                    "as7341_grade": sample.as7341_grade,
+                                    "as7341_score_breakdown": sample.as7341_score_breakdown,
+                                    "as7341_defects": sample.as7341_defects,
+                                    "fusion_final_score": sample.fusion_final_score,
+                                    "fusion_final_grade": sample.fusion_final_grade,
+                                    "fusion_vl53l8ch_score": sample.fusion_vl53l8ch_score,
+                                    "fusion_as7341_score": sample.fusion_as7341_score,
+                                    "fusion_defects": sample.fusion_defects,
+                                    "fusion_is_compliant": (sample.fusion_final_grade != "REJECT") if sample.fusion_final_grade else None,
+                                    "meta_firmware_version": sample.meta_firmware_version,
+                                    "meta_temperature_c": sample.meta_temperature_c,
+                                    "meta_humidity_percent": sample.meta_humidity_percent,
+                                    "meta_config_profile": sample.meta_config_profile,
+                                    "created_at": sample.created_at,
+                                    "poids_foie_estime_g": None,
+                                }
+                            )
+
+                        return results
+
+            except Exception as e:
+                logger.warning(f"ORM sensor_samples read failed: {e}")
+
+            async with self.pool.acquire() as conn:
+                logger.debug("get_samples_period: legacy sqal_sensor_samples")
+                if device_id:
+                    rows = await conn.fetch(
+                        """
+                        SELECT * FROM sqal_sensor_samples
+                        WHERE time BETWEEN $1 AND $2
+                          AND device_id = $3
+                        ORDER BY time DESC
+                        LIMIT $4
+                        """,
+                        start_time,
+                        end_time,
+                        device_id,
+                        limit
+                    )
+                else:
+                    rows = await conn.fetch(
+                        """
+                        SELECT * FROM sqal_sensor_samples
+                        WHERE time BETWEEN $1 AND $2
+                        ORDER BY time DESC
+                        LIMIT $3
+                        """,
+                        start_time,
+                        end_time,
+                        limit
+                    )
+
+                return [dict(row) for row in rows]
+
+        except Exception as e:
+            logger.error(f"❌ Erreur récupération échantillons période: {e}")
+            return []
+
+    async def get_hourly_stats(
+        self,
+        start_time: datetime,
+        end_time: datetime,
+        device_id: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Récupère les statistiques horaires
+
+        Args:
+            start_time: Début période
+            end_time: Fin période
+            device_id: Filtrer par device (optionnel)
+
+        Returns:
+            Liste de statistiques horaires
+        """
+        try:
+            async with self.pool.acquire() as conn:
+                if device_id:
+                    rows = await conn.fetch(
+                        """
+                        SELECT * FROM sqal_hourly_stats
+                        WHERE bucket BETWEEN $1 AND $2
+                          AND device_id = $3
+                        ORDER BY bucket DESC
+                        """,
+                        start_time,
+                        end_time,
+                        device_id
+                    )
+                else:
+                    rows = await conn.fetch(
+                        """
+                        SELECT * FROM sqal_hourly_stats
+                        WHERE bucket BETWEEN $1 AND $2
+                        ORDER BY bucket DESC
+                        """,
+                        start_time,
+                        end_time
+                    )
+
+                return [dict(row) for row in rows]
+
+        except Exception as e:
+            logger.error(f"❌ Erreur récupération stats horaires: {e}")
+            return []
+
+    async def get_site_stats(
+        self,
+        start_time: datetime,
+        end_time: datetime,
+        site_code: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Récupère les statistiques par site
+
+        Args:
+            start_time: Début période
+            end_time: Fin période
+            site_code: Filtrer par site (LL/LS/MT) (optionnel)
+
+        Returns:
+            Liste de statistiques par site
+        """
+        try:
+            async with self.pool.acquire() as conn:
+                if site_code:
+                    rows = await conn.fetch(
+                        """
+                        SELECT * FROM sqal_site_stats
+                        WHERE bucket BETWEEN $1 AND $2
+                          AND site_code = $3
+                        ORDER BY bucket DESC
+                        """,
+                        start_time,
+                        end_time,
+                        site_code
+                    )
+                else:
+                    rows = await conn.fetch(
+                        """
+                        SELECT * FROM sqal_site_stats
+                        WHERE bucket BETWEEN $1 AND $2
+                        ORDER BY bucket DESC, site_code
+                        """,
+                        start_time,
+                        end_time
+                    )
+
+                return [dict(row) for row in rows]
+
+        except Exception as e:
+            logger.error(f"❌ Erreur récupération stats sites: {e}")
+            return []
+
+    async def get_devices(self, site_code: Optional[str] = None) -> List[DeviceDB]:
+        """
+        Récupère la liste des dispositifs
+
+        Args:
+            site_code: Filtrer par site (optionnel)
+
+        Returns:
+            Liste de DeviceDB
+        """
+        try:
+            async with self.pool.acquire() as conn:
+                if site_code:
+                    rows = await conn.fetch(
+                        """
+                        SELECT * FROM sqal_devices
+                        WHERE site_code = $1
+                        ORDER BY device_name
+                        """,
+                        site_code
+                    )
+                else:
+                    rows = await conn.fetch(
+                        """
+                        SELECT * FROM sqal_devices
+                        ORDER BY device_name
+                        """
+                    )
+
+                return [DeviceDB(**dict(row)) for row in rows]
+
+        except Exception as e:
+            logger.error(f"❌ Erreur récupération devices: {e}")
+            return []
+
+    async def get_alerts(
+        self,
+        start_time: Optional[datetime] = None,
+        end_time: Optional[datetime] = None,
+        severity: Optional[str] = None,
+        is_acknowledged: Optional[bool] = None,
+        limit: int = 100
+    ) -> List[AlertDB]:
+        """
+        Récupère les alertes avec filtres
+
+        Args:
+            start_time: Début période (optionnel, défaut: 24h)
+            end_time: Fin période (optionnel, défaut: maintenant)
+            severity: Filtrer par sévérité (optionnel)
+            is_acknowledged: Filtrer par statut acquittement (optionnel)
+            limit: Nombre max résultats
+
+        Returns:
+            Liste de AlertDB
+        """
+        try:
+            if not end_time:
+                end_time = datetime.utcnow()
+            if not start_time:
+                start_time = end_time - timedelta(days=1)
+
+            async with self.pool.acquire() as conn:
+                query = "SELECT * FROM sqal_alerts WHERE time BETWEEN $1 AND $2"
+                params = [start_time, end_time]
+                param_idx = 3
+
+                if severity:
+                    query += f" AND severity = ${param_idx}"
+                    params.append(severity)
+                    param_idx += 1
+
+                if is_acknowledged is not None:
+                    query += f" AND is_acknowledged = ${param_idx}"
+                    params.append(is_acknowledged)
+                    param_idx += 1
+
+                query += f" ORDER BY time DESC LIMIT ${param_idx}"
+                params.append(limit)
+
+                rows = await conn.fetch(query, *params)
+                return [AlertDB(**dict(row)) for row in rows]
+
+        except Exception as e:
+            logger.error(f"❌ Erreur récupération alertes: {e}")
+            return []
+
+    async def acknowledge_alert(self, alert_id: int, acknowledged_by: str) -> bool:
+        """
+        Acquitte une alerte
+
+        Args:
+            alert_id: ID de l'alerte
+            acknowledged_by: Utilisateur acquittant
+
+        Returns:
+            True si succès, False sinon
+        """
+        try:
+            async with self.pool.acquire() as conn:
+                await conn.execute(
+                    """
+                    UPDATE sqal_alerts
+                    SET is_acknowledged = TRUE,
+                        acknowledged_at = $1,
+                        acknowledged_by = $2
+                    WHERE alert_id = $3
+                    """,
+                    datetime.utcnow(),
+                    acknowledged_by,
+                    alert_id
+                )
+                logger.info(f"✅ Alerte {alert_id} acquittée par {acknowledged_by}")
+                return True
+
+        except Exception as e:
+            logger.error(f"❌ Erreur acquittement alerte: {e}")
+            return False
+
+    async def get_grade_distribution(
+        self,
+        start_time: datetime,
+        end_time: datetime,
+        site_code: Optional[str] = None
+    ) -> Dict[str, int]:
+        """
+        Récupère la distribution des grades sur une période
+
+        Args:
+            start_time: Début période
+            end_time: Fin période
+            site_code: Filtrer par site (optionnel)
+
+        Returns:
+            Dictionnaire {grade: count}
+        """
+        try:
+            async with self.pool.acquire() as conn:
+                if site_code:
+                    rows = await conn.fetch(
+                        """
+                        SELECT fusion_final_grade, COUNT(*) as count
+                        FROM sqal_sensor_samples s
+                        JOIN sqal_devices d ON s.device_id = d.device_id
+                        WHERE s.time BETWEEN $1 AND $2
+                          AND d.site_code = $3
+                        GROUP BY fusion_final_grade
+                        """,
+                        start_time,
+                        end_time,
+                        site_code
+                    )
+                else:
+                    rows = await conn.fetch(
+                        """
+                        SELECT fusion_final_grade, COUNT(*) as count
+                        FROM sqal_sensor_samples
+                        WHERE time BETWEEN $1 AND $2
+                        GROUP BY fusion_final_grade
+                        """,
+                        start_time,
+                        end_time
+                    )
+
+                return {row["fusion_final_grade"]: row["count"] for row in rows}
+
+        except Exception as e:
+            logger.error(f"❌ Erreur distribution grades: {e}")
+            return {}
+
+
+# Instance globale (singleton)
+sqal_service = SQALService()

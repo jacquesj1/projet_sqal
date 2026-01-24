@@ -1,0 +1,138 @@
+# ==============================================================================
+# Multi-Stage Production Dockerfile - Backend API
+# ==============================================================================
+# Stage 1: Build stage with compilation dependencies
+# Stage 2: Runtime stage with minimal dependencies
+# ==============================================================================
+
+# ==============================================================================
+# Stage 1: Builder
+# ==============================================================================
+FROM python:3.11-slim AS builder
+
+# Build arguments
+ARG BUILD_DATE
+ARG VERSION=3.0.0
+
+# Metadata
+LABEL maintainer="A Deep Adventure <contact@adeep.fr>" \
+      description="Système Gaveurs V3.0 - Backend FastAPI Production" \
+      version="${VERSION}" \
+      build-date="${BUILD_DATE}"
+
+# Environment variables for build
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    DEBIAN_FRONTEND=noninteractive
+
+# Install system dependencies for compilation
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    g++ \
+    gfortran \
+    libopenblas-dev \
+    liblapack-dev \
+    git \
+    curl \
+    wget \
+    build-essential \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Julia (required for PySR)
+RUN curl -fsSL https://install.julialang.org | sh -s -- -y
+ENV PATH="/root/.juliaup/bin:${PATH}"
+
+# Install Julia SymbolicRegression package
+RUN julia -e 'using Pkg; Pkg.add("SymbolicRegression"); Pkg.precompile()'
+
+# Create virtual environment
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Copy and install Python dependencies
+WORKDIR /build
+COPY requirements.txt .
+RUN pip install --upgrade pip setuptools wheel && \
+    pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir gunicorn
+
+# ==============================================================================
+# Stage 2: Runtime
+# ==============================================================================
+FROM python:3.11-slim AS runtime
+
+# Build arguments
+ARG BUILD_DATE
+ARG VERSION=3.0.0
+
+# Metadata
+LABEL maintainer="A Deep Adventure <contact@adeep.fr>" \
+      description="Système Gaveurs V3.0 - Backend FastAPI Production Runtime" \
+      version="${VERSION}" \
+      build-date="${BUILD_DATE}"
+
+# Environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PATH="/opt/venv/bin:${PATH}" \
+    JULIA_DEPOT_PATH="/opt/julia" \
+    APP_ENV=production
+
+# Install minimal runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    wget \
+    libpq5 \
+    libopenblas0 \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Copy Julia from builder
+COPY --from=builder /root/.juliaup /root/.juliaup
+ENV PATH="/root/.juliaup/bin:${PATH}"
+
+# Copy virtual environment from builder
+COPY --from=builder /opt/venv /opt/venv
+
+# Create non-root user
+RUN groupadd -r -g 1000 appuser && \
+    useradd -r -u 1000 -g appuser -m -s /bin/bash appuser && \
+    mkdir -p /app /app/logs /app/cache && \
+    chown -R appuser:appuser /app
+
+# Set working directory
+WORKDIR /app
+
+# Copy application code
+COPY --chown=appuser:appuser ./app /app/app
+
+# Create necessary directories
+RUN mkdir -p /app/logs /app/cache && \
+    chown -R appuser:appuser /app/logs /app/cache
+
+# Switch to non-root user
+USER appuser
+
+# Expose ports
+EXPOSE 8000 9100
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+# Run with Gunicorn
+CMD ["gunicorn", "app.main:app", \
+     "--worker-class", "uvicorn.workers.UvicornWorker", \
+     "--workers", "4", \
+     "--bind", "0.0.0.0:8000", \
+     "--timeout", "120", \
+     "--keepalive", "5", \
+     "--max-requests", "1000", \
+     "--max-requests-jitter", "100", \
+     "--access-logfile", "/app/logs/access.log", \
+     "--error-logfile", "/app/logs/error.log", \
+     "--log-level", "info"]

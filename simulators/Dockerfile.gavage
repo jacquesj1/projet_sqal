@@ -1,0 +1,39 @@
+# Dockerfile pour Simulateur Gavage
+# ==================================
+# Génère des données réalistes de gavage
+#
+# Build: docker build -f Dockerfile.gavage -t gaveurs-simulator-gavage:latest .
+# Run:   docker run gaveurs-simulator-gavage --nb-lots 100 --output /data/output.csv
+
+FROM python:3.11-slim
+
+LABEL maintainer="Euralis Multi-Sites"
+LABEL description="Simulateur de données de gavage réaliste"
+LABEL version="3.0.0"
+
+# Variables d'environnement
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# Répertoire de travail
+WORKDIR /app
+
+# Copier les dépendances depuis le répertoire simulators
+# Le context de build est la racine du projet (.) donc on utilise simulators/
+COPY simulators/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copier le code source du simulateur gavage
+COPY simulators/gavage/ /app/gavage/
+
+# Créer répertoire de sortie
+RUN mkdir -p /data
+
+# Note: Le répertoire Simulator/ est monté en volume dans docker-compose.yml
+# et sera disponible à /app/simulator_original au runtime
+
+# Point d'entrée
+WORKDIR /app/gavage
+CMD ["python", "main.py", "--output", "/data/simulated_gavage_data.csv"]

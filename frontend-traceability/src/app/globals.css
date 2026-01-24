@@ -1,0 +1,190 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 142 71% 45%;
+    --primary-foreground: 355.7 100% 97.3%;
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222.2 84% 4.9%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96%;
+    --accent-foreground: 222.2 84% 4.9%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 142 71% 45%;
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 142 71% 45%;
+    --primary-foreground: 222.2 84% 4.9%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 142 71% 45%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-gray-200;
+  }
+  
+  body {
+    @apply bg-background text-foreground;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-display;
+  }
+  
+  .font-display {
+    font-family: var(--font-poppins);
+  }
+}
+
+@layer components {
+  /* Scanner Components */
+  .qr-scanner-container {
+    @apply relative overflow-hidden rounded-xl border-4 border-white shadow-2xl;
+  }
+  
+  .qr-scanner-overlay {
+    @apply absolute inset-0 border-2 border-primary-500 bg-black bg-opacity-30;
+  }
+  
+  .qr-scanner-corners {
+    @apply absolute inset-4;
+  }
+  
+  .qr-scanner-corners::before,
+  .qr-scanner-corners::after {
+    @apply absolute h-8 w-8 border-4 border-primary-500 content-[''];
+  }
+  
+  .qr-scanner-corners::before {
+    @apply top-0 left-0 border-r-0 border-b-0;
+  }
+  
+  .qr-scanner-corners::after {
+    @apply bottom-0 right-0 border-l-0 border-t-0;
+  }
+  
+  .scan-line {
+    @apply absolute left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-primary-500 to-transparent animate-scan-line;
+  }
+  
+  /* Quality Indicators */
+  .quality-excellent {
+    @apply bg-green-100 text-green-800 border-green-300;
+  }
+  
+  .quality-good {
+    @apply bg-yellow-100 text-yellow-800 border-yellow-300;
+  }
+  
+  .quality-poor {
+    @apply bg-red-100 text-red-800 border-red-300;
+  }
+  
+  /* Traceability Chain */
+  .trace-step {
+    @apply relative bg-white rounded-lg shadow-md p-6 border-l-4;
+  }
+  
+  .trace-step-active {
+    @apply border-primary-500 bg-primary-50;
+  }
+  
+  .trace-step-completed {
+    @apply border-green-500 bg-green-50;
+  }
+  
+  .trace-step-pending {
+    @apply border-gray-300 bg-gray-50;
+  }
+  
+  /* Animations */
+  .animate-fade-in-up {
+    @apply animate-slide-up;
+  }
+  
+  .hero-gradient {
+    @apply bg-gradient-to-br from-primary-50 via-white to-primary-100;
+  }
+  
+  .hero-text-gradient {
+    @apply bg-gradient-to-r from-primary-600 to-primary-500 bg-clip-text text-transparent;
+  }
+  
+  /* Mobile Optimizations */
+  @media (max-width: 640px) {
+    .qr-scanner-container {
+      @apply mx-4 aspect-square;
+    }
+  }
+  
+  /* Loading States */
+  .skeleton {
+    @apply bg-gray-200 animate-pulse rounded;
+  }
+  
+  .loading-dots::after {
+    @apply animate-pulse content-['...'];
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Print Styles */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+}

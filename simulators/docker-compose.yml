@@ -1,0 +1,80 @@
+version: '3.8'
+
+services:
+  # Simulateur Gavage - Données métier
+  simulator-gavage:
+    build:
+      context: ..
+      dockerfile: simulators/Dockerfile.gavage
+    container_name: gaveurs-simulator-gavage
+    volumes:
+      - ./data:/data
+      - ../Simulator:/app/simulator_original:ro
+    environment:
+      - TZ=Europe/Paris
+    command: >
+      python main.py
+      --nb-lots 100
+      --nb-gaveurs 65
+      --output /data/simulated_gavage_data.csv
+      --start-date 2024-01-01
+    restart: "no"
+    networks:
+      - gaveurs-network
+
+  # Simulateur SQAL - Capteurs IoT
+  simulator-sqal:
+    build:
+      context: ..
+      dockerfile: simulators/Dockerfile.sqal
+    container_name: gaveurs-simulator-sqal
+    volumes:
+      - ../simulator-sqal:/app/simulator_original:ro
+    environment:
+      - TZ=Europe/Paris
+      - BACKEND_URL=ws://backend:8000/ws/sensors/
+    command: >
+      python main.py
+      --device ESP32_DOCKER_01
+      --location "Ligne A - Docker"
+      --backend-url ws://backend:8000/ws/sensors/
+      --interval 30
+      --config-profile foiegras_standard_barquette
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - gaveurs-network
+
+  # Simulateur SQAL #2 - Ligne B
+  simulator-sqal-ligne-b:
+    build:
+      context: ..
+      dockerfile: simulators/Dockerfile.sqal
+    container_name: gaveurs-simulator-sqal-ligne-b
+    volumes:
+      - ../simulator-sqal:/app/simulator_original:ro
+    environment:
+      - TZ=Europe/Paris
+      - BACKEND_URL=ws://backend:8000/ws/sensors/
+    command: >
+      python main.py
+      --device ESP32_DOCKER_02
+      --location "Ligne B - Docker"
+      --backend-url ws://backend:8000/ws/sensors/
+      --interval 45
+      --config-profile foiegras_standard_barquette
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - gaveurs-network
+
+networks:
+  gaveurs-network:
+    external: true
+    name: projet-euralis-gaveurs_gaveurs-network
+
+volumes:
+  data:
+    driver: local

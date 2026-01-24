@@ -1,0 +1,184 @@
+# ============================================================================
+# SQAL Monitoring Stack - Docker Compose
+# ============================================================================
+# This file defines the monitoring infrastructure for SQAL:
+# - Prometheus: Metrics collection and storage
+# - Grafana: Visualization and dashboards
+# - Alertmanager: Alert routing and notifications
+# - Node Exporter: System metrics
+# - Redis Exporter: Redis metrics (requires redis from main stack)
+# - Postgres Exporter: TimescaleDB metrics (requires timescaledb from main stack)
+#
+# USAGE:
+# 1. Start main stack first:
+#    docker-compose -f docker-compose.fastapi.yml up -d
+#
+# 2. Then start monitoring stack:
+#    docker-compose -f docker-compose.monitoring.yml up -d
+#
+# 3. Or start both together:
+#    docker-compose -f docker-compose.fastapi.yml -f docker-compose.monitoring.yml up -d
+#
+# ACCESS:
+# - Prometheus: http://localhost:9090
+# - Grafana: http://localhost:3001 (admin/sqal_admin_2024)
+# - Alertmanager: http://localhost:9093
+# ============================================================================
+
+version: '3.8'
+
+services:
+  # ============================================================================
+  # Prometheus - Metrics Collection & Storage
+  # ============================================================================
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: sqal_prometheus
+    restart: unless-stopped
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/alert-rules.yml:/etc/prometheus/alert-rules.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'  # Keep metrics for 30 days
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--web.enable-lifecycle'  # Enable reload via HTTP POST /-/reload
+    ports:
+      - "9090:9090"
+    networks:
+      - sqal_network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ============================================================================
+  # Grafana - Visualization & Dashboards
+  # ============================================================================
+  grafana:
+    image: grafana/grafana:10.2.2
+    container_name: sqal_grafana
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=sqal_admin_2024  # CHANGE IN PRODUCTION!
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_ROOT_URL=http://localhost:3001
+      - GF_INSTALL_PLUGINS=redis-datasource
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3001:3000"  # Changed to 3001 to avoid conflict with frontend (port 3000)
+    networks:
+      - sqal_network
+    depends_on:
+      - prometheus
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ============================================================================
+  # Alertmanager - Alert Routing & Notifications
+  # ============================================================================
+  alertmanager:
+    image: prom/alertmanager:v0.26.0
+    container_name: sqal_alertmanager
+    restart: unless-stopped
+    volumes:
+      - ./prometheus/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_data:/alertmanager
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+      - '--web.external-url=http://localhost:9093'
+    ports:
+      - "9093:9093"
+    networks:
+      - sqal_network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9093/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ============================================================================
+  # Node Exporter - System Metrics
+  # ============================================================================
+  node_exporter:
+    image: prom/node-exporter:v1.7.0
+    container_name: sqal_node_exporter
+    restart: unless-stopped
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--path.rootfs=/rootfs'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    ports:
+      - "9100:9100"
+    networks:
+      - sqal_network
+
+  # ============================================================================
+  # Redis Exporter - Redis Metrics
+  # NOTE: Requires 'redis' service from docker-compose.fastapi.yml
+  # Start main stack first, or use both compose files together
+  # ============================================================================
+  redis_exporter:
+    image: oliver006/redis_exporter:v1.55.0
+    container_name: sqal_redis_exporter
+    restart: unless-stopped
+    environment:
+      - REDIS_ADDR=redis:6379
+    ports:
+      - "9121:9121"
+    networks:
+      - sqal_network
+
+  # ============================================================================
+  # Postgres Exporter - TimescaleDB Metrics
+  # NOTE: Requires 'timescaledb' service from docker-compose.fastapi.yml
+  # Start main stack first, or use both compose files together
+  # ============================================================================
+  postgres_exporter:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    container_name: sqal_postgres_exporter
+    restart: unless-stopped
+    environment:
+      - DATA_SOURCE_NAME=postgresql://sqal_user:sqal_password@timescaledb:5432/sqal_db?sslmode=disable
+    ports:
+      - "9187:9187"
+    networks:
+      - sqal_network
+
+# ============================================================================
+# Volumes
+# ============================================================================
+volumes:
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+  alertmanager_data:
+    driver: local
+
+# ============================================================================
+# Networks
+# ============================================================================
+networks:
+  sqal_network:
+    driver: bridge
+    name: sqal_network

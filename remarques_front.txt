@@ -1,0 +1,110 @@
+ à faire dans frontend gaveur
+  global:
+	mettre un breadcrumb
+	
+ - simplfier les statistiques analytics :
+	 - heatmap c'est bein cela permet de comparer les lots (est ce le bon type de graphe ?)
+	 - flux de production à garder très bien ( à voir s'il ne faut pas le détailler)
+	 - le calendrier n'est un analytics, à monter d'un cran (prévoir dans la navigation)
+	 - supprimer la répartition hiérarchique qui n'apporte rien pour le gaveur ( a part si tu me démontre  le contraire) par contre dans le front euralis cela peut avoir du sens
+	 - supprimer violin qui n'apporte rien , par contre dans le front euralis cela peut avoir du sens
+	 - il faut présenter des statistiques par lot qui servent aux gaveurs (métier)
+ - page lots:
+	- faire attention quand le nombre de lot devient conséquent
+ pourquoi l'historique n'est pas lié à la page lots ?  Est ce qu'une page dédiée serait utile ? Qu'apporterait elle de plus à la page lot?
+
+ - comparer les performances le lots c'est bien
+ - la page blockcahin est dédiée canard et non lot. De ce fait je n'ai pas pu la tester.
+ 
+ quand on va dans historique corriger : 
+ historique:1 
+ Access to fetch at 'http://localhost:8000/api/lots/3468' from origin 'http://localhost:3001' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+:8000/api/lots/3468:1 
+ 
+ Failed to load resource: net::ERR_FAILED
+hook.js:608 
+ Erreur: TypeError: Failed to fetch
+    at loadData (page.tsx:26:9)
+    at eval (page.tsx:18:7)
+
+
+ à faire dans frontend Euralis:
+ 
+ - Quans la page de login se présente j'ai l'impression que c'est très long pour cen logguer à la différence du front gaveur. A ce titre il serait judicieux d'avoir la même présentation
+ - Une présentation du dashboard plus siognée avec des chiffres clés pour Euralis
+ -  La navigation sous forme de card, je rouve que c'est bien et pratique. Maintenant n'est ce pas redondant
+ - Il faut mettre en place un breadcrumb
+ - Dans analytics:
+	- Que doit présenter Segmentation Gaveurs (K-Means) car mis à part la card "Insights IA Automatiques" , dont il faudra m'expliquer le tenant et aboutissant, je ne vois rien
+	- Que doit présenter "Plans d'Abattage Optimisés" car je ne vois rien
+	- Correlations : je ne vois que 7 variables , par contre il faut faire en sorte que l'on puisse les voire toute car je suis obligé de de-zoomer
+- Pourquoi lorsque je clique sur Dashboard, j'arrive systématiquement sur la page de login
+
+- Page euralis/sites/LL/analytics:
+	- corriger l'erreur 
+		Unhandled Runtime Error
+			TypeError: Cannot read properties of undefined (reading 'toFixed')
+
+			Source
+			app\euralis\sites\[code]\analytics\page.tsx (384:72) @ toFixed
+
+			  382 |   <div className="flex justify-between">
+			  383 |     <span className="text-gray-600">Mortalité:</span>
+			> 384 |     <span className="font-medium">{gaveur.mortalite.toFixed(2)}%</span>
+				  |                                                    ^
+			  385 |   </div>
+			  386 | </div>
+	- A quoi sert la card Insights IA -
+	
+- Page: http://localhost:3000/euralis/sites/LL/analytics
+	lorsque je clique sur Performance vs Sites j'ai 
+		Unhandled Runtime Error
+			TypeError: Cannot read properties of undefined (reading 'toFixed')
+
+			Source
+			app\euralis\sites\[code]\analytics\page.tsx (505:40) @ toFixed
+
+			  503 | </td>
+			  504 | <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+			> 505 |   {site.itm_moyen.toFixed(2)} kg
+				  |                  ^
+			  506 | </td>
+			  507 | <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+			  508 |   {site.mortalite.toFixed(2)}%
+			  
+- Page : http://localhost:3000/euralis/gaveurs
+	Si je clique sur un gaveur j'ai:
+		http://localhost:8000/api/euralis/gaveurs/11' from origin 'http://localhost:3000' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+			api.ts:27 
+			 
+			 GET http://localhost:8000/api/euralis/gaveurs/11 net::ERR_FAILED 500 (Internal Server Error)
+			api.ts:41 
+			 Error fetching /api/euralis/gaveurs/11: TypeError: Failed to fetch
+				at EuralisAPI.fetch (api.ts:27:30)
+				at EuralisAPI.getGaveurDetail (api.ts:169:17)
+				at fetchData (page.tsx:56:45)
+				at eval (page.tsx:73:5)
+			page.tsx:66 
+			 Erreur chargement gaveur: TypeError: Failed to fetch
+				at EuralisAPI.fetch (api.ts:27:30)
+				at EuralisAPI.getGaveurDetail (api.ts:169:17)
+				at fetchData (page.tsx:56:45)
+				at eval (page.tsx:73:5)
+
+
+- Peux tu me donner la formule de calcul de l'ITM que tu utilise ? 
+
+- dans la page http://localhost:3000/euralis/courbes:
+	- que suis je sensé voir ? 
+	- Il me semble qu'il a au total pour le moment 69 gaveurs, pourquoi dans le tableau je ne vois que 3 gaveurs ?
+	- est ce à cette endroit que l'on valide la courbe théorique (pysr) qui sera proposée au gaveur choisi pour son prochain gavage ? Si oui comment
+	
+- page http://localhost:3000/euralis/previsions
+	- très bien il faut ajouter une vue sur les 3 sites réunis
+	
+- page  http://localhost:3000/euralis/qualite
+	- OK mais quid des de l'impact des sqal qui sont des données de contôle qualité ?
+- je n'arrive pas à aller sur la page abattage dans laquelle je devrais voir d'un point de vue calendaire les lots les abattages, les èvènements importants, la possiblté de planifier des gavages et des abattages ( optimisation polonaise)
+	
+
+- j'ai mis à disposition un fichier D:\GavAI\projet-euralis-gaveurs\documentation\Courbes-Gavage-IA\Pretraite.csv avec lequel tu peux relancer les algo pysr car il ya un traitement qualitatif ITM_cut et sigma_cut qui permet de sélectionner les meilleurs courbes

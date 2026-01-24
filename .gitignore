@@ -1,0 +1,300 @@
+# ==============================================================================
+# Système Gaveurs V3.0 - Git Ignore
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# Environment Variables
+# ------------------------------------------------------------------------------
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+.env.*.local
+**/.env
+**/.env.local
+
+# GitHub Actions local testing
+.github/workflows/.env
+.github/workflows/.secrets
+
+# ------------------------------------------------------------------------------
+# Python
+# ------------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv/
+venvW/
+**/venv/
+**/venvW/
+
+# PyCharm
+.idea/
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pytest
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+*.cover
+.hypothesis/
+
+# MyPy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# ------------------------------------------------------------------------------
+# Node.js / JavaScript
+# ------------------------------------------------------------------------------
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Next.js
+.next/
+out/
+next-env.d.ts
+
+# Production builds
+build/
+dist/
+
+# Testing
+coverage/
+.nyc_output/
+
+# ------------------------------------------------------------------------------
+# Operating System
+# ------------------------------------------------------------------------------
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+**/nul
+**/NUL
+nul
+NUL
+
+# Linux
+*~
+
+# ------------------------------------------------------------------------------
+# IDEs
+# ------------------------------------------------------------------------------
+# JetBrains IDEs
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# ------------------------------------------------------------------------------
+# Logs
+# ------------------------------------------------------------------------------
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# ------------------------------------------------------------------------------
+# Docker
+# ------------------------------------------------------------------------------
+*.tar
+docker-compose.override.yml
+
+# ------------------------------------------------------------------------------
+# Database
+# ------------------------------------------------------------------------------
+*.db
+*.sqlite
+*.sqlite3
+
+# PostgreSQL
+*.sql.backup
+
+# ------------------------------------------------------------------------------
+# Machine Learning Models
+# ------------------------------------------------------------------------------
+*.pkl
+*.joblib
+*.h5
+*.pb
+*.pth
+*.onnx
+
+# Trained models (if large)
+models/trained/
+ml_models/
+
+# ------------------------------------------------------------------------------
+# Temporary Files
+# ------------------------------------------------------------------------------
+*.tmp
+*.temp
+*.swp
+*.swo
+*~.nib
+*.bak
+*.cache
+
+# ------------------------------------------------------------------------------
+# Security & Secrets
+# ------------------------------------------------------------------------------
+# Private keys
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Certificates
+*.crt
+*.cer
+*.der
+
+# Credentials
+credentials.json
+secrets.json
+*.credentials
+
+# AWS
+.aws/
+
+# ------------------------------------------------------------------------------
+# Project Specific
+# ------------------------------------------------------------------------------
+# Simulator data
+simulator-sqal/data/*.csv
+simulators/data/*.csv
+
+# Test data
+tests/data/
+test_data/
+
+# Generated files
+generated/
+
+# Blockchain artifacts
+blockchain/artifacts/
+blockchain/bin/
+
+# TimescaleDB backups
+backups/
+*.backup
+*.sql.gz
+*.tar.gz.gpg
+*.7z
+*.7z.gpg
+
+# Backup configuration (contains secrets)
+scripts/backup-config.env
+
+# ------------------------------------------------------------------------------
+# Documentation (Generated)
+# ------------------------------------------------------------------------------
+docs/_build/
+site/
+
+# ------------------------------------------------------------------------------
+# CI/CD
+# ------------------------------------------------------------------------------
+# Test results
+test-results/
+junit.xml
+
+# Coverage reports (keep coverage config)
+.nyc_output/
+coverage/
+htmlcov/
+*.lcov
+
+# GitHub Actions local testing (act)
+.actrc
+
+# ------------------------------------------------------------------------------
+# Package Managers
+# ------------------------------------------------------------------------------
+# npm
+package-lock.json.backup
+
+# pip
+pip-log.txt
+pip-delete-this-directory.txt
+
+# ------------------------------------------------------------------------------
+# Miscellaneous
+# ------------------------------------------------------------------------------
+# Archives
+*.zip
+*.tar.gz
+*.rar
+
+# Large files
+*.mov
+*.mp4
+*.avi
+
+# Compiled source
+*.com
+*.class
+*.dll
+*.exe
+*.o
+*.so
+
+# ------------------------------------------------------------------------------
+# Keep These Files (Examples)
+# ------------------------------------------------------------------------------
+# !.env.example
+# !.github/workflows/.env.example
+# !docker-compose.override.yml.example

@@ -1,0 +1,13 @@
+# Requirements pour Simulateur Gavage Temps Réel
+# Python 3.9+
+
+# WebSocket client
+websockets>=12.0
+
+# Pas besoin d'autres dépendances, tout est dans la stdlib Python!
+# - asyncio (stdlib)
+# - json (stdlib)
+# - random (stdlib)
+# - datetime (stdlib)
+# - logging (stdlib)
+# - argparse (stdlib)

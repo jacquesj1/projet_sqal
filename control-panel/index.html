@@ -1,0 +1,1832 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎛️ Panneau de Contrôle Simulateurs - Gaveurs V3.0</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            color: white;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            transition: transform 0.3s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+
+        .icon {
+            font-size: 3em;
+        }
+
+        .card-title {
+            flex: 1;
+        }
+
+        .card-title h2 {
+            color: #333;
+            margin-bottom: 5px;
+        }
+
+        .card-title p {
+            color: #666;
+            font-size: 0.9em;
+        }
+
+        .status {
+            padding: 8px 15px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: bold;
+        }
+
+        .status.offline {
+            background: #fecaca;
+            color: #991b1b;
+        }
+
+        .status.online {
+            background: #bbf7d0;
+            color: #166534;
+        }
+
+        .status.running {
+            background: #bfdbfe;
+            color: #1e40af;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #555;
+            font-weight: 600;
+            font-size: 0.9em;
+        }
+
+        input, select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 1em;
+            transition: border-color 0.3s;
+        }
+
+        input:focus, select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .input-hint {
+            font-size: 0.8em;
+            color: #888;
+            margin-top: 5px;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        button {
+            flex: 1;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-start {
+            background: linear-gradient(135deg, #10b981, #059669);
+            color: white;
+        }
+
+        .btn-start:hover {
+            background: linear-gradient(135deg, #059669, #047857);
+            transform: scale(1.05);
+        }
+
+        .btn-stop {
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+            color: white;
+        }
+
+        .btn-stop:hover {
+            background: linear-gradient(135deg, #dc2626, #b91c1c);
+            transform: scale(1.05);
+        }
+
+        .btn-restart {
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+            color: white;
+        }
+
+        .btn-restart:hover {
+            background: linear-gradient(135deg, #d97706, #b45309);
+            transform: scale(1.05);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
+        .logs {
+            background: #1e293b;
+            border-radius: 8px;
+            padding: 15px;
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85em;
+            color: #e2e8f0;
+        }
+
+        .log-line {
+            margin-bottom: 5px;
+            line-height: 1.4;
+        }
+
+        .log-time {
+            color: #94a3b8;
+        }
+
+        .log-info {
+            color: #60a5fa;
+        }
+
+        .log-success {
+            color: #34d399;
+        }
+
+        .log-error {
+            color: #f87171;
+        }
+
+        .log-warning {
+            color: #fbbf24;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .stat {
+            background: #f8fafc;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+
+        .stat-label {
+            font-size: 0.85em;
+            color: #64748b;
+            margin-bottom: 5px;
+        }
+
+        .stat-value {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #1e293b;
+        }
+
+        .global-controls {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            margin-bottom: 30px;
+        }
+
+        .global-controls h3 {
+            color: #333;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .preset-buttons {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+
+        .preset-btn {
+            padding: 15px;
+            background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .preset-btn:hover {
+            background: linear-gradient(135deg, #7c3aed, #6d28d9);
+            transform: translateY(-3px);
+            box-shadow: 0 5px 15px rgba(139, 92, 246, 0.4);
+        }
+
+        .preset-btn span {
+            display: block;
+            font-size: 0.85em;
+            opacity: 0.9;
+            margin-top: 5px;
+        }
+
+        .btn-auto-chain {
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+        }
+
+        .btn-auto-chain:hover {
+            background: linear-gradient(135deg, #d97706, #b45309);
+        }
+
+        /* Modal styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(5px);
+        }
+
+        .modal-content {
+            background: white;
+            margin: 5% auto;
+            padding: 0;
+            border-radius: 20px;
+            width: 90%;
+            max-width: 700px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            animation: modalSlideIn 0.3s ease;
+        }
+
+        @keyframes modalSlideIn {
+            from { transform: translateY(-50px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        .modal-header {
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+            color: white;
+            padding: 25px;
+            border-radius: 20px 20px 0 0;
+        }
+
+        .modal-header h2 {
+            margin: 0;
+            font-size: 1.8em;
+        }
+
+        .modal-header p {
+            margin: 5px 0 0 0;
+            opacity: 0.9;
+            font-size: 0.95em;
+        }
+
+        .modal-body {
+            padding: 30px;
+            max-height: 60vh;
+            overflow-y: auto;
+        }
+
+        .modal-section {
+            margin-bottom: 30px;
+            padding: 20px;
+            background: #f8fafc;
+            border-radius: 10px;
+            border-left: 4px solid #667eea;
+        }
+
+        .modal-section h3 {
+            margin: 0 0 15px 0;
+            color: #333;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 1.2em;
+        }
+
+        .modal-footer {
+            padding: 20px 30px;
+            background: #f8fafc;
+            border-radius: 0 0 20px 20px;
+            display: flex;
+            justify-content: space-between;
+            gap: 15px;
+        }
+
+        .modal-footer button {
+            flex: 1;
+            padding: 15px;
+            font-size: 1.1em;
+        }
+
+        .close-btn {
+            background: #e5e7eb;
+            color: #374151;
+        }
+
+        .close-btn:hover {
+            background: #d1d5db;
+        }
+
+        .launch-btn {
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+            color: white;
+        }
+
+        .launch-btn:hover {
+            background: linear-gradient(135deg, #d97706, #b45309);
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-top: 15px;
+            padding: 12px;
+            background: white;
+            border-radius: 8px;
+        }
+
+        .checkbox-group input[type="checkbox"] {
+            width: auto;
+            cursor: pointer;
+        }
+
+        .checkbox-group label {
+            margin: 0;
+            cursor: pointer;
+            font-weight: normal;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .pulsing {
+            animation: pulse 2s infinite;
+        }
+
+        /* Progress Bar Styles */
+        .progress-container {
+            margin: 20px 0;
+            padding: 15px;
+            background: white;
+            border-radius: 10px;
+        }
+
+        .progress-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .progress-title {
+            font-weight: 600;
+            color: #333;
+        }
+
+        .progress-percent {
+            font-weight: bold;
+            color: #f59e0b;
+            font-size: 1.1em;
+        }
+
+        .progress-bar-track {
+            height: 12px;
+            background: #e5e7eb;
+            border-radius: 10px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #10b981, #34d399);
+            border-radius: 10px;
+            transition: width 0.5s ease;
+            position: relative;
+        }
+
+        .progress-bar-fill::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+            animation: shimmer 2s infinite;
+        }
+
+        @keyframes shimmer {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+
+        .progress-steps {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 15px;
+        }
+
+        .progress-step {
+            flex: 1;
+            text-align: center;
+            padding: 8px;
+            font-size: 0.85em;
+            color: #9ca3af;
+            position: relative;
+        }
+
+        .progress-step.active {
+            color: #f59e0b;
+            font-weight: 600;
+        }
+
+        .progress-step.completed {
+            color: #10b981;
+        }
+
+        .progress-step-icon {
+            font-size: 1.5em;
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        /* Toast Notification Styles */
+        .toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: white;
+            padding: 20px 25px;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+            z-index: 2000;
+            min-width: 300px;
+            transform: translateX(400px);
+            transition: transform 0.3s ease;
+        }
+
+        .toast.show {
+            transform: translateX(0);
+        }
+
+        .toast.success {
+            border-left: 5px solid #10b981;
+        }
+
+        .toast.error {
+            border-left: 5px solid #ef4444;
+        }
+
+        .toast.warning {
+            border-left: 5px solid #f59e0b;
+        }
+
+        .toast-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 8px;
+        }
+
+        .toast-icon {
+            font-size: 1.8em;
+        }
+
+        .toast-title {
+            font-weight: 600;
+            font-size: 1.1em;
+            color: #333;
+        }
+
+        .toast-message {
+            color: #666;
+            font-size: 0.95em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎛️ Panneau de Contrôle Simulateurs Gaveurs V3.0</h1>
+
+        <!-- Contrôles Globaux -->
+        <div class="global-controls">
+            <h3>⚡ Scénarios Pré-configurés</h3>
+            <div class="preset-buttons">
+                <button class="preset-btn btn-auto-chain" onclick="openAutoChainModal()">
+                    ⚡ Démo Auto-Enchaînée (3 min)
+                    <span>Gavage → Monitor → SQAL → Consommateurs</span>
+                </button>
+                <button class="preset-btn" onclick="launchDemo()">
+                    🚀 Démo Rapide (2 min)
+                    <span>1 lot, accélération ×86400</span>
+                </button>
+                <button class="preset-btn" onclick="launchRealistic()">
+                    📊 Test Réaliste (15 min)
+                    <span>3 lots, accélération ×1440</span>
+                </button>
+                <button class="preset-btn" onclick="launchProduction()">
+                    🏭 Simulation Production (24h)
+                    <span>5 lots, temps réel ×1</span>
+                </button>
+                <button class="preset-btn" onclick="stopAll()">
+                    ⏹️ Tout Arrêter
+                    <span>Stop tous les simulateurs</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Modal Auto-Chain Configuration -->
+        <div id="autoChainModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>⚡ Configuration Démo Auto-Enchaînée</h2>
+                    <p>Configurez tous les paramètres en une fois - L'enchaînement sera automatique</p>
+                </div>
+                <div class="modal-body">
+                    <!-- Section Gavage -->
+                    <div class="modal-section">
+                        <h3>🦆 GAVAGE (Étape 1)</h3>
+                        <div class="form-group">
+                            <label>Nombre de lots</label>
+                            <input type="number" id="auto-gavage-lots" value="1" min="1" max="10">
+                        </div>
+                        <div class="form-group">
+                            <label>Accélération temps</label>
+                            <select id="auto-gavage-acceleration">
+                                <option value="1440">×1440 - Test rapide (60s/jour)</option>
+                                <option value="86400" selected>×86400 - Démo ultra (1s/jour)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Section SQAL -->
+                    <div class="modal-section">
+                        <h3>🔬 SQAL (Auto après Monitor)</h3>
+                        <div class="form-group">
+                            <label>Device ID</label>
+                            <input type="text" id="auto-sqal-device" value="ESP32_DEMO_01">
+                        </div>
+                        <div class="form-group">
+                            <label>Échantillons par lot</label>
+                            <input type="number" id="auto-sqal-samples" value="10" min="1" max="50">
+                        </div>
+                        <div class="form-group">
+                            <label>Intervalle mesures (secondes)</label>
+                            <input type="number" id="auto-sqal-interval" value="3" min="1" max="60">
+                        </div>
+                    </div>
+
+                    <!-- Section Consommateurs -->
+                    <div class="modal-section">
+                        <h3>👤 CONSOMMATEURS (Auto après SQAL)</h3>
+                        <div class="form-group">
+                            <label>Nombre de feedbacks</label>
+                            <input type="number" id="auto-consumer-num" value="20" min="1" max="100">
+                        </div>
+                        <div class="form-group">
+                            <label>Intervalle feedbacks (secondes)</label>
+                            <input type="number" id="auto-consumer-interval" value="5" min="1" max="60">
+                        </div>
+                        <div class="form-group">
+                            <label>Profil distribution</label>
+                            <select id="auto-consumer-profile">
+                                <option value="realistic" selected>Réaliste (45% satisfaits)</option>
+                                <option value="positive">Optimiste (70% satisfaits)</option>
+                                <option value="negative">Pessimiste (30% satisfaits)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Options -->
+                    <div class="modal-section" style="border-left-color: #10b981;">
+                        <h3>⚙️ OPTIONS</h3>
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="auto-monitor-enabled" checked>
+                            <label for="auto-monitor-enabled">Activer Monitor automatique (détection lots terminés)</label>
+                        </div>
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="auto-logs-verbose" checked>
+                            <label for="auto-logs-verbose">Afficher logs détaillés dans console</label>
+                        </div>
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="auto-show-progress" checked>
+                            <label for="auto-show-progress">Afficher barre de progression visuelle</label>
+                        </div>
+                    </div>
+
+                    <!-- Progress Bar (hidden initially) -->
+                    <div id="auto-chain-progress" class="progress-container" style="display: none;">
+                        <div class="progress-header">
+                            <span class="progress-title">⚡ Progression Démo Auto-Enchaînée</span>
+                            <span class="progress-percent" id="progress-percent">0%</span>
+                        </div>
+                        <div class="progress-bar-track">
+                            <div class="progress-bar-fill" id="progress-bar-fill" style="width: 0%"></div>
+                        </div>
+                        <div class="progress-steps">
+                            <div class="progress-step" id="step-gavage">
+                                <span class="progress-step-icon">🦆</span>
+                                Gavage
+                            </div>
+                            <div class="progress-step" id="step-monitor">
+                                <span class="progress-step-icon">🔍</span>
+                                Monitor
+                            </div>
+                            <div class="progress-step" id="step-sqal">
+                                <span class="progress-step-icon">🔬</span>
+                                SQAL
+                            </div>
+                            <div class="progress-step" id="step-consumer">
+                                <span class="progress-step-icon">👤</span>
+                                Consommateurs
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="close-btn" onclick="closeAutoChainModal()">Annuler</button>
+                    <button class="launch-btn" onclick="launchAutoChainDemo()">🚀 Lancer Démo Complète</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Toast Container -->
+        <div id="toast-container"></div>
+
+        <!-- Grid Simulateurs -->
+        <div class="grid">
+            <!-- Simulateur Gavage -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="icon">🦆</div>
+                    <div class="card-title">
+                        <h2>Gavage Temps Réel</h2>
+                        <p>Simule gavages 2×/jour sur 11-14 jours</p>
+                    </div>
+                    <div class="status offline" id="gavage-status">Arrêté</div>
+                </div>
+
+                <div class="form-group">
+                    <label>Nombre de lots</label>
+                    <input type="number" id="gavage-lots" value="3" min="1" max="10">
+                    <div class="input-hint">Entre 1 et 10 lots</div>
+                </div>
+
+                <div class="form-group">
+                    <label>Accélération temps</label>
+                    <select id="gavage-acceleration">
+                        <option value="1">×1 - Temps réel (24h/jour)</option>
+                        <option value="144">×144 - Test modéré (10 min/jour)</option>
+                        <option value="1440" selected>×1440 - Test rapide (60s/jour)</option>
+                        <option value="86400">×86400 - Démo ultra (1s/jour)</option>
+                    </select>
+                </div>
+
+                <div class="button-group">
+                    <button class="btn-start" onclick="startGavage()">▶️ Démarrer</button>
+                    <button class="btn-stop" onclick="stopGavage()">⏹️ Arrêter</button>
+                </div>
+
+                <div class="stats">
+                    <div class="stat">
+                        <div class="stat-label">Lots actifs</div>
+                        <div class="stat-value" id="gavage-lots-active">0</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-label">Gavages envoyés</div>
+                        <div class="stat-value" id="gavage-messages">0</div>
+                    </div>
+                </div>
+
+                <h4 style="margin: 20px 0 10px; color: #555;">📝 Logs</h4>
+                <div class="logs" id="gavage-logs">
+                    <div class="log-line">En attente de démarrage...</div>
+                </div>
+            </div>
+
+            <!-- Lot Monitor -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="icon">🔍</div>
+                    <div class="card-title">
+                        <h2>Lot Monitor</h2>
+                        <p>Détection auto lots terminés → SQAL</p>
+                    </div>
+                    <div class="status offline" id="monitor-status">Arrêté</div>
+                </div>
+
+                <div class="form-group">
+                    <label>Intervalle polling (secondes)</label>
+                    <input type="number" id="monitor-interval" value="60" min="5" max="300">
+                    <div class="input-hint">Fréquence vérification DB</div>
+                </div>
+
+                <div class="form-group">
+                    <label>Échantillons par lot</label>
+                    <input type="number" id="monitor-samples" value="5" min="1" max="20">
+                    <div class="input-hint">Nombre mesures SQAL par lot</div>
+                </div>
+
+                <div class="button-group">
+                    <button class="btn-start" onclick="startMonitor()">▶️ Démarrer</button>
+                    <button class="btn-stop" onclick="stopMonitor()">⏹️ Arrêter</button>
+                </div>
+
+                <div class="stats">
+                    <div class="stat">
+                        <div class="stat-label">Lots détectés</div>
+                        <div class="stat-value" id="monitor-detected">0</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-label">Lots inspectés</div>
+                        <div class="stat-value" id="monitor-inspected">0</div>
+                    </div>
+                </div>
+
+                <h4 style="margin: 20px 0 10px; color: #555;">📝 Logs</h4>
+                <div class="logs" id="monitor-logs">
+                    <div class="log-line">En attente de démarrage...</div>
+                </div>
+            </div>
+
+            <!-- Simulateur SQAL -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="icon">🔬</div>
+                    <div class="card-title">
+                        <h2>SQAL ESP32</h2>
+                        <p>Capteurs ToF 8×8 + Spectral 10 canaux</p>
+                    </div>
+                    <div class="status offline" id="sqal-status">Arrêté</div>
+                </div>
+
+                <div class="form-group">
+                    <label>Device ID</label>
+                    <input type="text" id="sqal-device" value="ESP32_DEMO_01">
+                </div>
+
+                <div class="form-group">
+                    <label>Profil qualité</label>
+                    <select id="sqal-profile">
+                        <option value="foiegras_standard_barquette" selected>Standard (Grade A-B)</option>
+                        <option value="foiegras_premium_terrine">Premium (Grade A+-A)</option>
+                        <option value="foiegras_bio_entier">Bio (Grade B-C)</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Intervalle mesures (secondes)</label>
+                    <input type="number" id="sqal-interval" value="30" min="5" max="300">
+                </div>
+
+                <div class="form-group">
+                    <label>Nombre d'échantillons</label>
+                    <input type="number" id="sqal-nb-samples" value="50" min="1" max="500">
+                </div>
+
+                <div class="button-group">
+                    <button class="btn-start" onclick="startSQAL()">▶️ Démarrer</button>
+                    <button class="btn-stop" onclick="stopSQAL()">⏹️ Arrêter</button>
+                </div>
+
+                <div class="stats">
+                    <div class="stat">
+                        <div class="stat-label">Mesures envoyées</div>
+                        <div class="stat-value" id="sqal-samples">0</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-label">Grade moyen</div>
+                        <div class="stat-value" id="sqal-grade">-</div>
+                    </div>
+                </div>
+
+                <h4 style="margin: 20px 0 10px; color: #555;">📝 Logs</h4>
+                <div class="logs" id="sqal-logs">
+                    <div class="log-line">En attente de démarrage...</div>
+                </div>
+            </div>
+
+            <!-- Simulateur Satisfaction Clients -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="icon">🎭</div>
+                    <div class="card-title">
+                        <h2>Satisfaction Clients</h2>
+                        <p>Génère feedbacks consommateurs réalistes</p>
+                    </div>
+                    <div class="status offline" id="consumer-status">Arrêté</div>
+                </div>
+
+                <div class="form-group">
+                    <label>Intervalle feedbacks (secondes)</label>
+                    <input type="number" id="consumer-interval" value="10" min="2" max="300">
+                    <div class="input-hint">Temps entre chaque feedback</div>
+                </div>
+
+                <div class="form-group">
+                    <label>Nombre de feedbacks</label>
+                    <input type="number" id="consumer-num" value="20" min="1" max="1000">
+                    <div class="input-hint">0 = illimité</div>
+                </div>
+
+                <div class="form-group">
+                    <label>Profil distribution</label>
+                    <select id="consumer-profile">
+                        <option value="realistic" selected>Réaliste (45% satisfaits)</option>
+                        <option value="positive">Optimiste (70% satisfaits)</option>
+                        <option value="negative">Pessimiste (30% satisfaits)</option>
+                    </select>
+                </div>
+
+                <div class="button-group">
+                    <button class="btn-start" onclick="startConsumer()">▶️ Démarrer</button>
+                    <button class="btn-stop" onclick="stopConsumer()">⏹️ Arrêter</button>
+                </div>
+
+                <div class="stats">
+                    <div class="stat">
+                        <div class="stat-label">Feedbacks envoyés</div>
+                        <div class="stat-value" id="consumer-feedbacks">0</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-label">Note moyenne</div>
+                        <div class="stat-value" id="consumer-rating">-</div>
+                    </div>
+                </div>
+
+                <h4 style="margin: 20px 0 10px; color: #555;">📝 Logs</h4>
+                <div class="logs" id="consumer-logs">
+                    <div class="log-line">En attente de démarrage...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // État global
+        const state = {
+            gavage: { running: false, process: null, stats: { lots: 0, messages: 0 } },
+            monitor: { running: false, process: null, stats: { detected: 0, inspected: 0 } },
+            sqal: { running: false, process: null, stats: { samples: 0, grades: [] } },
+            consumer: { running: false, process: null, stats: { feedbacks: 0, totalRating: 0 } }
+        };
+
+        // WebSocket pour mises à jour temps réel
+        let ws = null;
+
+        function connectWebSocket() {
+            ws = new WebSocket('ws://localhost:8000/api/control/ws');
+
+            ws.onopen = () => {
+                console.log('✅ WebSocket connecté');
+                addLog('gavage', '🔌 WebSocket connecté au backend', 'success');
+                addLog('monitor', '🔌 WebSocket connecté au backend', 'success');
+                addLog('sqal', '🔌 WebSocket connecté au backend', 'success');
+                addLog('consumer', '🔌 WebSocket connecté au backend', 'success');
+            };
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                updateUIFromBackend(data);
+            };
+
+            ws.onerror = (error) => {
+                console.error('❌ WebSocket error:', error);
+                addLog('gavage', '❌ Erreur WebSocket', 'error');
+            };
+
+            ws.onclose = () => {
+                console.log('🔴 WebSocket fermé, reconnexion dans 5s...');
+                setTimeout(connectWebSocket, 5000);
+            };
+        }
+
+        function updateUIFromBackend(data) {
+            if (!data.simulators) return;
+
+            // Update Gavage
+            const gavage = data.simulators.gavage;
+            if (gavage) {
+                updateStatus('gavage', gavage.running ? 'running' : 'offline');
+                if (gavage.stats) {
+                    updateStat('gavage', 'messages', gavage.stats.messages_sent || 0);
+                }
+            }
+
+            // Update Monitor
+            const monitor = data.simulators.monitor;
+            if (monitor) {
+                updateStatus('monitor', monitor.running ? 'running' : 'offline');
+            }
+
+            // Update SQAL
+            const sqal = data.simulators.sqal;
+            if (sqal) {
+                updateStatus('sqal', sqal.running ? 'running' : 'offline');
+                if (sqal.stats) {
+                    updateStat('sqal', 'samples', sqal.stats.messages_sent || 0);
+                }
+            }
+
+            // Update Consumer
+            const consumer = data.simulators.consumer;
+            if (consumer) {
+                updateStatus('consumer', consumer.running ? 'running' : 'offline');
+                if (consumer.stats) {
+                    updateStat('consumer', 'feedbacks', consumer.stats.messages_sent || 0);
+                }
+            }
+        }
+
+        // Fonctions d'aide
+        function addLog(simulator, message, type = 'info') {
+            const logsDiv = document.getElementById(`${simulator}-logs`);
+            const time = new Date().toLocaleTimeString();
+            const logClass = `log-${type}`;
+
+            const logLine = document.createElement('div');
+            logLine.className = 'log-line';
+            logLine.innerHTML = `<span class="log-time">[${time}]</span> <span class="${logClass}">${message}</span>`;
+
+            logsDiv.appendChild(logLine);
+            logsDiv.scrollTop = logsDiv.scrollHeight;
+
+            // Garder max 50 lignes
+            while (logsDiv.children.length > 50) {
+                logsDiv.removeChild(logsDiv.firstChild);
+            }
+        }
+
+        function updateStatus(simulator, status) {
+            const statusDiv = document.getElementById(`${simulator}-status`);
+            statusDiv.className = `status ${status}`;
+
+            const statusText = {
+                offline: 'Arrêté',
+                online: 'En ligne',
+                running: 'En cours'
+            };
+
+            statusDiv.textContent = statusText[status] || status;
+        }
+
+        function updateStat(simulator, stat, value) {
+            const statDiv = document.getElementById(`${simulator}-${stat}`);
+            if (statDiv) {
+                statDiv.textContent = value;
+            }
+        }
+
+        // Simulateur Gavage
+        async function startGavage() {
+            const lots = document.getElementById('gavage-lots').value;
+            const acceleration = document.getElementById('gavage-acceleration').value;
+
+            addLog('gavage', `🚀 Démarrage simulateur gavage...`, 'info');
+            addLog('gavage', `📦 ${lots} lots, accélération ×${acceleration}`, 'info');
+
+            // Appel API backend pour démarrer
+            try {
+                const response = await fetch('http://localhost:8000/api/control/gavage/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ nb_lots: parseInt(lots), acceleration: parseInt(acceleration) })
+                });
+
+                if (response.ok) {
+                    state.gavage.running = true;
+                    updateStatus('gavage', 'running');
+                    addLog('gavage', '✅ Simulateur démarré avec succès', 'success');
+                } else {
+                    throw new Error('Échec démarrage');
+                }
+            } catch (error) {
+                addLog('gavage', `❌ Erreur: ${error.message}`, 'error');
+                addLog('gavage', '💡 Astuce: Vérifiez que le backend est démarré', 'warning');
+            }
+        }
+
+        async function stopGavage() {
+            addLog('gavage', '⏹️ Arrêt simulateur...', 'warning');
+
+            try {
+                const response = await fetch('http://localhost:8000/api/control/gavage/stop', {
+                    method: 'POST'
+                });
+
+                if (response.ok) {
+                    state.gavage.running = false;
+                    updateStatus('gavage', 'offline');
+                    addLog('gavage', '✅ Simulateur arrêté', 'info');
+                } else {
+                    throw new Error('Échec arrêt');
+                }
+            } catch (error) {
+                addLog('gavage', `❌ Erreur: ${error.message}`, 'error');
+            }
+        }
+
+        function simulateGavageUpdates(nbLots) {
+            if (!state.gavage.running) return;
+
+            state.gavage.stats.lots = nbLots;
+            state.gavage.stats.messages++;
+
+            updateStat('gavage', 'lots-active', nbLots);
+            updateStat('gavage', 'messages', state.gavage.stats.messages);
+
+            if (state.gavage.stats.messages % 2 === 0) {
+                const moment = state.gavage.stats.messages % 4 === 0 ? 'matin' : 'soir';
+                const jour = Math.floor(state.gavage.stats.messages / 4);
+                addLog('gavage', `📊 Gavage ${moment} J${jour} envoyé`, 'success');
+            }
+
+            setTimeout(() => simulateGavageUpdates(nbLots), 2000);
+        }
+
+        // Lot Monitor
+        async function startMonitor() {
+            const interval = document.getElementById('monitor-interval').value;
+            const samples = document.getElementById('monitor-samples').value;
+
+            addLog('monitor', `🚀 Démarrage Lot Monitor...`, 'info');
+            addLog('monitor', `🔍 Polling: ${interval}s | Échantillons: ${samples}`, 'info');
+
+            try {
+                const response = await fetch('http://localhost:8000/api/control/monitor/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        polling_interval: parseInt(interval),
+                        samples_per_lot: parseInt(samples)
+                    })
+                });
+
+                if (response.ok) {
+                    state.monitor.running = true;
+                    updateStatus('monitor', 'running');
+                    addLog('monitor', '✅ Lot Monitor démarré', 'success');
+                } else {
+                    throw new Error('Échec démarrage');
+                }
+            } catch (error) {
+                addLog('monitor', `❌ Erreur: ${error.message}`, 'error');
+                addLog('monitor', '💡 Astuce: Vérifiez que le backend est démarré', 'warning');
+            }
+        }
+
+        async function stopMonitor() {
+            addLog('monitor', '⏹️ Arrêt Lot Monitor...', 'warning');
+
+            try {
+                const response = await fetch('http://localhost:8000/api/control/monitor/stop', {
+                    method: 'POST'
+                });
+
+                if (response.ok) {
+                    state.monitor.running = false;
+                    updateStatus('monitor', 'offline');
+                    addLog('monitor', '✅ Lot Monitor arrêté', 'info');
+                } else {
+                    throw new Error('Échec arrêt');
+                }
+            } catch (error) {
+                addLog('monitor', `❌ Erreur: ${error.message}`, 'error');
+            }
+        }
+
+        function simulateMonitorUpdates() {
+            if (!state.monitor.running) return;
+
+            // Simuler détection de lot toutes les 10s
+            setTimeout(() => {
+                if (state.monitor.running && Math.random() > 0.7) {
+                    state.monitor.stats.detected++;
+                    updateStat('monitor', 'detected', state.monitor.stats.detected);
+                    addLog('monitor', `📦 Lot détecté: LL2412${String(state.monitor.stats.detected).padStart(3, '0')}`, 'success');
+
+                    setTimeout(() => {
+                        state.monitor.stats.inspected++;
+                        updateStat('monitor', 'inspected', state.monitor.stats.inspected);
+                        addLog('monitor', `✅ Inspection terminée (5 échantillons)`, 'success');
+                    }, 5000);
+                }
+                simulateMonitorUpdates();
+            }, 10000);
+        }
+
+        // Simulateur SQAL
+        async function startSQAL() {
+            const device = document.getElementById('sqal-device').value;
+            const profile = document.getElementById('sqal-profile').value;
+            const interval = document.getElementById('sqal-interval').value;
+            const nbSamples = document.getElementById('sqal-nb-samples').value;
+
+            addLog('sqal', `🚀 Démarrage simulateur SQAL...`, 'info');
+            addLog('sqal', `📡 Device: ${device} | Profil: ${profile} | Échantillons: ${nbSamples}`, 'info');
+
+            try {
+                const response = await fetch('http://localhost:8000/api/control/sqal/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        device_id: device,
+                        interval: parseInt(interval),
+                        nb_samples: parseInt(nbSamples)
+                    })
+                });
+
+                if (response.ok) {
+                    state.sqal.running = true;
+                    updateStatus('sqal', 'running');
+                    addLog('sqal', '✅ ESP32 simulator démarré', 'success');
+                } else {
+                    throw new Error('Échec démarrage');
+                }
+            } catch (error) {
+                addLog('sqal', `❌ Erreur: ${error.message}`, 'error');
+                addLog('sqal', '💡 Astuce: Vérifiez que le backend est démarré', 'warning');
+            }
+        }
+
+        async function stopSQAL() {
+            addLog('sqal', '⏹️ Arrêt simulateur SQAL...', 'warning');
+
+            try {
+                const response = await fetch('http://localhost:8000/api/control/sqal/stop', {
+                    method: 'POST'
+                });
+
+                if (response.ok) {
+                    state.sqal.running = false;
+                    updateStatus('sqal', 'offline');
+                    addLog('sqal', '✅ Simulateur arrêté', 'info');
+                } else {
+                    throw new Error('Échec arrêt');
+                }
+            } catch (error) {
+                addLog('sqal', `❌ Erreur: ${error.message}`, 'error');
+            }
+        }
+
+        function simulateSQALUpdates() {
+            if (!state.sqal.running) return;
+
+            setTimeout(() => {
+                if (state.sqal.running) {
+                    state.sqal.stats.samples++;
+                    const grades = ['A+', 'A', 'A', 'B', 'A+'];
+                    const grade = grades[Math.floor(Math.random() * grades.length)];
+                    const score = grade === 'A+' ? 95 + Math.random() * 5 :
+                                  grade === 'A' ? 85 + Math.random() * 10 :
+                                  75 + Math.random() * 10;
+
+                    state.sqal.stats.grades.push(grade);
+
+                    updateStat('sqal', 'samples', state.sqal.stats.samples);
+                    updateStat('sqal', 'grade', state.sqal.stats.grades[state.sqal.stats.grades.length - 1]);
+
+                    addLog('sqal', `🔬 Mesure #${state.sqal.stats.samples}: Grade ${grade} (${score.toFixed(1)})`, 'success');
+
+                    simulateSQALUpdates();
+                }
+            }, 3000);
+        }
+
+        // Simulateur Consumer Satisfaction
+        async function startConsumer() {
+            const interval = document.getElementById('consumer-interval').value;
+            const numFeedbacks = document.getElementById('consumer-num').value;
+
+            addLog('consumer', `🚀 Démarrage simulateur satisfaction...`, 'info');
+            addLog('consumer', `🎭 Feedbacks: ${numFeedbacks} | Intervalle: ${interval}s`, 'info');
+
+            try {
+                const body = {
+                    interval: parseInt(interval)
+                };
+
+                if (numFeedbacks && parseInt(numFeedbacks) > 0) {
+                    body.num_feedbacks = parseInt(numFeedbacks);
+                }
+
+                const response = await fetch('http://localhost:8000/api/control/consumer/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+
+                if (response.ok) {
+                    state.consumer.running = true;
+                    updateStatus('consumer', 'running');
+                    addLog('consumer', '✅ Simulateur démarré avec succès', 'success');
+                    simulateConsumerUpdates();
+                } else {
+                    const errorData = await response.json();
+                    throw new Error(errorData.detail || 'Échec démarrage');
+                }
+            } catch (error) {
+                addLog('consumer', `❌ Erreur: ${error.message}`, 'error');
+                addLog('consumer', '💡 Astuce: Générez des QR codes via SQAL d\'abord', 'warning');
+            }
+        }
+
+        async function stopConsumer() {
+            addLog('consumer', '⏹️ Arrêt simulateur satisfaction...', 'warning');
+
+            try {
+                const response = await fetch('http://localhost:8000/api/control/consumer/stop', {
+                    method: 'POST'
+                });
+
+                if (response.ok) {
+                    state.consumer.running = false;
+                    updateStatus('consumer', 'offline');
+                    addLog('consumer', '✅ Simulateur arrêté', 'info');
+                } else {
+                    throw new Error('Échec arrêt');
+                }
+            } catch (error) {
+                addLog('consumer', `❌ Erreur: ${error.message}`, 'error');
+            }
+        }
+
+        function simulateConsumerUpdates() {
+            if (!state.consumer.running) return;
+
+            setTimeout(() => {
+                if (state.consumer.running) {
+                    state.consumer.stats.feedbacks++;
+
+                    // Générer note aléatoire (distribution réaliste)
+                    const ratings = [5, 5, 4, 4, 4, 4, 3, 3, 3, 2];
+                    const rating = ratings[Math.floor(Math.random() * ratings.length)];
+
+                    state.consumer.stats.totalRating += rating;
+                    const avgRating = (state.consumer.stats.totalRating / state.consumer.stats.feedbacks).toFixed(1);
+
+                    updateStat('consumer', 'feedbacks', state.consumer.stats.feedbacks);
+                    updateStat('consumer', 'rating', `${avgRating} ⭐`);
+
+                    const emoji = rating >= 4 ? '😊' : rating === 3 ? '😐' : '😕';
+                    addLog('consumer', `${emoji} Feedback #${state.consumer.stats.feedbacks}: ${rating}/5 (Moy: ${avgRating})`, 'success');
+
+                    simulateConsumerUpdates();
+                }
+            }, 3000);
+        }
+
+        // Scénarios pré-configurés
+        function launchDemo() {
+            document.getElementById('gavage-lots').value = 1;
+            document.getElementById('gavage-acceleration').value = 86400;
+            document.getElementById('monitor-interval').value = 5;
+            document.getElementById('consumer-interval').value = 5;
+            document.getElementById('consumer-num').value = 20;
+
+            addLog('gavage', '🚀 Lancement scénario Démo Rapide (2 min)', 'info');
+            addLog('monitor', '🚀 Lancement scénario Démo Rapide (2 min)', 'info');
+            addLog('sqal', '🚀 Lancement scénario Démo Rapide (2 min)', 'info');
+            addLog('consumer', '🚀 Lancement scénario Démo Rapide (2 min)', 'info');
+
+            startGavage();
+            setTimeout(() => startMonitor(), 1000);
+            // Consumer démarrera après que SQAL ait généré des QR codes
+            setTimeout(() => {
+                addLog('consumer', '💡 Attendez que SQAL génère des QR codes avant de démarrer', 'warning');
+            }, 2000);
+        }
+
+        function launchRealistic() {
+            document.getElementById('gavage-lots').value = 3;
+            document.getElementById('gavage-acceleration').value = 1440;
+            document.getElementById('monitor-interval').value = 60;
+
+            addLog('gavage', '🚀 Lancement scénario Test Réaliste (15 min)', 'info');
+            addLog('monitor', '🚀 Lancement scénario Test Réaliste (15 min)', 'info');
+
+            startGavage();
+            setTimeout(() => startMonitor(), 1000);
+        }
+
+        function launchProduction() {
+            document.getElementById('gavage-lots').value = 5;
+            document.getElementById('gavage-acceleration').value = 1;
+            document.getElementById('monitor-interval').value = 60;
+
+            addLog('gavage', '🚀 Lancement simulation Production (24h)', 'warning');
+            addLog('monitor', '🚀 Lancement simulation Production (24h)', 'warning');
+
+            startGavage();
+            setTimeout(() => startMonitor(), 1000);
+        }
+
+        async function stopAll() {
+            addLog('gavage', '⏹️ Arrêt de tous les simulateurs...', 'warning');
+            addLog('monitor', '⏹️ Arrêt de tous les simulateurs...', 'warning');
+            addLog('sqal', '⏹️ Arrêt de tous les simulateurs...', 'warning');
+            addLog('consumer', '⏹️ Arrêt de tous les simulateurs...', 'warning');
+
+            try {
+                const response = await fetch('http://localhost:8000/api/control/stop-all', {
+                    method: 'POST'
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    addLog('gavage', `✅ ${data.stopped.length} simulateurs arrêtés`, 'success');
+                    addLog('monitor', `✅ ${data.stopped.length} simulateurs arrêtés`, 'success');
+                    addLog('sqal', `✅ ${data.stopped.length} simulateurs arrêtés`, 'success');
+                    addLog('consumer', `✅ ${data.stopped.length} simulateurs arrêtés`, 'success');
+                } else {
+                    throw new Error('Échec arrêt global');
+                }
+            } catch (error) {
+                // Fallback: arrêter individuellement
+                await stopGavage().catch(() => {});
+                await stopMonitor().catch(() => {});
+                await stopSQAL().catch(() => {});
+                await stopConsumer().catch(() => {});
+            }
+        }
+
+        // ========================================
+        // DEMO AUTO-ENCHAINEE
+        // ========================================
+
+        // État de la démo auto-enchaînée
+        const autoChainState = {
+            running: false,
+            config: null,
+            currentStep: null,
+            startTime: null,
+            showProgress: true
+        };
+
+        function openAutoChainModal() {
+            document.getElementById('autoChainModal').style.display = 'block';
+        }
+
+        function closeAutoChainModal() {
+            document.getElementById('autoChainModal').style.display = 'none';
+        }
+
+        // Fermer modal si clic en dehors
+        window.onclick = function(event) {
+            const modal = document.getElementById('autoChainModal');
+            if (event.target === modal) {
+                closeAutoChainModal();
+            }
+        }
+
+        // ========================================
+        // TOAST NOTIFICATIONS
+        // ========================================
+
+        function showToast(title, message, type = 'success') {
+            const container = document.getElementById('toast-container');
+
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+
+            const icons = {
+                success: '✅',
+                error: '❌',
+                warning: '⚠️',
+                info: 'ℹ️'
+            };
+
+            toast.innerHTML = `
+                <div class="toast-header">
+                    <span class="toast-icon">${icons[type] || '✅'}</span>
+                    <span class="toast-title">${title}</span>
+                </div>
+                <div class="toast-message">${message}</div>
+            `;
+
+            container.appendChild(toast);
+
+            // Show with animation
+            setTimeout(() => toast.classList.add('show'), 100);
+
+            // Auto-hide after 5 seconds
+            setTimeout(() => {
+                toast.classList.remove('show');
+                setTimeout(() => toast.remove(), 300);
+            }, 5000);
+        }
+
+        // ========================================
+        // PROGRESS BAR
+        // ========================================
+
+        function updateProgress(percent, step) {
+            if (!autoChainState.showProgress) return;
+
+            const progressBar = document.getElementById('progress-bar-fill');
+            const progressPercent = document.getElementById('progress-percent');
+            const progressContainer = document.getElementById('auto-chain-progress');
+
+            if (progressContainer) {
+                progressContainer.style.display = 'block';
+                progressBar.style.width = `${percent}%`;
+                progressPercent.textContent = `${Math.round(percent)}%`;
+
+                // Update step classes
+                const steps = ['gavage', 'monitor', 'sqal', 'consumer'];
+                steps.forEach(s => {
+                    const stepEl = document.getElementById(`step-${s}`);
+                    if (!stepEl) return;
+
+                    stepEl.classList.remove('active', 'completed');
+                    if (s === step) {
+                        stepEl.classList.add('active');
+                    } else if (steps.indexOf(s) < steps.indexOf(step)) {
+                        stepEl.classList.add('completed');
+                    }
+                });
+            }
+        }
+
+        function hideProgress() {
+            const progressContainer = document.getElementById('auto-chain-progress');
+            if (progressContainer) {
+                setTimeout(() => {
+                    progressContainer.style.display = 'none';
+                }, 3000);
+            }
+        }
+
+        async function launchAutoChainDemo() {
+            // Récupérer configuration
+            const config = {
+                gavage: {
+                    lots: parseInt(document.getElementById('auto-gavage-lots').value),
+                    acceleration: parseInt(document.getElementById('auto-gavage-acceleration').value)
+                },
+                sqal: {
+                    device: document.getElementById('auto-sqal-device').value,
+                    samples: parseInt(document.getElementById('auto-sqal-samples').value),
+                    interval: parseInt(document.getElementById('auto-sqal-interval').value)
+                },
+                consumer: {
+                    num: parseInt(document.getElementById('auto-consumer-num').value),
+                    interval: parseInt(document.getElementById('auto-consumer-interval').value),
+                    profile: document.getElementById('auto-consumer-profile').value
+                },
+                options: {
+                    monitorEnabled: document.getElementById('auto-monitor-enabled').checked,
+                    verbose: document.getElementById('auto-logs-verbose').checked,
+                    showProgress: document.getElementById('auto-show-progress').checked
+                }
+            };
+
+            autoChainState.config = config;
+            autoChainState.running = true;
+            autoChainState.currentStep = 'gavage';
+            autoChainState.startTime = Date.now();
+            autoChainState.showProgress = config.options.showProgress;
+
+            // Fermer modale
+            closeAutoChainModal();
+
+            // Toast de démarrage
+            showToast('Démo Lancée', 'Séquence auto-enchaînée démarrée', 'info');
+
+            // Log configuration
+            addLog('gavage', '⚡ ========================================', 'info');
+            addLog('gavage', '⚡ DÉMARRAGE DÉMO AUTO-ENCHAÎNÉE', 'info');
+            addLog('gavage', '⚡ ========================================', 'info');
+            addLog('monitor', '⚡ DÉMO AUTO-ENCHAÎNÉE: Monitor actif', 'info');
+            addLog('sqal', '⚡ DÉMO AUTO-ENCHAÎNÉE: En attente...', 'info');
+            addLog('consumer', '⚡ DÉMO AUTO-ENCHAÎNÉE: En attente...', 'info');
+
+            // Progress: 0%
+            updateProgress(0, 'gavage');
+
+            // ÉTAPE 1: Démarrer Gavage
+            await startAutoGavage(config.gavage);
+        }
+
+        async function startAutoGavage(config) {
+            addLog('gavage', `🚀 ÉTAPE 1/4: Démarrage simulateur gavage`, 'info');
+            addLog('gavage', `📦 ${config.lots} lots, accélération ×${config.acceleration}`, 'info');
+
+            try {
+                const response = await fetch('http://localhost:8000/api/control/gavage/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        nb_lots: config.lots,
+                        acceleration: config.acceleration
+                    })
+                });
+
+                if (response.ok) {
+                    state.gavage.running = true;
+                    updateStatus('gavage', 'running');
+                    addLog('gavage', '✅ Gavage démarré - En attente fin J14...', 'success');
+
+                    // Simuler polling pour détecter fin de lot
+                    pollForLotCompletion(config.lots, config.acceleration);
+                } else {
+                    throw new Error('Échec démarrage gavage');
+                }
+            } catch (error) {
+                addLog('gavage', `❌ Erreur: ${error.message}`, 'error');
+                autoChainState.running = false;
+            }
+        }
+
+        async function startAutoMonitor() {
+            addLog('monitor', `🚀 ÉTAPE 2/4: Démarrage Monitor automatique`, 'info');
+            addLog('monitor', `🔍 Polling actif pour détecter lots terminés`, 'info');
+
+            try {
+                const response = await fetch('http://localhost:8000/api/control/monitor/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        polling_interval: 5,
+                        samples_per_lot: autoChainState.config.sqal.samples
+                    })
+                });
+
+                if (response.ok) {
+                    state.monitor.running = true;
+                    updateStatus('monitor', 'running');
+                    addLog('monitor', '✅ Monitor actif - Détection lots...', 'success');
+                } else {
+                    throw new Error('Échec démarrage monitor');
+                }
+            } catch (error) {
+                addLog('monitor', `❌ Erreur: ${error.message}`, 'error');
+            }
+        }
+
+        function pollForLotCompletion(nbLots, acceleration) {
+            // Calculer temps estimé pour J14
+            const daysToComplete = 14;
+            const secondsPerDay = 86400 / acceleration;
+            const totalTime = daysToComplete * secondsPerDay * 1000; // en ms
+
+            addLog('gavage', `⏱️ Temps estimé jusqu'à J14: ${Math.round(totalTime / 1000)}s`, 'info');
+
+            // Update progress bar during gavage
+            const progressInterval = setInterval(() => {
+                if (!autoChainState.running) {
+                    clearInterval(progressInterval);
+                    return;
+                }
+
+                const elapsed = Date.now() - autoChainState.startTime;
+                const progress = Math.min((elapsed / totalTime) * 25, 25); // 0-25%
+                updateProgress(progress, 'gavage');
+            }, 500);
+
+            // Déclencher automatiquement après le temps calculé
+            setTimeout(async () => {
+                clearInterval(progressInterval);
+
+                if (!autoChainState.running) return;
+
+                const lot = { code_lot: 'LL_AUTO_001', id: 1 };
+                autoChainState.lotDetected = lot;
+
+                updateProgress(25, 'monitor');
+                addLog('gavage', `✅ Lot terminé: ${lot.code_lot} (J14 atteint)`, 'success');
+                showToast('Gavage Terminé', `Lot ${lot.code_lot} prêt pour inspection`, 'success');
+
+                // Démarrer Monitor
+                await startAutoMonitor();
+
+                // Déclencher SQAL après 2s
+                setTimeout(async () => {
+                    if (!autoChainState.running) return;
+                    updateProgress(50, 'sqal');
+                    addLog('monitor', `📦 Lot ${lot.code_lot} détecté par Monitor`, 'success');
+                    await triggerAutoSQAL(lot);
+                }, 2000);
+            }, totalTime);
+        }
+
+        async function triggerAutoSQAL(lot) {
+            autoChainState.currentStep = 'sqal';
+
+            addLog('sqal', `🚀 ÉTAPE 3/4: Démarrage SQAL automatique`, 'success');
+            addLog('sqal', `🔬 Inspection lot: ${lot.code_lot}`, 'info');
+
+            const config = autoChainState.config.sqal;
+
+            try {
+                const response = await fetch('http://localhost:8000/api/control/sqal/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        device_id: config.device,
+                        interval: config.interval,
+                        nb_samples: config.samples,
+                        lot_id: lot.id
+                    })
+                });
+
+                if (response.ok) {
+                    state.sqal.running = true;
+                    updateStatus('sqal', 'running');
+                    addLog('sqal', `✅ SQAL démarré - ${config.samples} échantillons à ${config.interval}s`, 'success');
+                    showToast('SQAL Démarré', `Inspection de ${config.samples} échantillons`, 'info');
+
+                    // Calculer temps total SQAL
+                    const sqalDuration = config.samples * config.interval * 1000;
+                    addLog('sqal', `⏱️ Durée estimée: ${Math.round(sqalDuration / 1000)}s`, 'info');
+
+                    // Update progress bar during SQAL (50-75%)
+                    const sqalStartTime = Date.now();
+                    const sqalProgressInterval = setInterval(() => {
+                        if (!autoChainState.running) {
+                            clearInterval(sqalProgressInterval);
+                            return;
+                        }
+                        const elapsed = Date.now() - sqalStartTime;
+                        const progress = 50 + Math.min((elapsed / sqalDuration) * 25, 25);
+                        updateProgress(progress, 'sqal');
+                    }, 500);
+
+                    // Déclencher Consommateurs après SQAL
+                    setTimeout(async () => {
+                        clearInterval(sqalProgressInterval);
+                        if (!autoChainState.running) return;
+
+                        updateProgress(75, 'consumer');
+                        showToast('SQAL Terminé', 'Inspection qualité complète', 'success');
+                        await triggerAutoConsumer();
+                    }, sqalDuration + 2000); // +2s de marge
+
+                } else {
+                    throw new Error('Échec démarrage SQAL');
+                }
+            } catch (error) {
+                addLog('sqal', `❌ Erreur: ${error.message}`, 'error');
+                showToast('Erreur SQAL', error.message, 'error');
+                autoChainState.running = false;
+            }
+        }
+
+        async function triggerAutoConsumer() {
+            autoChainState.currentStep = 'consumer';
+
+            addLog('consumer', `🚀 ÉTAPE 4/4: Démarrage Simulateur Consommateurs`, 'success');
+            addLog('consumer', `👥 Génération feedbacks automatiques`, 'info');
+
+            const config = autoChainState.config.consumer;
+
+            try {
+                const response = await fetch('http://localhost:8000/api/control/consumer/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        interval: config.interval,
+                        num_feedbacks: config.num,
+                        profile: config.profile
+                    })
+                });
+
+                if (response.ok) {
+                    state.consumer.running = true;
+                    updateStatus('consumer', 'running');
+                    addLog('consumer', `✅ Simulateur démarré - ${config.num} feedbacks à ${config.interval}s`, 'success');
+                    showToast('Consommateurs Démarré', `Génération de ${config.num} feedbacks`, 'info');
+
+                    // Calculer temps total
+                    const consumerDuration = config.num * config.interval * 1000;
+                    addLog('consumer', `⏱️ Durée estimée: ${Math.round(consumerDuration / 1000)}s`, 'info');
+
+                    // Update progress bar during consumer feedback (75-100%)
+                    const consumerStartTime = Date.now();
+                    const consumerProgressInterval = setInterval(() => {
+                        if (!autoChainState.running) {
+                            clearInterval(consumerProgressInterval);
+                            return;
+                        }
+                        const elapsed = Date.now() - consumerStartTime;
+                        const progress = 75 + Math.min((elapsed / consumerDuration) * 25, 25);
+                        updateProgress(progress, 'consumer');
+                    }, 500);
+
+                    // Afficher récap final
+                    setTimeout(() => {
+                        clearInterval(consumerProgressInterval);
+                        updateProgress(100, 'consumer');
+                        showAutoChainSummary();
+                    }, consumerDuration + 2000);
+
+                } else {
+                    const errorData = await response.json();
+                    throw new Error(errorData.detail || 'Échec démarrage');
+                }
+            } catch (error) {
+                addLog('consumer', `❌ Erreur: ${error.message}`, 'error');
+                addLog('consumer', `💡 Vérifiez que des QR codes ont été générés par SQAL`, 'warning');
+                showToast('Erreur Consommateurs', error.message, 'error');
+                autoChainState.running = false;
+            }
+        }
+
+        function showAutoChainSummary() {
+            addLog('gavage', '🎉 ========================================', 'success');
+            addLog('gavage', '🎉 DÉMO AUTO-ENCHAÎNÉE TERMINÉE !', 'success');
+            addLog('gavage', '🎉 ========================================', 'success');
+            addLog('monitor', '✅ Séquence complète exécutée avec succès', 'success');
+            addLog('sqal', '✅ Tous les simulateurs ont terminé', 'success');
+            addLog('consumer', '✅ Boucle fermée complète démontrée', 'success');
+
+            const totalDuration = Math.round((Date.now() - autoChainState.startTime) / 1000);
+            showToast('Démo Terminée ! 🎉', `Boucle complète en ${totalDuration}s`, 'success');
+
+            autoChainState.running = false;
+            autoChainState.currentStep = null;
+        }
+
+        // Auto-connect au chargement
+        window.addEventListener('load', () => {
+            addLog('gavage', '💡 Prêt pour démarrage', 'info');
+            addLog('monitor', '💡 Prêt pour démarrage', 'info');
+            addLog('sqal', '💡 Prêt pour démarrage', 'info');
+
+            // Connexion WebSocket
+            connectWebSocket();
+        });
+    </script>
+</body>
+</html>

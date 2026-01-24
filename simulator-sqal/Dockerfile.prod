@@ -1,0 +1,82 @@
+# ==============================================================================
+# Multi-Stage Production Dockerfile - SQAL Simulator
+# ==============================================================================
+# Stage 1: Builder
+# Stage 2: Runtime
+# ==============================================================================
+
+# ==============================================================================
+# Stage 1: Builder
+# ==============================================================================
+FROM python:3.11-slim AS builder
+
+# Build arguments
+ARG BUILD_DATE
+ARG VERSION=3.0.0
+
+# Environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create virtual environment
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Copy and install dependencies
+WORKDIR /build
+COPY requirements.txt .
+RUN pip install --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
+
+# ==============================================================================
+# Stage 2: Runtime
+# ==============================================================================
+FROM python:3.11-slim AS runtime
+
+# Build arguments
+ARG BUILD_DATE
+ARG VERSION=3.0.0
+
+# Metadata
+LABEL maintainer="A Deep Adventure <contact@adeep.fr>" \
+      description="Système Gaveurs V3.0 - SQAL Simulator Production" \
+      version="${VERSION}" \
+      build-date="${BUILD_DATE}"
+
+# Environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PATH="/opt/venv/bin:${PATH}"
+
+# Copy virtual environment from builder
+COPY --from=builder /opt/venv /opt/venv
+
+# Create non-root user
+RUN groupadd -r -g 1000 appuser && \
+    useradd -r -u 1000 -g appuser -m -s /bin/bash appuser && \
+    mkdir -p /app && \
+    chown -R appuser:appuser /app
+
+# Set working directory
+WORKDIR /app
+
+# Copy application code
+COPY --chown=appuser:appuser ./src /app/src
+COPY --chown=appuser:appuser ./main.py /app/
+
+# Switch to non-root user
+USER appuser
+
+# Health check (check if process is running)
+HEALTHCHECK --interval=60s --timeout=10s --start-period=30s --retries=3 \
+    CMD pgrep -f "python main.py" || exit 1
+
+# Default command (can be overridden)
+CMD ["python", "main.py", "--device", "ESP32_PROD_01", "--interval", "30"]
