@@ -14,6 +14,7 @@ from app.models.sqal import (
     DeviceListResponse,
     StatsResponse,
     HealthCheckResponse,
+    AlertCreate,
     AlertDB,
     DeviceDB,
     SensorSampleDB
@@ -238,6 +239,20 @@ async def predict(sample_id: str = Query(..., description="ID du sample (sample_
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         logger.error(f"Erreur prediction: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/alerts")
+async def create_alert(alert: AlertCreate):
+    try:
+        alert_id = await sqal_service.create_alert(alert)
+        if not alert_id:
+            raise HTTPException(status_code=500, detail="Unable to create alert")
+        return {"alert_id": alert_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Erreur création alerte: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

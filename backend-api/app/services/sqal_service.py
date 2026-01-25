@@ -210,22 +210,43 @@ class SQALService:
             async with self.pool.acquire() as conn:
                 data_context_json = json.dumps(alert.data_context) if alert.data_context else None
 
-                alert_id = await conn.fetchval(
-                    """
-                    INSERT INTO sqal_alerts (
-                        time, device_id, sample_id, alert_type, severity, message, data_context
+                # Schema variant 1: (message, data_context, is_acknowledged)
+                try:
+                    alert_id = await conn.fetchval(
+                        """
+                        INSERT INTO sqal_alerts (
+                            time, device_id, sample_id, alert_type, severity, message, data_context, is_acknowledged
+                        )
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, FALSE)
+                        RETURNING alert_id
+                        """,
+                        datetime.utcnow(),
+                        alert.device_id,
+                        alert.sample_id,
+                        alert.alert_type,
+                        alert.severity,
+                        alert.message,
+                        data_context_json,
                     )
-                    VALUES ($1, $2, $3, $4, $5, $6, $7)
-                    RETURNING alert_id
-                    """,
-                    datetime.utcnow(),
-                    alert.device_id,
-                    alert.sample_id,
-                    alert.alert_type,
-                    alert.severity,
-                    alert.message,
-                    data_context_json
-                )
+                except Exception:
+                    # Schema variant 2: (title, defect_details, acknowledged)
+                    alert_id = await conn.fetchval(
+                        """
+                        INSERT INTO sqal_alerts (
+                            time, device_id, sample_id, alert_type, severity, title, message, defect_details, acknowledged
+                        )
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, FALSE)
+                        RETURNING alert_id
+                        """,
+                        datetime.utcnow(),
+                        alert.device_id,
+                        alert.sample_id,
+                        alert.alert_type,
+                        alert.severity,
+                        alert.alert_type,
+                        alert.message,
+                        data_context_json,
+                    )
 
                 logger.info(f"🚨 Alerte créée: {alert_id} - {alert.alert_type}")
                 return alert_id
