@@ -381,7 +381,7 @@ class SQALService:
                             "meta_humidity_percent": sample.meta_humidity_percent,
                             "meta_config_profile": sample.meta_config_profile,
                             "created_at": sample.created_at,
-                            "poids_foie_estime_g": None,
+                            "poids_foie_estime_g": sample.poids_foie_estime_g,
                         }
 
             except Exception as e:
@@ -499,7 +499,7 @@ class SQALService:
                                     "meta_humidity_percent": sample.meta_humidity_percent,
                                     "meta_config_profile": sample.meta_config_profile,
                                     "created_at": sample.created_at,
-                                    "poids_foie_estime_g": None,
+                                    "poids_foie_estime_g": sample.poids_foie_estime_g,
                                 }
                             )
 
@@ -1112,9 +1112,6 @@ class SQALService:
             Dictionnaire {grade: count}
         """
         try:
-            if site_code:
-                raise ValueError("site_code filtering not supported on ORM path yet")
-
             try:
                 async with AsyncSessionLocal() as session:
                     stmt = (
@@ -1123,8 +1120,15 @@ class SQALService:
                             func.count().label("count"),
                         )
                         .where(SensorSample.timestamp.between(start_time, end_time))
-                        .group_by(SensorSample.fusion_final_grade)
                     )
+
+                    if site_code:
+                        stmt = (
+                            stmt.join(SQALDevice, SQALDevice.device_id == SensorSample.device_id)
+                            .where(SQALDevice.site_code == site_code)
+                        )
+
+                    stmt = stmt.group_by(SensorSample.fusion_final_grade)
 
                     rows = (await session.execute(stmt)).all()
                     if rows:
