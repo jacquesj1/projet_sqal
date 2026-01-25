@@ -999,6 +999,7 @@ class SQALService:
             True si succès, False sinon
         """
         try:
+            await self._ensure_pool()
             async with self.pool.acquire() as conn:
                 try:
                     await conn.execute(

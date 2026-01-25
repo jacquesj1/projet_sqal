@@ -5,7 +5,7 @@ Préfixe: /api/sqal/*
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from typing import List, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import logging
 
 from app.models.sqal import (
@@ -483,7 +483,7 @@ async def acknowledge_alert(
             "success": True,
             "alert_id": alert_id,
             "acknowledged_by": acknowledged_by,
-            "acknowledged_at": datetime.utcnow().isoformat()
+            "acknowledged_at": datetime.now(tz=timezone.utc).isoformat()
         }
 
     except HTTPException:
