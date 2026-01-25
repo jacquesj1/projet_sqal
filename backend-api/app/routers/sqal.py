@@ -658,7 +658,7 @@ async def get_quality_for_all_lots(request: Request):
           ROUND(AVG(as7341_freshness_index)::numeric, 4) as indice_fraicheur,
           ROUND(AVG(as7341_fat_quality_index)::numeric, 4) as indice_qualite_gras,
           ROUND(AVG(as7341_oxidation_index)::numeric, 4) as indice_oxydation
-        FROM sqal_sensor_samples
+        FROM sensor_samples
         WHERE lot_id IS NOT NULL
         GROUP BY lot_id
         ORDER BY lot_id
