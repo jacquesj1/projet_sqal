@@ -92,14 +92,6 @@ class SQALService:
         """
         try:
             async with self.pool.acquire() as conn:
-                write_legacy_sqal_samples = os.getenv("SQAL_WRITE_LEGACY_SQAL_SAMPLES", "true").strip().lower() in (
-                    "1",
-                    "true",
-                    "yes",
-                    "y",
-                    "on",
-                )
-
                 # Ensure device exists to satisfy FK on sqal_sensor_samples.device_id
                 config_profile = None
                 try:
@@ -164,46 +156,6 @@ class SQALService:
                         poids_foie_estime_g = round((float(sensor_data.vl53l8ch.analysis.volume_mm3) / 1000.0) * 0.947, 1)
                 except Exception:
                     poids_foie_estime_g = None
-
-                if write_legacy_sqal_samples:
-                    await conn.execute(
-                        """
-                        INSERT INTO sqal_sensor_samples (
-                            time, sample_id, device_id, lot_id,
-                            vl53l8ch_distance_matrix, vl53l8ch_reflectance_matrix, vl53l8ch_amplitude_matrix,
-                            vl53l8ch_volume_mm3, vl53l8ch_surface_uniformity, vl53l8ch_quality_score, vl53l8ch_grade,
-                            as7341_channels, as7341_freshness_index, as7341_fat_quality_index,
-                            as7341_oxidation_index, as7341_quality_score,
-                            fusion_final_score, fusion_final_grade, fusion_is_compliant
-                        )
-                        VALUES (
-                            $1, $2, $3, $4,
-                            $5, $6, $7,
-                            $8, $9, $10, $11,
-                            $12, $13, $14, $15, $16,
-                            $17, $18, $19
-                        )
-                        """,
-                        sensor_data.timestamp,
-                        sensor_data.sample_id,
-                        sensor_data.device_id,
-                        sensor_data.lot_id,
-                        distance_json,
-                        reflectance_json,
-                        amplitude_json,
-                        sensor_data.vl53l8ch.analysis.volume_mm3,
-                        sensor_data.vl53l8ch.analysis.surface_uniformity,
-                        sensor_data.vl53l8ch.analysis.quality_score,
-                        vl53_grade,
-                        channels_json,
-                        sensor_data.as7341.analysis.freshness_index,
-                        sensor_data.as7341.analysis.fat_quality_index,
-                        sensor_data.as7341.analysis.oxidation_index,
-                        sensor_data.as7341.analysis.quality_score,
-                        sensor_data.fusion.final_score,
-                        fusion_grade,
-                        sensor_data.fusion.is_compliant
-                    )
 
                 try:
                     async with AsyncSessionLocal() as session:
@@ -326,17 +278,104 @@ class SQALService:
             Dictionnaire avec données échantillon, ou None
         """
         try:
-            try:
-                async with AsyncSessionLocal() as session:
-                    stmt = select(SensorSample).order_by(desc(SensorSample.timestamp)).limit(1)
-                    if device_id:
-                        stmt = stmt.where(SensorSample.device_id == device_id)
+            async with AsyncSessionLocal() as session:
+                stmt = select(SensorSample).order_by(desc(SensorSample.timestamp)).limit(1)
+                if device_id:
+                    stmt = stmt.where(SensorSample.device_id == device_id)
 
-                    sample = await session.scalar(stmt)
+                sample = await session.scalar(stmt)
 
-                    if sample:
-                        logger.debug("get_latest_sample: ORM sensor_samples")
-                        return {
+                if not sample:
+                    return None
+
+                logger.debug("get_latest_sample: ORM sensor_samples")
+                return {
+                    "time": sample.timestamp,
+                    "sample_id": sample.sample_id,
+                    "device_id": sample.device_id,
+                    "lot_id": sample.lot_id,
+                    "vl53l8ch_distance_matrix": sample.vl53l8ch_distance_matrix,
+                    "vl53l8ch_reflectance_matrix": sample.vl53l8ch_reflectance_matrix,
+                    "vl53l8ch_amplitude_matrix": sample.vl53l8ch_amplitude_matrix,
+                    "vl53l8ch_integration_time": None,
+                    "vl53l8ch_temperature_c": None,
+                    "vl53l8ch_volume_mm3": sample.vl53l8ch_volume_mm3,
+                    "vl53l8ch_avg_height_mm": sample.vl53l8ch_avg_height_mm,
+                    "vl53l8ch_max_height_mm": sample.vl53l8ch_max_height_mm,
+                    "vl53l8ch_min_height_mm": sample.vl53l8ch_min_height_mm,
+                    "vl53l8ch_surface_uniformity": sample.vl53l8ch_surface_uniformity,
+                    "vl53l8ch_bins_analysis": sample.vl53l8ch_bins_analysis,
+                    "vl53l8ch_reflectance_analysis": sample.vl53l8ch_reflectance_analysis,
+                    "vl53l8ch_amplitude_consistency": sample.vl53l8ch_amplitude_consistency,
+                    "vl53l8ch_quality_score": sample.vl53l8ch_quality_score,
+                    "vl53l8ch_grade": sample.vl53l8ch_grade,
+                    "vl53l8ch_score_breakdown": sample.vl53l8ch_score_breakdown,
+                    "vl53l8ch_defects": sample.vl53l8ch_defects,
+                    "as7341_channels": sample.as7341_channels,
+                    "as7341_integration_time": sample.as7341_integration_time,
+                    "as7341_gain": sample.as7341_gain,
+                    "as7341_freshness_index": sample.as7341_freshness_index,
+                    "as7341_fat_quality_index": sample.as7341_fat_quality_index,
+                    "as7341_oxidation_index": sample.as7341_oxidation_index,
+                    "as7341_spectral_analysis": sample.as7341_spectral_analysis,
+                    "as7341_color_analysis": sample.as7341_color_analysis,
+                    "as7341_quality_score": sample.as7341_quality_score,
+                    "as7341_grade": sample.as7341_grade,
+                    "as7341_score_breakdown": sample.as7341_score_breakdown,
+                    "as7341_defects": sample.as7341_defects,
+                    "fusion_final_score": sample.fusion_final_score,
+                    "fusion_final_grade": sample.fusion_final_grade,
+                    "fusion_vl53l8ch_score": sample.fusion_vl53l8ch_score,
+                    "fusion_as7341_score": sample.fusion_as7341_score,
+                    "fusion_defects": sample.fusion_defects,
+                    "fusion_is_compliant": (sample.fusion_final_grade != "REJECT") if sample.fusion_final_grade else None,
+                    "meta_firmware_version": sample.meta_firmware_version,
+                    "meta_temperature_c": sample.meta_temperature_c,
+                    "meta_humidity_percent": sample.meta_humidity_percent,
+                    "meta_config_profile": sample.meta_config_profile,
+                    "created_at": sample.created_at,
+                    "poids_foie_estime_g": sample.poids_foie_estime_g,
+                }
+
+        except Exception as e:
+            logger.error(f"❌ Erreur récupération dernier échantillon: {e}")
+            return None
+
+    async def get_samples_period(
+        self,
+        start_time: datetime,
+        end_time: datetime,
+        device_id: Optional[str] = None,
+        limit: int = 1000
+    ) -> List[Dict[str, Any]]:
+        """
+        Récupère les échantillons sur une période
+
+        Args:
+            start_time: Début période
+            end_time: Fin période
+            device_id: Filtrer par device (optionnel)
+            limit: Nombre max résultats
+
+        Returns:
+            Liste de dictionnaires
+        """
+        try:
+            async with AsyncSessionLocal() as session:
+                stmt = (
+                    select(SensorSample)
+                    .where(SensorSample.timestamp.between(start_time, end_time))
+                    .order_by(desc(SensorSample.timestamp))
+                    .limit(limit)
+                )
+                if device_id:
+                    stmt = stmt.where(SensorSample.device_id == device_id)
+
+                samples = (await session.scalars(stmt)).all()
+                results: List[Dict[str, Any]] = []
+                for sample in samples:
+                    results.append(
+                        {
                             "time": sample.timestamp,
                             "sample_id": sample.sample_id,
                             "device_id": sample.device_id,
@@ -383,161 +422,10 @@ class SQALService:
                             "created_at": sample.created_at,
                             "poids_foie_estime_g": sample.poids_foie_estime_g,
                         }
-
-            except Exception as e:
-                logger.warning(f"ORM sensor_samples read failed: {e}")
-
-            async with self.pool.acquire() as conn:
-                logger.debug("get_latest_sample: legacy sqal_sensor_samples")
-                if device_id:
-                    row = await conn.fetchrow(
-                        """
-                        SELECT * FROM sqal_sensor_samples
-                        WHERE device_id = $1
-                        ORDER BY time DESC
-                        LIMIT 1
-                        """,
-                        device_id
-                    )
-                else:
-                    row = await conn.fetchrow(
-                        """
-                        SELECT * FROM sqal_sensor_samples
-                        ORDER BY time DESC
-                        LIMIT 1
-                        """
                     )
 
-                if row:
-                    return dict(row)
-                return None
-
-        except Exception as e:
-            logger.error(f"❌ Erreur récupération dernier échantillon: {e}")
-            return None
-
-    async def get_samples_period(
-        self,
-        start_time: datetime,
-        end_time: datetime,
-        device_id: Optional[str] = None,
-        limit: int = 1000
-    ) -> List[Dict[str, Any]]:
-        """
-        Récupère les échantillons sur une période
-
-        Args:
-            start_time: Début période
-            end_time: Fin période
-            device_id: Filtrer par device (optionnel)
-            limit: Nombre max résultats
-
-        Returns:
-            Liste de dictionnaires
-        """
-        try:
-            try:
-                async with AsyncSessionLocal() as session:
-                    stmt = (
-                        select(SensorSample)
-                        .where(SensorSample.timestamp.between(start_time, end_time))
-                        .order_by(desc(SensorSample.timestamp))
-                        .limit(limit)
-                    )
-                    if device_id:
-                        stmt = stmt.where(SensorSample.device_id == device_id)
-
-                    samples = (await session.scalars(stmt)).all()
-
-                    if samples:
-                        logger.debug("get_samples_period: ORM sensor_samples")
-                        results: List[Dict[str, Any]] = []
-                        for sample in samples:
-                            results.append(
-                                {
-                                    "time": sample.timestamp,
-                                    "sample_id": sample.sample_id,
-                                    "device_id": sample.device_id,
-                                    "lot_id": sample.lot_id,
-                                    "vl53l8ch_distance_matrix": sample.vl53l8ch_distance_matrix,
-                                    "vl53l8ch_reflectance_matrix": sample.vl53l8ch_reflectance_matrix,
-                                    "vl53l8ch_amplitude_matrix": sample.vl53l8ch_amplitude_matrix,
-                                    "vl53l8ch_integration_time": None,
-                                    "vl53l8ch_temperature_c": None,
-                                    "vl53l8ch_volume_mm3": sample.vl53l8ch_volume_mm3,
-                                    "vl53l8ch_avg_height_mm": sample.vl53l8ch_avg_height_mm,
-                                    "vl53l8ch_max_height_mm": sample.vl53l8ch_max_height_mm,
-                                    "vl53l8ch_min_height_mm": sample.vl53l8ch_min_height_mm,
-                                    "vl53l8ch_surface_uniformity": sample.vl53l8ch_surface_uniformity,
-                                    "vl53l8ch_bins_analysis": sample.vl53l8ch_bins_analysis,
-                                    "vl53l8ch_reflectance_analysis": sample.vl53l8ch_reflectance_analysis,
-                                    "vl53l8ch_amplitude_consistency": sample.vl53l8ch_amplitude_consistency,
-                                    "vl53l8ch_quality_score": sample.vl53l8ch_quality_score,
-                                    "vl53l8ch_grade": sample.vl53l8ch_grade,
-                                    "vl53l8ch_score_breakdown": sample.vl53l8ch_score_breakdown,
-                                    "vl53l8ch_defects": sample.vl53l8ch_defects,
-                                    "as7341_channels": sample.as7341_channels,
-                                    "as7341_integration_time": sample.as7341_integration_time,
-                                    "as7341_gain": sample.as7341_gain,
-                                    "as7341_freshness_index": sample.as7341_freshness_index,
-                                    "as7341_fat_quality_index": sample.as7341_fat_quality_index,
-                                    "as7341_oxidation_index": sample.as7341_oxidation_index,
-                                    "as7341_spectral_analysis": sample.as7341_spectral_analysis,
-                                    "as7341_color_analysis": sample.as7341_color_analysis,
-                                    "as7341_quality_score": sample.as7341_quality_score,
-                                    "as7341_grade": sample.as7341_grade,
-                                    "as7341_score_breakdown": sample.as7341_score_breakdown,
-                                    "as7341_defects": sample.as7341_defects,
-                                    "fusion_final_score": sample.fusion_final_score,
-                                    "fusion_final_grade": sample.fusion_final_grade,
-                                    "fusion_vl53l8ch_score": sample.fusion_vl53l8ch_score,
-                                    "fusion_as7341_score": sample.fusion_as7341_score,
-                                    "fusion_defects": sample.fusion_defects,
-                                    "fusion_is_compliant": (sample.fusion_final_grade != "REJECT") if sample.fusion_final_grade else None,
-                                    "meta_firmware_version": sample.meta_firmware_version,
-                                    "meta_temperature_c": sample.meta_temperature_c,
-                                    "meta_humidity_percent": sample.meta_humidity_percent,
-                                    "meta_config_profile": sample.meta_config_profile,
-                                    "created_at": sample.created_at,
-                                    "poids_foie_estime_g": sample.poids_foie_estime_g,
-                                }
-                            )
-
-                        return results
-
-            except Exception as e:
-                logger.warning(f"ORM sensor_samples read failed: {e}")
-
-            async with self.pool.acquire() as conn:
-                logger.debug("get_samples_period: legacy sqal_sensor_samples")
-                if device_id:
-                    rows = await conn.fetch(
-                        """
-                        SELECT * FROM sqal_sensor_samples
-                        WHERE time BETWEEN $1 AND $2
-                          AND device_id = $3
-                        ORDER BY time DESC
-                        LIMIT $4
-                        """,
-                        start_time,
-                        end_time,
-                        device_id,
-                        limit
-                    )
-                else:
-                    rows = await conn.fetch(
-                        """
-                        SELECT * FROM sqal_sensor_samples
-                        WHERE time BETWEEN $1 AND $2
-                        ORDER BY time DESC
-                        LIMIT $3
-                        """,
-                        start_time,
-                        end_time,
-                        limit
-                    )
-
-                return [dict(row) for row in rows]
+                logger.debug("get_samples_period: ORM sensor_samples")
+                return results
 
         except Exception as e:
             logger.error(f"❌ Erreur récupération échantillons période: {e}")
@@ -1112,67 +1000,32 @@ class SQALService:
             Dictionnaire {grade: count}
         """
         try:
-            try:
-                async with AsyncSessionLocal() as session:
-                    stmt = (
-                        select(
-                            SensorSample.fusion_final_grade.label("fusion_final_grade"),
-                            func.count().label("count"),
-                        )
-                        .where(SensorSample.timestamp.between(start_time, end_time))
+            async with AsyncSessionLocal() as session:
+                stmt = (
+                    select(
+                        SensorSample.fusion_final_grade.label("fusion_final_grade"),
+                        func.count().label("count"),
                     )
+                    .where(SensorSample.timestamp.between(start_time, end_time))
+                )
 
-                    if site_code:
-                        stmt = (
-                            stmt.join(SQALDevice, SQALDevice.device_id == SensorSample.device_id)
-                            .where(SQALDevice.site_code == site_code)
-                        )
-
-                    stmt = stmt.group_by(SensorSample.fusion_final_grade)
-
-                    rows = (await session.execute(stmt)).all()
-                    if rows:
-                        logger.info("get_grade_distribution: ORM sensor_samples")
-                        logger.debug("get_grade_distribution: ORM sensor_samples")
-                        dist: Dict[str, int] = {str(r.fusion_final_grade): int(r.count) for r in rows}
-
-                        for g in ["A+", "A", "B", "C", "REJECT"]:
-                            dist.setdefault(g, 0)
-
-                        return dist
-
-            except Exception as e:
-                logger.warning(f"ORM sensor_samples grade distribution failed: {e}")
-
-            async with self.pool.acquire() as conn:
-                logger.info("get_grade_distribution: legacy sqal_sensor_samples")
                 if site_code:
-                    rows = await conn.fetch(
-                        """
-                        SELECT fusion_final_grade, COUNT(*) as count
-                        FROM sqal_sensor_samples s
-                        JOIN sqal_devices d ON s.device_id = d.device_id
-                        WHERE s.time BETWEEN $1 AND $2
-                          AND d.site_code = $3
-                        GROUP BY fusion_final_grade
-                        """,
-                        start_time,
-                        end_time,
-                        site_code
-                    )
-                else:
-                    rows = await conn.fetch(
-                        """
-                        SELECT fusion_final_grade, COUNT(*) as count
-                        FROM sqal_sensor_samples
-                        WHERE time BETWEEN $1 AND $2
-                        GROUP BY fusion_final_grade
-                        """,
-                        start_time,
-                        end_time
+                    stmt = (
+                        stmt.join(SQALDevice, SQALDevice.device_id == SensorSample.device_id)
+                        .where(SQALDevice.site_code == site_code)
                     )
 
-                return {row["fusion_final_grade"]: row["count"] for row in rows}
+                stmt = stmt.group_by(SensorSample.fusion_final_grade)
+                rows = (await session.execute(stmt)).all()
+
+                logger.info("get_grade_distribution: ORM sensor_samples")
+                logger.debug("get_grade_distribution: ORM sensor_samples")
+
+                dist: Dict[str, int] = {str(r.fusion_final_grade): int(r.count) for r in rows}
+                for g in ["A+", "A", "B", "C", "REJECT"]:
+                    dist.setdefault(g, 0)
+
+                return dist
 
         except Exception as e:
             logger.error(f"❌ Erreur distribution grades: {e}")
