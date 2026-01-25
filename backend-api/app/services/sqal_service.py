@@ -5,7 +5,7 @@ Service Layer pour SQAL - Opérations base de données TimescaleDB
 import asyncpg
 import json
 from typing import List, Optional, Dict, Any
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import logging
 import os
 
@@ -220,7 +220,7 @@ class SQALService:
                         VALUES ($1, $2, $3, $4, $5, $6, $7, FALSE)
                         RETURNING alert_id
                         """,
-                        datetime.utcnow(),
+                        datetime.now(timezone.utc),
                         alert.device_id,
                         alert.sample_id,
                         alert.alert_type,
@@ -238,7 +238,7 @@ class SQALService:
                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, FALSE)
                         RETURNING alert_id
                         """,
-                        datetime.utcnow(),
+                        datetime.now(timezone.utc),
                         alert.device_id,
                         alert.sample_id,
                         alert.alert_type,
@@ -852,12 +852,17 @@ class SQALService:
         """
         try:
             if not end_time:
-                end_time = datetime.utcnow()
+                end_time = datetime.now(timezone.utc)
             if not start_time:
                 start_time = end_time - timedelta(days=1)
 
             try:
                 async with AsyncSessionLocal() as session:
+                    if start_time.tzinfo is None:
+                        start_time = start_time.replace(tzinfo=timezone.utc)
+                    if end_time.tzinfo is None:
+                        end_time = end_time.replace(tzinfo=timezone.utc)
+
                     stmt = select(SQALAlert).where(SQALAlert.time.between(start_time, end_time))
 
                     if severity:
@@ -895,7 +900,7 @@ class SQALService:
                       acknowledged_at,
                       acknowledged_by
                     FROM sqal_alerts
-                    WHERE time BETWEEN $1 AND $2
+                    WHERE time BETWEEN $1::timestamptz AND $2::timestamptz
                     """
                     params = [start_time, end_time]
                     param_idx = 3
@@ -932,7 +937,7 @@ class SQALService:
                       acknowledged_at,
                       acknowledged_by
                     FROM sqal_alerts
-                    WHERE time BETWEEN $1 AND $2
+                    WHERE time BETWEEN $1::timestamptz AND $2::timestamptz
                     """
                     params = [start_time, end_time]
                     param_idx = 3
@@ -979,7 +984,7 @@ class SQALService:
                             acknowledged_by = $2
                         WHERE alert_id = $3
                         """,
-                        datetime.utcnow(),
+                        datetime.now(timezone.utc),
                         acknowledged_by,
                         alert_id
                     )
@@ -992,7 +997,7 @@ class SQALService:
                             acknowledged_by = $2
                         WHERE alert_id = $3
                         """,
-                        datetime.utcnow(),
+                        datetime.now(timezone.utc),
                         acknowledged_by,
                         alert_id
                     )
