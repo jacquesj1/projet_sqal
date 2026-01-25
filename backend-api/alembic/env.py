@@ -16,6 +16,8 @@ if config.config_file_name is not None:
 # Import target metadata
 from app.db.base import Base  # noqa: E402
 from app.db.models.sensor_sample import SensorSample  # noqa: F401,E402
+from app.db.models.ai_model import AIModel  # noqa: F401,E402
+from app.db.models.prediction import Prediction  # noqa: F401,E402
 
 target_metadata = Base.metadata
 

@@ -292,6 +292,9 @@ pip-delete-this-directory.txt
 *.o
 *.so
 
+# backend_ref pour refonte (objectifs)
+sqal/backend_new/
+
 # ------------------------------------------------------------------------------
 # Keep These Files (Examples)
 # ------------------------------------------------------------------------------

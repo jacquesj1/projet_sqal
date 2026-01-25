@@ -23,6 +23,8 @@ from app.models.sqal import (
 
 from app.db.sqlalchemy import AsyncSessionLocal
 from app.db.models.sensor_sample import SensorSample
+from app.db.models.ai_model import AIModel
+from app.db.models.prediction import Prediction
 
 logger = logging.getLogger(__name__)
 
@@ -700,6 +702,64 @@ class SQALService:
         except Exception as e:
             logger.error(f"❌ Erreur distribution grades: {e}")
             return {}
+
+    async def predict(self, sample_id: str) -> Dict[str, Any]:
+        try:
+            async with AsyncSessionLocal() as session:
+                sample = await session.scalar(
+                    select(SensorSample).where(SensorSample.sample_id == sample_id).limit(1)
+                )
+                if not sample:
+                    raise ValueError(f"Sample not found: {sample_id}")
+
+                model = await session.scalar(
+                    select(AIModel)
+                    .where(AIModel.is_active.is_(True))
+                    .order_by(desc(AIModel.created_at))
+                    .limit(1)
+                )
+
+                model_name = model.name if model else "sqal-mvp"
+                model_version = model.version if model else "0.1"
+
+                score = sample.fusion_final_score
+                grade = sample.fusion_final_grade
+                explanations = {
+                    "source": "sensor_samples",
+                    "fields": {
+                        "fusion_final_score": score,
+                        "fusion_final_grade": grade,
+                    },
+                }
+
+                pred = Prediction(
+                    sample_id=sample.sample_id,
+                    device_id=sample.device_id,
+                    model_name=model_name,
+                    model_version=model_version,
+                    score=score,
+                    grade=grade,
+                    explanations=explanations,
+                )
+
+                session.add(pred)
+                await session.commit()
+                await session.refresh(pred)
+
+                return {
+                    "prediction_id": str(pred.id),
+                    "sample_id": pred.sample_id,
+                    "device_id": pred.device_id,
+                    "model_name": pred.model_name,
+                    "model_version": pred.model_version,
+                    "score": pred.score,
+                    "grade": pred.grade,
+                    "predicted_at": pred.predicted_at,
+                    "explanations": pred.explanations,
+                }
+        except Exception as e:
+            logger.error(f"❌ Erreur prediction SQAL: {e}")
+            raise
 
 
 # Instance globale (singleton)
