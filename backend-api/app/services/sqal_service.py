@@ -158,6 +158,13 @@ class SQALService:
                 vl53_grade = str(sensor_data.vl53l8ch.analysis.grade.value) if hasattr(sensor_data.vl53l8ch.analysis.grade, 'value') else str(sensor_data.vl53l8ch.analysis.grade)
                 fusion_grade = str(sensor_data.fusion.final_grade.value) if hasattr(sensor_data.fusion.final_grade, 'value') else str(sensor_data.fusion.final_grade)
 
+                poids_foie_estime_g = None
+                try:
+                    if sensor_data.vl53l8ch.analysis.volume_mm3 is not None:
+                        poids_foie_estime_g = round((float(sensor_data.vl53l8ch.analysis.volume_mm3) / 1000.0) * 0.947, 1)
+                except Exception:
+                    poids_foie_estime_g = None
+
                 if write_legacy_sqal_samples:
                     await conn.execute(
                         """
@@ -219,6 +226,7 @@ class SQALService:
                             as7341_quality_score=sensor_data.as7341.analysis.quality_score,
                             fusion_final_score=sensor_data.fusion.final_score,
                             fusion_final_grade=fusion_grade,
+                            poids_foie_estime_g=poids_foie_estime_g,
                             created_at=datetime.utcnow(),
                         )
 
