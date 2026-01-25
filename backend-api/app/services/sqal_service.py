@@ -23,6 +23,7 @@ from app.models.sqal import (
 
 from app.db.sqlalchemy import AsyncSessionLocal
 from app.db.models.sensor_sample import SensorSample
+from app.db.models.sqal_device import SQALDevice
 from app.db.models.ai_model import AIModel
 from app.db.models.prediction import Prediction
 
@@ -564,7 +565,65 @@ class SQALService:
             Liste de statistiques par site
         """
         try:
+            try:
+                async with AsyncSessionLocal() as session:
+                    bucket = func.date_trunc("day", SensorSample.timestamp).label("bucket")
+
+                    stmt = (
+                        select(
+                            bucket,
+                            SQALDevice.site_code.label("site_code"),
+                            func.count().label("total_samples"),
+                            func.avg(SensorSample.fusion_final_score).label("avg_quality_score"),
+                            func.sum(case((SensorSample.fusion_final_grade == "A+", 1), else_=0)).label("count_a_plus"),
+                            func.sum(case((SensorSample.fusion_final_grade == "A", 1), else_=0)).label("count_a"),
+                            func.sum(case((SensorSample.fusion_final_grade == "B", 1), else_=0)).label("count_b"),
+                            func.sum(case((SensorSample.fusion_final_grade == "C", 1), else_=0)).label("count_c"),
+                            func.sum(case((SensorSample.fusion_final_grade == "REJECT", 1), else_=0)).label("count_reject"),
+                            func.sum(case((SensorSample.fusion_final_grade != "REJECT", 1), else_=0)).label("compliant_count"),
+                        )
+                        .select_from(SensorSample)
+                        .join(SQALDevice, SQALDevice.device_id == SensorSample.device_id)
+                        .where(SensorSample.timestamp.between(start_time, end_time))
+                        .where(SQALDevice.site_code.is_not(None))
+                        .group_by(bucket, SQALDevice.site_code)
+                        .order_by(desc(bucket), SQALDevice.site_code)
+                    )
+
+                    if site_code:
+                        stmt = stmt.where(SQALDevice.site_code == site_code)
+
+                    rows = (await session.execute(stmt)).all()
+                    if rows:
+                        logger.info("get_site_stats: ORM sensor_samples + sqal_devices")
+                        results: List[Dict[str, Any]] = []
+                        for r in rows:
+                            total_samples = int(r.total_samples or 0)
+                            compliant_count = int(r.compliant_count or 0)
+                            compliance_rate_pct = (compliant_count / total_samples * 100) if total_samples > 0 else 0
+
+                            results.append(
+                                {
+                                    "bucket": r.bucket,
+                                    "site_code": r.site_code,
+                                    "total_samples": total_samples,
+                                    "avg_quality_score": float(r.avg_quality_score) if r.avg_quality_score is not None else 0,
+                                    "compliance_rate_pct": compliance_rate_pct,
+                                    "count_a_plus": int(r.count_a_plus or 0),
+                                    "count_a": int(r.count_a or 0),
+                                    "count_b": int(r.count_b or 0),
+                                    "count_c": int(r.count_c or 0),
+                                    "count_reject": int(r.count_reject or 0),
+                                }
+                            )
+
+                        return results
+
+            except Exception as e:
+                logger.warning(f"ORM sensor_samples site stats failed: {e}")
+
             async with self.pool.acquire() as conn:
+                logger.info("get_site_stats: legacy sqal_site_stats")
                 if site_code:
                     rows = await conn.fetch(
                         """
