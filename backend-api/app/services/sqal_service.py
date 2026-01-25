@@ -7,6 +7,7 @@ import json
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
 import logging
+import os
 
 from app.core.logging_config import get_logger
 
@@ -46,20 +47,35 @@ class SQALService:
 
     def __init__(self):
         self.pool: Optional[asyncpg.Pool] = None
+        self._owns_pool: bool = False
+
+    async def _ensure_pool(self):
+        if self.pool is not None:
+            return
+
+        database_url = os.getenv(
+            "DATABASE_URL",
+            "postgresql://gaveurs_admin:gaveurs_secure_2024@timescaledb:5432/gaveurs_db"
+        )
+        self.pool = await asyncpg.create_pool(database_url, min_size=2, max_size=10, ssl=False)
+        self._owns_pool = True
+        logger.warning("SQAL pool was not initialized at startup; created lazily")
 
     async def init_pool(self, database_url: str, shared_pool: Optional[asyncpg.Pool] = None):
         """Initialise le pool de connexions PostgreSQL"""
         if shared_pool is not None:
             self.pool = shared_pool
+            self._owns_pool = False
             logger.info("Pool de connexions SQAL initialisé (shared pool)")
             return
 
-        self.pool = await asyncpg.create_pool(database_url, min_size=2, max_size=10)
+        self.pool = await asyncpg.create_pool(database_url, min_size=2, max_size=10, ssl=False)
+        self._owns_pool = True
         logger.info("Pool de connexions SQAL initialisé")
 
     async def close_pool(self):
         """Ferme le pool de connexions"""
-        if self.pool:
+        if self.pool and self._owns_pool:
             await self.pool.close()
             logger.info("Pool de connexions SQAL fermé")
 
@@ -629,6 +645,7 @@ class SQALService:
             except Exception as e:
                 logger.warning(f"ORM sensor_samples site stats failed: {e}")
 
+            await self._ensure_pool()
             async with self.pool.acquire() as conn:
                 logger.info("get_site_stats: legacy sqal_site_stats")
                 if site_code:
