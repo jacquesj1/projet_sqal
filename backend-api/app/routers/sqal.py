@@ -83,7 +83,10 @@ async def health_check():
 # ============================================================================
 
 @router.get("/devices", response_model=DeviceListResponse)
-async def get_devices(site_code: Optional[str] = Query(None, description="Filtrer par site (LL/LS/MT)")):
+async def get_devices(
+    site_code: Optional[str] = Query(None, description="Filtrer par site (LL/LS/MT)"),
+    status: Optional[str] = Query(None, description="Filtrer par statut (active/inactive/maintenance)")
+):
     """
     Liste des dispositifs ESP32
 
@@ -94,7 +97,7 @@ async def get_devices(site_code: Optional[str] = Query(None, description="Filtre
         Liste de devices avec métadonnées
     """
     try:
-        devices = await sqal_service.get_devices(site_code=site_code)
+        devices = await sqal_service.get_devices(site_code=site_code, status=status)
         return DeviceListResponse(devices=devices, total=len(devices))
 
     except Exception as e:

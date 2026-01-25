@@ -699,19 +699,51 @@ class SQALService:
             logger.error(f"❌ Erreur récupération stats sites: {e}")
             return []
 
-    async def get_devices(self, site_code: Optional[str] = None) -> List[DeviceDB]:
+    async def get_devices(self, site_code: Optional[str] = None, status: Optional[str] = None) -> List[DeviceDB]:
         """
         Récupère la liste des dispositifs
 
         Args:
             site_code: Filtrer par site (optionnel)
+            status: Filtrer par statut (optionnel)
 
         Returns:
             Liste de DeviceDB
         """
         try:
+            try:
+                async with AsyncSessionLocal() as session:
+                    stmt = select(SQALDevice).order_by(SQALDevice.device_name)
+
+                    if site_code:
+                        stmt = stmt.where(SQALDevice.site_code == site_code)
+                    if status:
+                        stmt = stmt.where(SQALDevice.status == status)
+
+                    devices = (await session.execute(stmt)).scalars().all()
+                    if devices:
+                        logger.info("get_devices: ORM sqal_devices")
+                        return [DeviceDB.model_validate(d) for d in devices]
+
+            except Exception as e:
+                logger.warning(f"ORM sqal_devices read failed: {e}")
+
+            await self._ensure_pool()
             async with self.pool.acquire() as conn:
-                if site_code:
+                logger.info("get_devices: legacy sqal_devices")
+
+                if site_code and status:
+                    rows = await conn.fetch(
+                        """
+                        SELECT * FROM sqal_devices
+                        WHERE site_code = $1
+                          AND status = $2
+                        ORDER BY device_name
+                        """,
+                        site_code,
+                        status
+                    )
+                elif site_code:
                     rows = await conn.fetch(
                         """
                         SELECT * FROM sqal_devices
@@ -719,6 +751,15 @@ class SQALService:
                         ORDER BY device_name
                         """,
                         site_code
+                    )
+                elif status:
+                    rows = await conn.fetch(
+                        """
+                        SELECT * FROM sqal_devices
+                        WHERE status = $1
+                        ORDER BY device_name
+                        """,
+                        status
                     )
                 else:
                     rows = await conn.fetch(
