@@ -208,7 +208,7 @@ class SQALService:
         """
         try:
             async with self.pool.acquire() as conn:
-                data_context_json = json.dumps(alert.data_context) if alert.data_context else None
+                data_context_value = alert.data_context if alert.data_context else None
 
                 # Schema variant 1: (message, data_context, is_acknowledged)
                 try:
@@ -226,7 +226,7 @@ class SQALService:
                         alert.alert_type,
                         alert.severity,
                         alert.message,
-                        data_context_json,
+                        data_context_value,
                     )
                 except Exception:
                     # Schema variant 2: (title, defect_details, acknowledged)
@@ -245,7 +245,7 @@ class SQALService:
                         alert.severity,
                         alert.alert_type,
                         alert.message,
-                        data_context_json,
+                        data_context_value,
                     )
 
                 logger.info(f"🚨 Alerte créée: {alert_id} - {alert.alert_type}")
@@ -868,13 +868,38 @@ class SQALService:
                     if severity:
                         stmt = stmt.where(SQALAlert.severity == severity)
                     if is_acknowledged is not None:
-                        stmt = stmt.where(SQALAlert.is_acknowledged == is_acknowledged)
+                        stmt = stmt.where(SQALAlert.acknowledged == is_acknowledged)
 
                     stmt = stmt.order_by(desc(SQALAlert.time)).limit(limit)
                     alerts = (await session.execute(stmt)).scalars().all()
                     if alerts:
                         logger.info("get_alerts: ORM sqal_alerts")
-                        return [AlertDB.model_validate(a) for a in alerts]
+                        out: List[AlertDB] = []
+                        for a in alerts:
+                            data_context = a.defect_details
+                            if isinstance(data_context, str):
+                                try:
+                                    data_context = json.loads(data_context)
+                                except Exception:
+                                    data_context = None
+
+                            out.append(
+                                AlertDB(
+                                    time=a.time,
+                                    alert_id=a.alert_id,
+                                    device_id=a.device_id or "",
+                                    sample_id=a.sample_id or "",
+                                    alert_type=a.alert_type,
+                                    severity=a.severity,
+                                    message=(a.message or a.title or ""),
+                                    data_context=data_context,
+                                    is_acknowledged=bool(a.acknowledged) if a.acknowledged is not None else False,
+                                    acknowledged_at=a.acknowledged_at,
+                                    acknowledged_by=a.acknowledged_by,
+                                )
+                            )
+
+                        return out
 
             except Exception as e:
                 logger.warning(f"ORM sqal_alerts read failed: {e}")

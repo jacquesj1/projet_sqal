@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Integer, JSON, String
+from sqlalchemy import Boolean, DateTime, Integer, JSON, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -14,15 +14,22 @@ class SQALAlert(Base):
 
     sample_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     device_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    lot_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     alert_type: Mapped[str] = mapped_column(String(50))
     severity: Mapped[str] = mapped_column(String(20))
+
+    title: Mapped[str | None] = mapped_column(String(200), nullable=True)
     message: Mapped[str | None] = mapped_column(String, nullable=True)
+    defect_details: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
-    data_context: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    threshold_value: Mapped[float | None] = mapped_column(Numeric(10, 4), nullable=True)
+    actual_value: Mapped[float | None] = mapped_column(Numeric(10, 4), nullable=True)
+    deviation_pct: Mapped[float | None] = mapped_column(Numeric(6, 2), nullable=True)
 
-    is_acknowledged: Mapped[bool] = mapped_column(Boolean, default=False)
-    acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    acknowledged: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     acknowledged_by: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    resolution_notes: Mapped[str | None] = mapped_column(String, nullable=True)
 
     created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
