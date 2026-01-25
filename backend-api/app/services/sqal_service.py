@@ -8,6 +8,8 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
 import logging
 
+from app.core.logging_config import get_logger
+
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import case, desc, func, select
 
@@ -27,7 +29,7 @@ from app.db.models.sqal_device import SQALDevice
 from app.db.models.ai_model import AIModel
 from app.db.models.prediction import Prediction
 
-logger = logging.getLogger(__name__)
+logger = get_logger("app.services.sqal_service")
 
 
 class SQALService:
@@ -639,7 +641,7 @@ class SQALService:
                           0::int AS count_c,
                           0::int AS count_reject
                         FROM sqal_site_stats
-                        WHERE day BETWEEN $1 AND $2
+                        WHERE day BETWEEN date_trunc('day', $1) AND date_trunc('day', $2)
                           AND site_code = $3
                         ORDER BY day DESC
                         """,
@@ -662,7 +664,7 @@ class SQALService:
                           0::int AS count_c,
                           0::int AS count_reject
                         FROM sqal_site_stats
-                        WHERE day BETWEEN $1 AND $2
+                        WHERE day BETWEEN date_trunc('day', $1) AND date_trunc('day', $2)
                         ORDER BY day DESC, site_code
                         """,
                         start_time,

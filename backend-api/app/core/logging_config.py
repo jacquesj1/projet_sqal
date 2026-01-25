@@ -192,7 +192,7 @@ def setup_application_loggers():
 
         # Database
         "database": setup_logger("database", "database.log", "INFO", console=False),
-        "app.services": setup_logger("app.services", "database.log", "INFO", console=False),
+        "app.services": setup_logger("app.services", "database.log", "INFO", console=True),
 
         # Cache
         "cache": setup_logger("cache", "cache.log", "INFO", console=False),
