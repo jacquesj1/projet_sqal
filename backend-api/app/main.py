@@ -186,7 +186,7 @@ async def lifespan(app: FastAPI):
     # SQAL service
     try:
         from app.services.sqal_service import sqal_service
-        await sqal_service.init_pool(database_url)
+        await sqal_service.init_pool(database_url, shared_pool=db_pool)
         logger.info("  ✅ SQAL service initialized")
     except Exception as e:
         logger.error(f"  ❌ SQAL service initialization failed: {e}")

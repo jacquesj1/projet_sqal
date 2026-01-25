@@ -47,8 +47,13 @@ class SQALService:
     def __init__(self):
         self.pool: Optional[asyncpg.Pool] = None
 
-    async def init_pool(self, database_url: str):
+    async def init_pool(self, database_url: str, shared_pool: Optional[asyncpg.Pool] = None):
         """Initialise le pool de connexions PostgreSQL"""
+        if shared_pool is not None:
+            self.pool = shared_pool
+            logger.info("Pool de connexions SQAL initialisé (shared pool)")
+            return
+
         self.pool = await asyncpg.create_pool(database_url, min_size=2, max_size=10)
         logger.info("Pool de connexions SQAL initialisé")
 
