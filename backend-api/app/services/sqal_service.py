@@ -92,6 +92,49 @@ class SQALService:
         """
         try:
             async with self.pool.acquire() as conn:
+                # Ensure device exists to satisfy FK on sqal_sensor_samples.device_id
+                config_profile = None
+                try:
+                    if sensor_data.meta and isinstance(sensor_data.meta, dict):
+                        config_profile = sensor_data.meta.get("config_profile") or sensor_data.meta.get("meta_config_profile")
+                except Exception:
+                    config_profile = None
+
+                await conn.execute(
+                    """
+                    INSERT INTO sqal_devices (
+                        device_id,
+                        device_name,
+                        firmware_version,
+                        site_code,
+                        status,
+                        config_profile,
+                        created_at,
+                        updated_at,
+                        last_seen
+                    )
+                    VALUES (
+                        $1, $2, $3, $4, $5, $6,
+                        NOW(), NOW(), $7
+                    )
+                    ON CONFLICT (device_id) DO UPDATE
+                    SET
+                        firmware_version = COALESCE(EXCLUDED.firmware_version, sqal_devices.firmware_version),
+                        site_code = COALESCE(EXCLUDED.site_code, sqal_devices.site_code),
+                        config_profile = COALESCE(EXCLUDED.config_profile, sqal_devices.config_profile),
+                        status = COALESCE(EXCLUDED.status, sqal_devices.status),
+                        last_seen = GREATEST(COALESCE(sqal_devices.last_seen, EXCLUDED.last_seen), EXCLUDED.last_seen),
+                        updated_at = NOW()
+                    """,
+                    sensor_data.device_id,
+                    None,
+                    sensor_data.firmware_version,
+                    sensor_data.site_code,
+                    "active",
+                    config_profile,
+                    sensor_data.timestamp,
+                )
+
                 # Convertit matrices 8x8 en JSONB
                 distance_json = json.dumps(sensor_data.vl53l8ch.raw.distance_matrix)
                 reflectance_json = json.dumps(sensor_data.vl53l8ch.raw.reflectance_matrix)
