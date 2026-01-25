@@ -775,6 +775,38 @@ class SQALService:
             logger.error(f"❌ Erreur récupération devices: {e}")
             return []
 
+    async def get_device(self, device_id: str) -> Optional[DeviceDB]:
+        """Récupère un device par ID (ORM-first avec fallback legacy)."""
+        try:
+            try:
+                async with AsyncSessionLocal() as session:
+                    stmt = select(SQALDevice).where(SQALDevice.device_id == device_id)
+                    device = (await session.execute(stmt)).scalars().first()
+                    if device:
+                        logger.info("get_device: ORM sqal_devices")
+                        return DeviceDB.model_validate(device)
+
+            except Exception as e:
+                logger.warning(f"ORM sqal_devices read failed (get_device): {e}")
+
+            await self._ensure_pool()
+            async with self.pool.acquire() as conn:
+                logger.info("get_device: legacy sqal_devices")
+                row = await conn.fetchrow(
+                    """
+                    SELECT * FROM sqal_devices
+                    WHERE device_id = $1
+                    """,
+                    device_id,
+                )
+                if not row:
+                    return None
+                return DeviceDB(**dict(row))
+
+        except Exception as e:
+            logger.error(f"❌ Erreur récupération device {device_id}: {e}")
+            return None
+
     async def get_alerts(
         self,
         start_time: Optional[datetime] = None,

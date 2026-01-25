@@ -117,8 +117,7 @@ async def get_device_detail(device_id: str):
         Device + statistiques 24h
     """
     try:
-        devices = await sqal_service.get_devices()
-        device = next((d for d in devices if d.device_id == device_id), None)
+        device = await sqal_service.get_device(device_id)
 
         if not device:
             raise HTTPException(status_code=404, detail=f"Device {device_id} introuvable")
