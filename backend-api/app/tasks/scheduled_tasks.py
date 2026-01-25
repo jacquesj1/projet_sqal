@@ -255,10 +255,10 @@ def calculate_weekly_kpis() -> Dict[str, Any]:
                     SELECT
                         COUNT(*) as nb_samples,
                         COUNT(DISTINCT lot_id) as nb_lots_inspected,
-                        SUM(CASE WHEN quality_grade IN ('A+', 'A') THEN 1 ELSE 0 END)::float / COUNT(*) * 100 as taux_qualite_a
-                    FROM sqal_sensor_samples
-                    WHERE time >= $1::timestamp
-                      AND time < $2::timestamp
+                        SUM(CASE WHEN fusion_final_grade IN ('A+', 'A') THEN 1 ELSE 0 END)::float / COUNT(*) * 100 as taux_qualite_a
+                    FROM sensor_samples
+                    WHERE timestamp >= $1::timestamp
+                      AND timestamp < $2::timestamp
                 """, date_debut, date_fin)
 
                 # Alertes
@@ -379,20 +379,20 @@ def cleanup_old_sensor_data() -> Dict[str, Any]:
             policy_exists = await conn.fetchval("""
                 SELECT COUNT(*) FROM timescaledb_information.jobs
                 WHERE proc_name = 'policy_retention'
-                  AND hypertable_name = 'sqal_sensor_samples'
+                  AND hypertable_name = 'sensor_samples'
             """)
 
             if not policy_exists:
                 # Créer retention policy (supprimer > 365 jours)
                 await conn.execute("""
-                    SELECT add_retention_policy('sqal_sensor_samples', INTERVAL '365 days')
+                    SELECT add_retention_policy('sensor_samples', INTERVAL '365 days')
                 """)
-                logger.info("  ✅ Retention policy created for sqal_sensor_samples")
+                logger.info("  ✅ Retention policy created for sensor_samples")
 
             # Compter données supprimées (approximation)
             deleted_count = await conn.fetchval("""
-                SELECT COUNT(*) FROM sqal_sensor_samples
-                WHERE time < NOW() - INTERVAL '365 days'
+                SELECT COUNT(*) FROM sensor_samples
+                WHERE timestamp < NOW() - INTERVAL '365 days'
             """)
 
             await conn.close()
