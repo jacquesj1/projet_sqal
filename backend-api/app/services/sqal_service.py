@@ -627,10 +627,21 @@ class SQALService:
                 if site_code:
                     rows = await conn.fetch(
                         """
-                        SELECT * FROM sqal_site_stats
-                        WHERE bucket BETWEEN $1 AND $2
+                        SELECT
+                          day AS bucket,
+                          site_code,
+                          sample_count AS total_samples,
+                          avg_quality_score,
+                          compliance_rate_pct,
+                          count_a_plus,
+                          0::int AS count_a,
+                          0::int AS count_b,
+                          0::int AS count_c,
+                          0::int AS count_reject
+                        FROM sqal_site_stats
+                        WHERE day BETWEEN $1 AND $2
                           AND site_code = $3
-                        ORDER BY bucket DESC
+                        ORDER BY day DESC
                         """,
                         start_time,
                         end_time,
@@ -639,9 +650,20 @@ class SQALService:
                 else:
                     rows = await conn.fetch(
                         """
-                        SELECT * FROM sqal_site_stats
-                        WHERE bucket BETWEEN $1 AND $2
-                        ORDER BY bucket DESC, site_code
+                        SELECT
+                          day AS bucket,
+                          site_code,
+                          sample_count AS total_samples,
+                          avg_quality_score,
+                          compliance_rate_pct,
+                          count_a_plus,
+                          0::int AS count_a,
+                          0::int AS count_b,
+                          0::int AS count_c,
+                          0::int AS count_reject
+                        FROM sqal_site_stats
+                        WHERE day BETWEEN $1 AND $2
+                        ORDER BY day DESC, site_code
                         """,
                         start_time,
                         end_time
