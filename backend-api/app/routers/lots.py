@@ -1072,7 +1072,7 @@ async def get_qualite_lot(
                 MIN(timestamp) as premiere_mesure,
                 MAX(timestamp) as derniere_mesure
 
-            FROM sqal_sensor_samples
+            FROM sensor_samples
             WHERE lot_id = $1
               AND poids_foie_estime_g IS NOT NULL
         """, lot_id)
