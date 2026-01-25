@@ -27,6 +27,7 @@ from app.models.sqal import (
 from app.db.sqlalchemy import AsyncSessionLocal
 from app.db.models.sensor_sample import SensorSample
 from app.db.models.sqal_device import SQALDevice
+from app.db.models.sqal_alert import SQALAlert
 from app.db.models.ai_model import AIModel
 from app.db.models.prediction import Prediction
 
@@ -834,26 +835,102 @@ class SQALService:
             if not start_time:
                 start_time = end_time - timedelta(days=1)
 
+            try:
+                async with AsyncSessionLocal() as session:
+                    stmt = select(SQALAlert).where(SQALAlert.time.between(start_time, end_time))
+
+                    if severity:
+                        stmt = stmt.where(SQALAlert.severity == severity)
+                    if is_acknowledged is not None:
+                        stmt = stmt.where(SQALAlert.is_acknowledged == is_acknowledged)
+
+                    stmt = stmt.order_by(desc(SQALAlert.time)).limit(limit)
+                    alerts = (await session.execute(stmt)).scalars().all()
+                    if alerts:
+                        logger.info("get_alerts: ORM sqal_alerts")
+                        return [AlertDB.model_validate(a) for a in alerts]
+
+            except Exception as e:
+                logger.warning(f"ORM sqal_alerts read failed: {e}")
+
+            await self._ensure_pool()
+
             async with self.pool.acquire() as conn:
-                query = "SELECT * FROM sqal_alerts WHERE time BETWEEN $1 AND $2"
-                params = [start_time, end_time]
-                param_idx = 3
+                logger.info("get_alerts: legacy sqal_alerts")
 
-                if severity:
-                    query += f" AND severity = ${param_idx}"
-                    params.append(severity)
-                    param_idx += 1
+                # Try schema variant 1: (message, data_context, is_acknowledged)
+                try:
+                    query = """
+                    SELECT
+                      time,
+                      alert_id,
+                      device_id,
+                      sample_id,
+                      alert_type,
+                      severity,
+                      message,
+                      data_context,
+                      is_acknowledged,
+                      acknowledged_at,
+                      acknowledged_by
+                    FROM sqal_alerts
+                    WHERE time BETWEEN $1 AND $2
+                    """
+                    params = [start_time, end_time]
+                    param_idx = 3
 
-                if is_acknowledged is not None:
-                    query += f" AND is_acknowledged = ${param_idx}"
-                    params.append(is_acknowledged)
-                    param_idx += 1
+                    if severity:
+                        query += f" AND severity = ${param_idx}"
+                        params.append(severity)
+                        param_idx += 1
 
-                query += f" ORDER BY time DESC LIMIT ${param_idx}"
-                params.append(limit)
+                    if is_acknowledged is not None:
+                        query += f" AND is_acknowledged = ${param_idx}"
+                        params.append(is_acknowledged)
+                        param_idx += 1
 
-                rows = await conn.fetch(query, *params)
-                return [AlertDB(**dict(row)) for row in rows]
+                    query += f" ORDER BY time DESC LIMIT ${param_idx}"
+                    params.append(limit)
+
+                    rows = await conn.fetch(query, *params)
+                    return [AlertDB(**dict(r)) for r in rows]
+
+                except Exception:
+                    # Try schema variant 2: (title, defect_details, acknowledged)
+                    query = """
+                    SELECT
+                      time,
+                      alert_id,
+                      device_id,
+                      sample_id,
+                      alert_type,
+                      severity,
+                      COALESCE(message, title) AS message,
+                      defect_details AS data_context,
+                      acknowledged AS is_acknowledged,
+                      acknowledged_at,
+                      acknowledged_by
+                    FROM sqal_alerts
+                    WHERE time BETWEEN $1 AND $2
+                    """
+                    params = [start_time, end_time]
+                    param_idx = 3
+
+                    if severity:
+                        query += f" AND severity = ${param_idx}"
+                        params.append(severity)
+                        param_idx += 1
+
+                    if is_acknowledged is not None:
+                        query += f" AND acknowledged = ${param_idx}"
+                        params.append(is_acknowledged)
+                        param_idx += 1
+
+                    query += f" ORDER BY time DESC LIMIT ${param_idx}"
+                    params.append(limit)
+
+                    rows = await conn.fetch(query, *params)
+                    return [AlertDB(**dict(r)) for r in rows]
 
         except Exception as e:
             logger.error(f"❌ Erreur récupération alertes: {e}")
@@ -872,18 +949,32 @@ class SQALService:
         """
         try:
             async with self.pool.acquire() as conn:
-                await conn.execute(
-                    """
-                    UPDATE sqal_alerts
-                    SET is_acknowledged = TRUE,
-                        acknowledged_at = $1,
-                        acknowledged_by = $2
-                    WHERE alert_id = $3
-                    """,
-                    datetime.utcnow(),
-                    acknowledged_by,
-                    alert_id
-                )
+                try:
+                    await conn.execute(
+                        """
+                        UPDATE sqal_alerts
+                        SET is_acknowledged = TRUE,
+                            acknowledged_at = $1,
+                            acknowledged_by = $2
+                        WHERE alert_id = $3
+                        """,
+                        datetime.utcnow(),
+                        acknowledged_by,
+                        alert_id
+                    )
+                except Exception:
+                    await conn.execute(
+                        """
+                        UPDATE sqal_alerts
+                        SET acknowledged = TRUE,
+                            acknowledged_at = $1,
+                            acknowledged_by = $2
+                        WHERE alert_id = $3
+                        """,
+                        datetime.utcnow(),
+                        acknowledged_by,
+                        alert_id
+                    )
                 logger.info(f"✅ Alerte {alert_id} acquittée par {acknowledged_by}")
                 return True
 
