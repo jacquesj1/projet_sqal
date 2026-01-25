@@ -485,6 +485,7 @@ class SQALService:
                     rows = (await session.execute(stmt)).all()
 
                     if rows:
+                        logger.info("get_hourly_stats: ORM sensor_samples")
                         logger.debug("get_hourly_stats: ORM sensor_samples")
                         results: List[Dict[str, Any]] = []
                         for r in rows:
@@ -515,6 +516,7 @@ class SQALService:
                 logger.warning(f"ORM sensor_samples hourly stats failed: {e}")
 
             async with self.pool.acquire() as conn:
+                logger.info("get_hourly_stats: legacy sqal_hourly_stats")
                 if device_id:
                     rows = await conn.fetch(
                         """
@@ -745,6 +747,7 @@ class SQALService:
 
                     rows = (await session.execute(stmt)).all()
                     if rows:
+                        logger.info("get_grade_distribution: ORM sensor_samples")
                         logger.debug("get_grade_distribution: ORM sensor_samples")
                         dist: Dict[str, int] = {str(r.fusion_final_grade): int(r.count) for r in rows}
 
@@ -757,6 +760,7 @@ class SQALService:
                 logger.warning(f"ORM sensor_samples grade distribution failed: {e}")
 
             async with self.pool.acquire() as conn:
+                logger.info("get_grade_distribution: legacy sqal_sensor_samples")
                 if site_code:
                     rows = await conn.fetch(
                         """
