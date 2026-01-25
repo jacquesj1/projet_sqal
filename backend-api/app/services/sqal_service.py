@@ -92,6 +92,14 @@ class SQALService:
         """
         try:
             async with self.pool.acquire() as conn:
+                write_legacy_sqal_samples = os.getenv("SQAL_WRITE_LEGACY_SQAL_SAMPLES", "true").strip().lower() in (
+                    "1",
+                    "true",
+                    "yes",
+                    "y",
+                    "on",
+                )
+
                 # Ensure device exists to satisfy FK on sqal_sensor_samples.device_id
                 config_profile = None
                 try:
@@ -150,44 +158,45 @@ class SQALService:
                 vl53_grade = str(sensor_data.vl53l8ch.analysis.grade.value) if hasattr(sensor_data.vl53l8ch.analysis.grade, 'value') else str(sensor_data.vl53l8ch.analysis.grade)
                 fusion_grade = str(sensor_data.fusion.final_grade.value) if hasattr(sensor_data.fusion.final_grade, 'value') else str(sensor_data.fusion.final_grade)
 
-                await conn.execute(
-                    """
-                    INSERT INTO sqal_sensor_samples (
-                        time, sample_id, device_id, lot_id,
-                        vl53l8ch_distance_matrix, vl53l8ch_reflectance_matrix, vl53l8ch_amplitude_matrix,
-                        vl53l8ch_volume_mm3, vl53l8ch_surface_uniformity, vl53l8ch_quality_score, vl53l8ch_grade,
-                        as7341_channels, as7341_freshness_index, as7341_fat_quality_index,
-                        as7341_oxidation_index, as7341_quality_score,
-                        fusion_final_score, fusion_final_grade, fusion_is_compliant
+                if write_legacy_sqal_samples:
+                    await conn.execute(
+                        """
+                        INSERT INTO sqal_sensor_samples (
+                            time, sample_id, device_id, lot_id,
+                            vl53l8ch_distance_matrix, vl53l8ch_reflectance_matrix, vl53l8ch_amplitude_matrix,
+                            vl53l8ch_volume_mm3, vl53l8ch_surface_uniformity, vl53l8ch_quality_score, vl53l8ch_grade,
+                            as7341_channels, as7341_freshness_index, as7341_fat_quality_index,
+                            as7341_oxidation_index, as7341_quality_score,
+                            fusion_final_score, fusion_final_grade, fusion_is_compliant
+                        )
+                        VALUES (
+                            $1, $2, $3, $4,
+                            $5, $6, $7,
+                            $8, $9, $10, $11,
+                            $12, $13, $14, $15, $16,
+                            $17, $18, $19
+                        )
+                        """,
+                        sensor_data.timestamp,
+                        sensor_data.sample_id,
+                        sensor_data.device_id,
+                        sensor_data.lot_id,
+                        distance_json,
+                        reflectance_json,
+                        amplitude_json,
+                        sensor_data.vl53l8ch.analysis.volume_mm3,
+                        sensor_data.vl53l8ch.analysis.surface_uniformity,
+                        sensor_data.vl53l8ch.analysis.quality_score,
+                        vl53_grade,
+                        channels_json,
+                        sensor_data.as7341.analysis.freshness_index,
+                        sensor_data.as7341.analysis.fat_quality_index,
+                        sensor_data.as7341.analysis.oxidation_index,
+                        sensor_data.as7341.analysis.quality_score,
+                        sensor_data.fusion.final_score,
+                        fusion_grade,
+                        sensor_data.fusion.is_compliant
                     )
-                    VALUES (
-                        $1, $2, $3, $4,
-                        $5, $6, $7,
-                        $8, $9, $10, $11,
-                        $12, $13, $14, $15, $16,
-                        $17, $18, $19
-                    )
-                    """,
-                    sensor_data.timestamp,
-                    sensor_data.sample_id,
-                    sensor_data.device_id,
-                    sensor_data.lot_id,
-                    distance_json,
-                    reflectance_json,
-                    amplitude_json,
-                    sensor_data.vl53l8ch.analysis.volume_mm3,
-                    sensor_data.vl53l8ch.analysis.surface_uniformity,
-                    sensor_data.vl53l8ch.analysis.quality_score,
-                    vl53_grade,
-                    channels_json,
-                    sensor_data.as7341.analysis.freshness_index,
-                    sensor_data.as7341.analysis.fat_quality_index,
-                    sensor_data.as7341.analysis.oxidation_index,
-                    sensor_data.as7341.analysis.quality_score,
-                    sensor_data.fusion.final_score,
-                    fusion_grade,
-                    sensor_data.fusion.is_compliant
-                )
 
                 try:
                     async with AsyncSessionLocal() as session:
