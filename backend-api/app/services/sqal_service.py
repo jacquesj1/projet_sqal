@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 import logging
 
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy import desc, select
+from sqlalchemy import case, desc, func, select
 
 from app.models.sqal import (
     SensorDataMessage,
@@ -455,6 +455,65 @@ class SQALService:
             Liste de statistiques horaires
         """
         try:
+            try:
+                async with AsyncSessionLocal() as session:
+                    bucket = func.date_trunc("hour", SensorSample.timestamp).label("bucket")
+
+                    stmt = (
+                        select(
+                            bucket,
+                            SensorSample.device_id.label("device_id"),
+                            func.count().label("sample_count"),
+                            func.avg(SensorSample.fusion_final_score).label("avg_quality_score"),
+                            func.sum(case((SensorSample.fusion_final_grade == "A+", 1), else_=0)).label("count_a_plus"),
+                            func.sum(case((SensorSample.fusion_final_grade == "A", 1), else_=0)).label("count_a"),
+                            func.sum(case((SensorSample.fusion_final_grade == "B", 1), else_=0)).label("count_b"),
+                            func.sum(case((SensorSample.fusion_final_grade == "C", 1), else_=0)).label("count_c"),
+                            func.sum(case((SensorSample.fusion_final_grade == "REJECT", 1), else_=0)).label("count_reject"),
+                            func.avg(SensorSample.vl53l8ch_volume_mm3).label("avg_volume_mm3"),
+                            func.avg(SensorSample.as7341_freshness_index).label("avg_freshness_index"),
+                            func.sum(case((SensorSample.fusion_final_grade != "REJECT", 1), else_=0)).label("compliant_count"),
+                        )
+                        .where(SensorSample.timestamp.between(start_time, end_time))
+                        .group_by(bucket, SensorSample.device_id)
+                        .order_by(desc(bucket))
+                    )
+
+                    if device_id:
+                        stmt = stmt.where(SensorSample.device_id == device_id)
+
+                    rows = (await session.execute(stmt)).all()
+
+                    if rows:
+                        logger.debug("get_hourly_stats: ORM sensor_samples")
+                        results: List[Dict[str, Any]] = []
+                        for r in rows:
+                            sample_count = int(r.sample_count or 0)
+                            compliant_count = int(r.compliant_count or 0)
+                            compliance_rate_pct = (compliant_count / sample_count * 100) if sample_count > 0 else 0
+
+                            results.append(
+                                {
+                                    "bucket": r.bucket,
+                                    "device_id": r.device_id,
+                                    "sample_count": sample_count,
+                                    "avg_quality_score": float(r.avg_quality_score) if r.avg_quality_score is not None else 0,
+                                    "count_a_plus": int(r.count_a_plus or 0),
+                                    "count_a": int(r.count_a or 0),
+                                    "count_b": int(r.count_b or 0),
+                                    "count_c": int(r.count_c or 0),
+                                    "count_reject": int(r.count_reject or 0),
+                                    "avg_volume_mm3": float(r.avg_volume_mm3) if r.avg_volume_mm3 is not None else 0,
+                                    "avg_freshness_index": float(r.avg_freshness_index) if r.avg_freshness_index is not None else 0,
+                                    "compliance_rate_pct": compliance_rate_pct,
+                                }
+                            )
+
+                        return results
+
+            except Exception as e:
+                logger.warning(f"ORM sensor_samples hourly stats failed: {e}")
+
             async with self.pool.acquire() as conn:
                 if device_id:
                     rows = await conn.fetch(
@@ -670,6 +729,33 @@ class SQALService:
             Dictionnaire {grade: count}
         """
         try:
+            if site_code:
+                raise ValueError("site_code filtering not supported on ORM path yet")
+
+            try:
+                async with AsyncSessionLocal() as session:
+                    stmt = (
+                        select(
+                            SensorSample.fusion_final_grade.label("fusion_final_grade"),
+                            func.count().label("count"),
+                        )
+                        .where(SensorSample.timestamp.between(start_time, end_time))
+                        .group_by(SensorSample.fusion_final_grade)
+                    )
+
+                    rows = (await session.execute(stmt)).all()
+                    if rows:
+                        logger.debug("get_grade_distribution: ORM sensor_samples")
+                        dist: Dict[str, int] = {str(r.fusion_final_grade): int(r.count) for r in rows}
+
+                        for g in ["A+", "A", "B", "C", "REJECT"]:
+                            dist.setdefault(g, 0)
+
+                        return dist
+
+            except Exception as e:
+                logger.warning(f"ORM sensor_samples grade distribution failed: {e}")
+
             async with self.pool.acquire() as conn:
                 if site_code:
                     rows = await conn.fetch(
