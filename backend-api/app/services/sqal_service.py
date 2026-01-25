@@ -29,7 +29,7 @@ from app.db.models.sqal_device import SQALDevice
 from app.db.models.ai_model import AIModel
 from app.db.models.prediction import Prediction
 
-logger = get_logger("app.services.sqal_service")
+logger = get_logger("app.services")
 
 
 class SQALService:
@@ -641,7 +641,7 @@ class SQALService:
                           0::int AS count_c,
                           0::int AS count_reject
                         FROM sqal_site_stats
-                        WHERE day BETWEEN date_trunc('day', $1) AND date_trunc('day', $2)
+                        WHERE day BETWEEN date_trunc('day', $1::timestamptz) AND date_trunc('day', $2::timestamptz)
                           AND site_code = $3
                         ORDER BY day DESC
                         """,
@@ -664,7 +664,7 @@ class SQALService:
                           0::int AS count_c,
                           0::int AS count_reject
                         FROM sqal_site_stats
-                        WHERE day BETWEEN date_trunc('day', $1) AND date_trunc('day', $2)
+                        WHERE day BETWEEN date_trunc('day', $1::timestamptz) AND date_trunc('day', $2::timestamptz)
                         ORDER BY day DESC, site_code
                         """,
                         start_time,
