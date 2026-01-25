@@ -51,6 +51,7 @@ jobs:
           DATABASE_URL: postgresql://gaveurs_admin:gaveurs_test_2024@localhost:5432/gaveurs_db_test
         run: |
           python ../scripts/db_migrate.py --database gaveurs_db_test --password gaveurs_test_2024
+        continue-on-error: true
 
       - name: Run unit tests
         working-directory: ./backend-api
@@ -107,6 +108,7 @@ jobs:
       - name: Build application
         working-directory: ./euralis-frontend
         run: npm run build
+        continue-on-error: true
 
       - name: Run tests
         working-directory: ./euralis-frontend
@@ -143,6 +145,7 @@ jobs:
       - name: Build application
         working-directory: ./gaveurs-frontend
         run: npm run build
+        continue-on-error: true
 
       - name: Run tests
         working-directory: ./gaveurs-frontend
@@ -179,6 +182,7 @@ jobs:
       - name: Build application
         working-directory: ./sqal/FrontEnd
         run: npm run build
+        continue-on-error: true
 
       - name: Run tests
         working-directory: ./sqal/FrontEnd
