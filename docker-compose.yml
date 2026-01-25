@@ -123,6 +123,42 @@ services:
       start_period: 40s
 
   # ============================================================================
+  # DB Migrations (Alembic) - One-shot
+  # ============================================================================
+  migrate:
+    build:
+      context: ./backend-api
+      dockerfile: Dockerfile.julia
+    container_name: gaveurs_migrate
+    restart: "no"
+    environment:
+      # Database
+      DATABASE_HOST: timescaledb
+      DATABASE_PORT: 5432
+      DATABASE_NAME: gaveurs_db
+      DATABASE_USER: gaveurs_admin
+      DATABASE_PASSWORD: gaveurs_secure_2024
+
+      # Redis Cache (not required for migrations, but keeps env consistent)
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_URL: redis://redis:6379
+
+      # Application
+      APP_ENV: production
+      LOG_LEVEL: info
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+    networks:
+      - gaveurs_network
+    volumes:
+      - ./backend-api/app:/app/app:ro
+      - ./backend-api/alembic:/app/alembic:ro
+      - ./backend-api/alembic.ini:/app/alembic.ini:ro
+    command: ["alembic", "upgrade", "head"]
+
+  # ============================================================================
   # Frontend Euralis - Next.js
   # ============================================================================
   frontend-euralis:

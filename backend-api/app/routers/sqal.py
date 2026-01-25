@@ -228,6 +228,17 @@ async def get_samples(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/predict")
+async def predict(sample_id: str = Query(..., description="ID du sample (sample_id)")):
+    try:
+        return await sqal_service.predict(sample_id=sample_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Erreur prediction: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ============================================================================
 # STATISTICS
 # ============================================================================
