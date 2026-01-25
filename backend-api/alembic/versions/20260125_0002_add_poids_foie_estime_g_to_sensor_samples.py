@@ -30,7 +30,7 @@ def upgrade() -> None:
     op.execute(
         """
         UPDATE sensor_samples
-        SET poids_foie_estime_g = ROUND((vl53l8ch_volume_mm3 / 1000.0) * 0.947, 1)
+        SET poids_foie_estime_g = ROUND(((vl53l8ch_volume_mm3 / 1000.0) * 0.947)::numeric, 1)::double precision
         WHERE vl53l8ch_volume_mm3 IS NOT NULL
           AND poids_foie_estime_g IS NULL
         """
