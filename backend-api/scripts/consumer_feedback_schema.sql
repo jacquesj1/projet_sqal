@@ -435,14 +435,13 @@ BEGIN
     SELECT
         fusion_final_score,
         fusion_final_grade,
-        fusion_is_compliant,
         vl53l8ch_volume_mm3,
         vl53l8ch_surface_uniformity,
         as7341_freshness_index
     INTO v_sqal_data
-    FROM sqal_sensor_samples
+    FROM sensor_samples
     WHERE sample_id = p_sample_id
-    ORDER BY time DESC
+    ORDER BY timestamp DESC
     LIMIT 1;
 
     -- Récupérer données lot (colonnes alignées avec schema lots_gavage)
@@ -571,9 +570,9 @@ BEGIN
         as7341_fat_quality_index,
         as7341_oxidation_index
     INTO v_sqal
-    FROM sqal_sensor_samples
+    FROM sensor_samples
     WHERE sample_id = v_product.sample_id
-    ORDER BY time DESC
+    ORDER BY timestamp DESC
     LIMIT 1;
 
     -- Récupérer données lot
@@ -704,7 +703,7 @@ POLITIQUES TIMESCALEDB :
 
 INTÉGRATIONS :
 ✅ Euralis  : lot_id → lots_gavage.id
-✅ SQAL     : sample_id → sqal_sensor_samples.sample_id
+✅ SQAL     : sample_id → sensor_samples.sample_id
 ✅ Sites    : site_code → sites_euralis.code
 ✅ Blockchain : blockchain_hash stocké pour vérification
 */

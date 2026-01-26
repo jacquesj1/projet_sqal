@@ -10,6 +10,8 @@ import random
 import sys
 from datetime import datetime, timedelta
 from decimal import Decimal
+import uuid
+import json
 
 # Configuration Docker
 DATABASE_URL = "postgresql://gaveurs_admin:gaveurs_secure_2024@gaveurs_timescaledb:5432/gaveurs_db"
@@ -102,26 +104,65 @@ async def generate_sqal_for_lot(conn, lot_id, code_lot, itm, sigma, nb_samples):
         freshness = random.uniform(0.75, 0.95)
         oxidation = random.uniform(0.05, 0.20)
 
-        await conn.execute("""
-            INSERT INTO sqal_sensor_samples (
-                lot_id, device_id, sample_date,
-                tof_matrix_8x8, spectral_415nm, spectral_445nm, spectral_480nm,
-                spectral_515nm, spectral_555nm, spectral_590nm, spectral_630nm,
-                spectral_680nm, spectral_clear, spectral_nir,
-                grade_predicted, confidence_score,
-                freshness_index, oxidation_index
+        sample_id = f"SQAL_{code_lot}_{i:03d}_{uuid.uuid4().hex[:8]}"
+        fat_quality = random.uniform(0.70, 0.90)
+        fusion_score = random.uniform(0.75, 0.95)
+
+        as7341_channels = {
+            'F1_415nm': spectral['ch_415nm'],
+            'F2_445nm': spectral['ch_445nm'],
+            'F3_480nm': spectral['ch_480nm'],
+            'F4_515nm': spectral['ch_515nm'],
+            'F5_555nm': spectral['ch_555nm'],
+            'F6_590nm': spectral['ch_590nm'],
+            'F7_630nm': spectral['ch_630nm'],
+            'F8_680nm': spectral['ch_680nm'],
+            'Clear': spectral['clear'],
+            'NIR': spectral['nir'],
+        }
+
+        await conn.execute(
+            """
+            INSERT INTO sensor_samples (
+                timestamp,
+                sample_id,
+                device_id,
+                lot_id,
+                vl53l8ch_distance_matrix,
+                vl53l8ch_reflectance_matrix,
+                vl53l8ch_amplitude_matrix,
+                as7341_channels,
+                as7341_freshness_index,
+                as7341_fat_quality_index,
+                as7341_oxidation_index,
+                fusion_final_score,
+                fusion_final_grade,
+                fusion_vl53l8ch_score,
+                fusion_as7341_score
             ) VALUES (
-                $1, 1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17
+                $1, $2, $3, $4,
+                $5::jsonb, $6::jsonb, $7::jsonb,
+                $8::jsonb,
+                $9, $10, $11,
+                $12, $13, $14, $15
             )
-        """,
-            lot_id, sample_date,
-            tof_matrix,
-            spectral['ch_415nm'], spectral['ch_445nm'], spectral['ch_480nm'],
-            spectral['ch_515nm'], spectral['ch_555nm'], spectral['ch_590nm'],
-            spectral['ch_630nm'], spectral['ch_680nm'],
-            spectral['clear'], spectral['nir'],
-            grade, random.uniform(0.85, 0.98),
-            freshness, oxidation
+            ON CONFLICT (sample_id) DO NOTHING
+            """,
+            sample_date,
+            sample_id,
+            'ESP32_LL_01',
+            lot_id,
+            json.dumps(tof_matrix),
+            json.dumps(tof_matrix),
+            json.dumps(tof_matrix),
+            json.dumps(as7341_channels),
+            freshness,
+            fat_quality,
+            oxidation,
+            fusion_score,
+            grade,
+            fusion_score,
+            fusion_score,
         )
 
     print(f"✅ Lot {code_lot} (ID: {lot_id}): {nb_samples} échantillons SQAL générés (Grade: {grade})")
@@ -173,7 +214,7 @@ async def main():
 
         # Compter les échantillons générés
         total_samples = await conn.fetchval("""
-            SELECT COUNT(*) FROM sqal_sensor_samples
+            SELECT COUNT(*) FROM sensor_samples
             WHERE lot_id IN (
                 SELECT id FROM lots_gavage WHERE code_lot LIKE 'LL%' OR code_lot LIKE 'LS%'
             )

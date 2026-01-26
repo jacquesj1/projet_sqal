@@ -151,7 +151,7 @@ def export_sqal_data_csv(self, lot_id: int = None, date_debut: str = None, date_
     """
     Export données SQAL en CSV
 
-    Exporte sqal_sensor_samples avec matrices ToF et canaux spectraux.
+    Exporte sensor_samples avec matrices ToF et canaux spectraux.
 
     Args:
         lot_id: ID lot optionnel

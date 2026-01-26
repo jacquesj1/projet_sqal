@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """
 Génération données SQAL SIMPLIFIÉ - Version Docker
-Insère directement dans sqal_sensor_samples
+Insère directement dans sensor_samples
 """
 
 import asyncio
 import asyncpg
 import random
 from datetime import datetime, timedelta
+import json
+import uuid
 
 DATABASE_URL = "postgresql://gaveurs_admin:gaveurs_secure_2024@gaveurs_timescaledb:5432/gaveurs_db"
 SAMPLES_PER_LOT = 30
@@ -84,7 +86,7 @@ async def main():
 
             # Vérifier si déjà des échantillons
             existing = await conn.fetchval(
-                "SELECT COUNT(*) FROM sqal_sensor_samples WHERE lot_id = $1", lot_id
+                "SELECT COUNT(*) FROM sensor_samples WHERE lot_id = $1", lot_id
             )
 
             if existing >= SAMPLES_PER_LOT:
@@ -98,27 +100,68 @@ async def main():
                 sample_date = base_date + timedelta(minutes=i * 2)
                 tof_matrix = generate_tof_matrix()
 
+                sample_id = f"SQAL_{code_lot}_{i:03d}_{uuid.uuid4().hex[:8]}"
+
+                as7341_channels = {
+                    'F1_415nm': random.randint(5000, 15000),
+                    'F2_445nm': random.randint(6000, 16000),
+                    'F3_480nm': random.randint(7000, 17000),
+                    'F4_515nm': random.randint(8000, 18000),
+                    'F5_555nm': random.randint(9000, 19000),
+                    'F6_590nm': random.randint(8000, 18000),
+                    'F7_630nm': random.randint(7000, 17000),
+                    'F8_680nm': random.randint(6000, 16000),
+                    'Clear': random.randint(20000, 50000),
+                    'NIR': random.randint(10000, 30000),
+                }
+
+                freshness_index = random.uniform(0.75, 0.95)
+                oxidation_index = random.uniform(0.05, 0.20)
+                fat_quality_index = random.uniform(0.70, 0.90)
+
+                fusion_score = random.uniform(0.75, 0.95)
+
                 await conn.execute("""
-                    INSERT INTO sqal_sensor_samples (
-                        lot_id, device_id, sample_date,
-                        tof_matrix_8x8,
-                        spectral_415nm, spectral_445nm, spectral_480nm,
-                        spectral_515nm, spectral_555nm, spectral_590nm,
-                        spectral_630nm, spectral_680nm, spectral_clear, spectral_nir,
-                        grade_predicted, confidence_score,
-                        freshness_index, oxidation_index
+                    INSERT INTO sensor_samples (
+                        timestamp,
+                        sample_id,
+                        device_id,
+                        lot_id,
+                        vl53l8ch_distance_matrix,
+                        vl53l8ch_reflectance_matrix,
+                        vl53l8ch_amplitude_matrix,
+                        as7341_channels,
+                        as7341_freshness_index,
+                        as7341_fat_quality_index,
+                        as7341_oxidation_index,
+                        fusion_final_score,
+                        fusion_final_grade,
+                        fusion_vl53l8ch_score,
+                        fusion_as7341_score
                     ) VALUES (
-                        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18
+                        $1, $2, $3, $4,
+                        $5::jsonb, $6::jsonb, $7::jsonb,
+                        $8::jsonb,
+                        $9, $10, $11,
+                        $12, $13, $14, $15
                     )
+                    ON CONFLICT (sample_id) DO NOTHING
                 """,
-                    lot_id, device_id, sample_date, tof_matrix,
-                    random.randint(5000, 15000), random.randint(6000, 16000),
-                    random.randint(7000, 17000), random.randint(8000, 18000),
-                    random.randint(9000, 19000), random.randint(8000, 18000),
-                    random.randint(7000, 17000), random.randint(6000, 16000),
-                    random.randint(20000, 50000), random.randint(10000, 30000),
-                    grade, random.uniform(0.85, 0.98),
-                    random.uniform(0.75, 0.95), random.uniform(0.05, 0.20)
+                    sample_date,
+                    sample_id,
+                    device_id,
+                    lot_id,
+                    json.dumps(tof_matrix),
+                    json.dumps(tof_matrix),
+                    json.dumps(tof_matrix),
+                    json.dumps(as7341_channels),
+                    freshness_index,
+                    fat_quality_index,
+                    oxidation_index,
+                    fusion_score,
+                    grade,
+                    fusion_score,
+                    fusion_score
                 )
 
             total_inserted += SAMPLES_PER_LOT
@@ -130,7 +173,7 @@ async def main():
         print("=" * 80)
 
         total = await conn.fetchval("""
-            SELECT COUNT(*) FROM sqal_sensor_samples
+            SELECT COUNT(*) FROM sensor_samples
             WHERE lot_id IN (
                 SELECT id FROM lots_gavage WHERE code_lot LIKE 'LL%' OR code_lot LIKE 'LS%'
             )

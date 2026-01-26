@@ -1,12 +1,16 @@
--- ================================================================================
+-- ==============================================================================
 -- MIGRATION: Ajout colonne poids_foie_estime_g
--- ================================================================================
+-- ==============================================================================
 -- Description : Ajoute la colonne pour stocker le poids du foie calculé depuis
 --               le volume ToF mesuré par SQAL
 -- Date        : 2026-01-01
 -- Formule     : poids_g = (volume_mm³ / 1000) × 0.947 g/cm³
 -- Source      : Int. J. Food Properties (2016) - Densité foie gras: 0.947 g/cm³
--- ================================================================================
+--
+-- DEPRECATED (SQAL ORM Migration Phase 2):
+-- - La migration officielle est Alembic 20260125_0002 sur la table sensor_samples
+-- - Ne pas exécuter ce script sur les environnements de démo/prod
+-- ==============================================================================
 
 BEGIN;
 

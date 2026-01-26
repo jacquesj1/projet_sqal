@@ -35,7 +35,7 @@ SELECT
         THEN '✅ PASS'
         ELSE '❌ FAIL'
     END as resultat
-FROM sqal_sensor_samples
+FROM sensor_samples
 WHERE poids_foie_estime_g IS NOT NULL
   AND vl53l8ch_volume_mm3 IS NOT NULL;
 
@@ -64,7 +64,7 @@ SELECT
         ELSE '⚠️  WARN'
     END as resultat
 FROM lots_gavage l
-JOIN sqal_sensor_samples s ON l.id = s.lot_id
+JOIN sensor_samples s ON l.id = s.lot_id
 WHERE l.statut IN ('termine', 'abattu')
   AND s.poids_foie_estime_g IS NOT NULL
   AND l.itm IS NOT NULL
@@ -101,7 +101,7 @@ production_sqal AS (
         SELECT
             lot_id,
             AVG(poids_foie_estime_g) as poids_moyen_g
-        FROM sqal_sensor_samples
+        FROM sensor_samples
         WHERE poids_foie_estime_g IS NOT NULL
         GROUP BY lot_id
     ) s ON l.id = s.lot_id
@@ -146,7 +146,7 @@ SELECT
 FROM lots_gavage l
 WHERE EXISTS (
     SELECT 1
-    FROM sqal_sensor_samples s
+    FROM sensor_samples s
     WHERE s.lot_id = l.id
       AND s.poids_foie_estime_g IS NOT NULL
 );
@@ -177,7 +177,7 @@ SELECT
         THEN '✅ PASS'
         ELSE '⚠️  WARN'
     END as resultat
-FROM sqal_sensor_samples
+FROM sensor_samples
 WHERE poids_foie_estime_g IS NOT NULL;
 
 \echo ''
@@ -204,7 +204,7 @@ SELECT
         ELSE '⚠️  WARN'
     END as resultat
 FROM lots_gavage l
-JOIN sqal_sensor_samples s ON l.id = s.lot_id
+JOIN sensor_samples s ON l.id = s.lot_id
 WHERE l.statut IN ('termine', 'abattu')
   AND s.poids_foie_estime_g IS NOT NULL
 GROUP BY l.id, l.code_lot, l.nb_accroches, l.itm

@@ -82,7 +82,7 @@ class SQALService:
 
     async def save_sensor_sample(self, sensor_data: SensorDataMessage) -> bool:
         """
-        Sauvegarde un échantillon capteur dans sqal_sensor_samples
+        Sauvegarde un échantillon capteur dans sensor_samples
 
         Args:
             sensor_data: Données capteur validées
@@ -92,7 +92,7 @@ class SQALService:
         """
         try:
             async with self.pool.acquire() as conn:
-                # Ensure device exists to satisfy FK on sqal_sensor_samples.device_id
+                # Ensure device exists to satisfy FK on sensor_samples.device_id
                 config_profile = None
                 try:
                     if sensor_data.meta and isinstance(sensor_data.meta, dict):
@@ -449,92 +449,61 @@ class SQALService:
             Liste de statistiques horaires
         """
         try:
-            try:
-                async with AsyncSessionLocal() as session:
-                    bucket = func.date_trunc("hour", SensorSample.timestamp).label("bucket")
+            async with AsyncSessionLocal() as session:
+                bucket = func.date_trunc("hour", SensorSample.timestamp).label("bucket")
 
-                    stmt = (
-                        select(
-                            bucket,
-                            SensorSample.device_id.label("device_id"),
-                            func.count().label("sample_count"),
-                            func.avg(SensorSample.fusion_final_score).label("avg_quality_score"),
-                            func.sum(case((SensorSample.fusion_final_grade == "A+", 1), else_=0)).label("count_a_plus"),
-                            func.sum(case((SensorSample.fusion_final_grade == "A", 1), else_=0)).label("count_a"),
-                            func.sum(case((SensorSample.fusion_final_grade == "B", 1), else_=0)).label("count_b"),
-                            func.sum(case((SensorSample.fusion_final_grade == "C", 1), else_=0)).label("count_c"),
-                            func.sum(case((SensorSample.fusion_final_grade == "REJECT", 1), else_=0)).label("count_reject"),
-                            func.avg(SensorSample.vl53l8ch_volume_mm3).label("avg_volume_mm3"),
-                            func.avg(SensorSample.as7341_freshness_index).label("avg_freshness_index"),
-                            func.sum(case((SensorSample.fusion_final_grade != "REJECT", 1), else_=0)).label("compliant_count"),
-                        )
-                        .where(SensorSample.timestamp.between(start_time, end_time))
-                        .group_by(bucket, SensorSample.device_id)
-                        .order_by(desc(bucket))
+                stmt = (
+                    select(
+                        bucket,
+                        SensorSample.device_id.label("device_id"),
+                        func.count().label("sample_count"),
+                        func.avg(SensorSample.fusion_final_score).label("avg_quality_score"),
+                        func.sum(case((SensorSample.fusion_final_grade == "A+", 1), else_=0)).label("count_a_plus"),
+                        func.sum(case((SensorSample.fusion_final_grade == "A", 1), else_=0)).label("count_a"),
+                        func.sum(case((SensorSample.fusion_final_grade == "B", 1), else_=0)).label("count_b"),
+                        func.sum(case((SensorSample.fusion_final_grade == "C", 1), else_=0)).label("count_c"),
+                        func.sum(case((SensorSample.fusion_final_grade == "REJECT", 1), else_=0)).label("count_reject"),
+                        func.avg(SensorSample.vl53l8ch_volume_mm3).label("avg_volume_mm3"),
+                        func.avg(SensorSample.as7341_freshness_index).label("avg_freshness_index"),
+                        func.sum(case((SensorSample.fusion_final_grade != "REJECT", 1), else_=0)).label("compliant_count"),
                     )
+                    .where(SensorSample.timestamp.between(start_time, end_time))
+                    .group_by(bucket, SensorSample.device_id)
+                    .order_by(desc(bucket))
+                )
 
-                    if device_id:
-                        stmt = stmt.where(SensorSample.device_id == device_id)
-
-                    rows = (await session.execute(stmt)).all()
-
-                    if rows:
-                        logger.info("get_hourly_stats: ORM sensor_samples")
-                        logger.debug("get_hourly_stats: ORM sensor_samples")
-                        results: List[Dict[str, Any]] = []
-                        for r in rows:
-                            sample_count = int(r.sample_count or 0)
-                            compliant_count = int(r.compliant_count or 0)
-                            compliance_rate_pct = (compliant_count / sample_count * 100) if sample_count > 0 else 0
-
-                            results.append(
-                                {
-                                    "bucket": r.bucket,
-                                    "device_id": r.device_id,
-                                    "sample_count": sample_count,
-                                    "avg_quality_score": float(r.avg_quality_score) if r.avg_quality_score is not None else 0,
-                                    "count_a_plus": int(r.count_a_plus or 0),
-                                    "count_a": int(r.count_a or 0),
-                                    "count_b": int(r.count_b or 0),
-                                    "count_c": int(r.count_c or 0),
-                                    "count_reject": int(r.count_reject or 0),
-                                    "avg_volume_mm3": float(r.avg_volume_mm3) if r.avg_volume_mm3 is not None else 0,
-                                    "avg_freshness_index": float(r.avg_freshness_index) if r.avg_freshness_index is not None else 0,
-                                    "compliance_rate_pct": compliance_rate_pct,
-                                }
-                            )
-
-                        return results
-
-            except Exception as e:
-                logger.warning(f"ORM sensor_samples hourly stats failed: {e}")
-
-            async with self.pool.acquire() as conn:
-                logger.info("get_hourly_stats: legacy sqal_hourly_stats")
                 if device_id:
-                    rows = await conn.fetch(
-                        """
-                        SELECT * FROM sqal_hourly_stats
-                        WHERE bucket BETWEEN $1 AND $2
-                          AND device_id = $3
-                        ORDER BY bucket DESC
-                        """,
-                        start_time,
-                        end_time,
-                        device_id
-                    )
-                else:
-                    rows = await conn.fetch(
-                        """
-                        SELECT * FROM sqal_hourly_stats
-                        WHERE bucket BETWEEN $1 AND $2
-                        ORDER BY bucket DESC
-                        """,
-                        start_time,
-                        end_time
+                    stmt = stmt.where(SensorSample.device_id == device_id)
+
+                rows = (await session.execute(stmt)).all()
+
+                logger.info("get_hourly_stats: ORM sensor_samples")
+                logger.debug("get_hourly_stats: ORM sensor_samples")
+
+                results: List[Dict[str, Any]] = []
+                for r in rows:
+                    sample_count = int(r.sample_count or 0)
+                    compliant_count = int(r.compliant_count or 0)
+                    compliance_rate_pct = (compliant_count / sample_count * 100) if sample_count > 0 else 0
+
+                    results.append(
+                        {
+                            "bucket": r.bucket,
+                            "device_id": r.device_id,
+                            "sample_count": sample_count,
+                            "avg_quality_score": float(r.avg_quality_score) if r.avg_quality_score is not None else 0,
+                            "count_a_plus": int(r.count_a_plus or 0),
+                            "count_a": int(r.count_a or 0),
+                            "count_b": int(r.count_b or 0),
+                            "count_c": int(r.count_c or 0),
+                            "count_reject": int(r.count_reject or 0),
+                            "avg_volume_mm3": float(r.avg_volume_mm3) if r.avg_volume_mm3 is not None else 0,
+                            "avg_freshness_index": float(r.avg_freshness_index) if r.avg_freshness_index is not None else 0,
+                            "compliance_rate_pct": compliance_rate_pct,
+                        }
                     )
 
-                return [dict(row) for row in rows]
+                return results
 
         except Exception as e:
             logger.error(f"❌ Erreur récupération stats horaires: {e}")
@@ -558,112 +527,58 @@ class SQALService:
             Liste de statistiques par site
         """
         try:
-            try:
-                async with AsyncSessionLocal() as session:
-                    bucket = func.date_trunc("day", SensorSample.timestamp).label("bucket")
+            async with AsyncSessionLocal() as session:
+                bucket = func.date_trunc("day", SensorSample.timestamp).label("bucket")
 
-                    stmt = (
-                        select(
-                            bucket,
-                            SQALDevice.site_code.label("site_code"),
-                            func.count().label("total_samples"),
-                            func.avg(SensorSample.fusion_final_score).label("avg_quality_score"),
-                            func.sum(case((SensorSample.fusion_final_grade == "A+", 1), else_=0)).label("count_a_plus"),
-                            func.sum(case((SensorSample.fusion_final_grade == "A", 1), else_=0)).label("count_a"),
-                            func.sum(case((SensorSample.fusion_final_grade == "B", 1), else_=0)).label("count_b"),
-                            func.sum(case((SensorSample.fusion_final_grade == "C", 1), else_=0)).label("count_c"),
-                            func.sum(case((SensorSample.fusion_final_grade == "REJECT", 1), else_=0)).label("count_reject"),
-                            func.sum(case((SensorSample.fusion_final_grade != "REJECT", 1), else_=0)).label("compliant_count"),
-                        )
-                        .select_from(SensorSample)
-                        .join(SQALDevice, SQALDevice.device_id == SensorSample.device_id)
-                        .where(SensorSample.timestamp.between(start_time, end_time))
-                        .where(SQALDevice.site_code.is_not(None))
-                        .group_by(bucket, SQALDevice.site_code)
-                        .order_by(desc(bucket), SQALDevice.site_code)
+                stmt = (
+                    select(
+                        bucket,
+                        SQALDevice.site_code.label("site_code"),
+                        func.count().label("total_samples"),
+                        func.avg(SensorSample.fusion_final_score).label("avg_quality_score"),
+                        func.sum(case((SensorSample.fusion_final_grade == "A+", 1), else_=0)).label("count_a_plus"),
+                        func.sum(case((SensorSample.fusion_final_grade == "A", 1), else_=0)).label("count_a"),
+                        func.sum(case((SensorSample.fusion_final_grade == "B", 1), else_=0)).label("count_b"),
+                        func.sum(case((SensorSample.fusion_final_grade == "C", 1), else_=0)).label("count_c"),
+                        func.sum(case((SensorSample.fusion_final_grade == "REJECT", 1), else_=0)).label("count_reject"),
+                        func.sum(case((SensorSample.fusion_final_grade != "REJECT", 1), else_=0)).label("compliant_count"),
                     )
+                    .select_from(SensorSample)
+                    .join(SQALDevice, SQALDevice.device_id == SensorSample.device_id)
+                    .where(SensorSample.timestamp.between(start_time, end_time))
+                    .where(SQALDevice.site_code.is_not(None))
+                    .group_by(bucket, SQALDevice.site_code)
+                    .order_by(desc(bucket), SQALDevice.site_code)
+                )
 
-                    if site_code:
-                        stmt = stmt.where(SQALDevice.site_code == site_code)
-
-                    rows = (await session.execute(stmt)).all()
-                    if rows:
-                        logger.info("get_site_stats: ORM sensor_samples + sqal_devices")
-                        results: List[Dict[str, Any]] = []
-                        for r in rows:
-                            total_samples = int(r.total_samples or 0)
-                            compliant_count = int(r.compliant_count or 0)
-                            compliance_rate_pct = (compliant_count / total_samples * 100) if total_samples > 0 else 0
-
-                            results.append(
-                                {
-                                    "bucket": r.bucket,
-                                    "site_code": r.site_code,
-                                    "total_samples": total_samples,
-                                    "avg_quality_score": float(r.avg_quality_score) if r.avg_quality_score is not None else 0,
-                                    "compliance_rate_pct": compliance_rate_pct,
-                                    "count_a_plus": int(r.count_a_plus or 0),
-                                    "count_a": int(r.count_a or 0),
-                                    "count_b": int(r.count_b or 0),
-                                    "count_c": int(r.count_c or 0),
-                                    "count_reject": int(r.count_reject or 0),
-                                }
-                            )
-
-                        return results
-
-            except Exception as e:
-                logger.warning(f"ORM sensor_samples site stats failed: {e}")
-
-            await self._ensure_pool()
-            async with self.pool.acquire() as conn:
-                logger.info("get_site_stats: legacy sqal_site_stats")
                 if site_code:
-                    rows = await conn.fetch(
-                        """
-                        SELECT
-                          day AS bucket,
-                          site_code,
-                          sample_count AS total_samples,
-                          avg_quality_score,
-                          compliance_rate_pct,
-                          count_a_plus,
-                          0::int AS count_a,
-                          0::int AS count_b,
-                          0::int AS count_c,
-                          0::int AS count_reject
-                        FROM sqal_site_stats
-                        WHERE day BETWEEN date_trunc('day', $1::timestamptz) AND date_trunc('day', $2::timestamptz)
-                          AND site_code = $3
-                        ORDER BY day DESC
-                        """,
-                        start_time,
-                        end_time,
-                        site_code
-                    )
-                else:
-                    rows = await conn.fetch(
-                        """
-                        SELECT
-                          day AS bucket,
-                          site_code,
-                          sample_count AS total_samples,
-                          avg_quality_score,
-                          compliance_rate_pct,
-                          count_a_plus,
-                          0::int AS count_a,
-                          0::int AS count_b,
-                          0::int AS count_c,
-                          0::int AS count_reject
-                        FROM sqal_site_stats
-                        WHERE day BETWEEN date_trunc('day', $1::timestamptz) AND date_trunc('day', $2::timestamptz)
-                        ORDER BY day DESC, site_code
-                        """,
-                        start_time,
-                        end_time
+                    stmt = stmt.where(SQALDevice.site_code == site_code)
+
+                rows = (await session.execute(stmt)).all()
+                logger.info("get_site_stats: ORM sensor_samples + sqal_devices")
+
+                results: List[Dict[str, Any]] = []
+                for r in rows:
+                    total_samples = int(r.total_samples or 0)
+                    compliant_count = int(r.compliant_count or 0)
+                    compliance_rate_pct = (compliant_count / total_samples * 100) if total_samples > 0 else 0
+
+                    results.append(
+                        {
+                            "bucket": r.bucket,
+                            "site_code": r.site_code,
+                            "total_samples": total_samples,
+                            "avg_quality_score": float(r.avg_quality_score) if r.avg_quality_score is not None else 0,
+                            "compliance_rate_pct": compliance_rate_pct,
+                            "count_a_plus": int(r.count_a_plus or 0),
+                            "count_a": int(r.count_a or 0),
+                            "count_b": int(r.count_b or 0),
+                            "count_c": int(r.count_c or 0),
+                            "count_reject": int(r.count_reject or 0),
+                        }
                     )
 
-                return [dict(row) for row in rows]
+                return results
 
         except Exception as e:
             logger.error(f"❌ Erreur récupération stats sites: {e}")

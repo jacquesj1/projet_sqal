@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Génération SQAL - Structure réelle de sqal_sensor_samples
+Génération SQAL - Structure réelle de sensor_samples
 """
 
 import asyncio
@@ -97,7 +97,7 @@ async def main():
 
             # Vérifier si échantillons existent
             existing = await conn.fetchval(
-                "SELECT COUNT(*) FROM sqal_sensor_samples WHERE lot_id = $1", lot_id
+                "SELECT COUNT(*) FROM sensor_samples WHERE lot_id = $1", lot_id
             )
 
             if existing >= SAMPLES_PER_LOT:
@@ -119,8 +119,11 @@ async def main():
                 score = random.uniform(0.75, 0.95)
 
                 await conn.execute("""
-                    INSERT INTO sqal_sensor_samples (
-                        time, sample_id, device_id, lot_id,
+                    INSERT INTO sensor_samples (
+                        timestamp,
+                        sample_id,
+                        device_id,
+                        lot_id,
                         vl53l8ch_distance_matrix,
                         vl53l8ch_reflectance_matrix,
                         vl53l8ch_amplitude_matrix,
@@ -135,11 +138,18 @@ async def main():
                         fusion_final_score,
                         fusion_final_grade,
                         fusion_vl53l8ch_score,
-                        fusion_as7341_score,
-                        fusion_is_compliant
+                        fusion_as7341_score
                     ) VALUES (
-                        $1, $2, $3, $4, $5::jsonb, $6::jsonb, $7::jsonb, $8, $9, $10::jsonb, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20
+                        $1, $2, $3, $4,
+                        $5::jsonb, $6::jsonb, $7::jsonb,
+                        $8, $9,
+                        $10::jsonb,
+                        $11, $12, $13,
+                        $14, $15,
+                        $16, $17,
+                        $18, $19
                     )
+                    ON CONFLICT (sample_id) DO NOTHING
                 """,
                     sample_time, sample_id, device_id, lot_id,
                     json.dumps(distance_matrix), json.dumps(reflectance_matrix), json.dumps(amplitude_matrix),
@@ -150,8 +160,7 @@ async def main():
                     random.uniform(0.05, 0.20),
                     score, grade,
                     score, grade,
-                    score, score,
-                    True
+                    score, score
                 )
 
             total_inserted += SAMPLES_PER_LOT
@@ -163,7 +172,7 @@ async def main():
         print("=" * 80)
 
         total = await conn.fetchval("""
-            SELECT COUNT(*) FROM sqal_sensor_samples
+            SELECT COUNT(*) FROM sensor_samples
             WHERE lot_id IN (
                 SELECT id FROM lots_gavage WHERE code_lot LIKE 'LL%' OR code_lot LIKE 'LS%'
             )
