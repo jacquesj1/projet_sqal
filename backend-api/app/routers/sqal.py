@@ -5,7 +5,7 @@ Préfixe: /api/sqal/*
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from typing import List, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import logging
 
 from app.models.sqal import (
@@ -14,6 +14,7 @@ from app.models.sqal import (
     DeviceListResponse,
     StatsResponse,
     HealthCheckResponse,
+    AlertCreate,
     AlertDB,
     DeviceDB,
     SensorSampleDB
@@ -83,7 +84,10 @@ async def health_check():
 # ============================================================================
 
 @router.get("/devices", response_model=DeviceListResponse)
-async def get_devices(site_code: Optional[str] = Query(None, description="Filtrer par site (LL/LS/MT)")):
+async def get_devices(
+    site_code: Optional[str] = Query(None, description="Filtrer par site (LL/LS/MT)"),
+    status: Optional[str] = Query(None, description="Filtrer par statut (active/inactive/maintenance)")
+):
     """
     Liste des dispositifs ESP32
 
@@ -94,7 +98,7 @@ async def get_devices(site_code: Optional[str] = Query(None, description="Filtre
         Liste de devices avec métadonnées
     """
     try:
-        devices = await sqal_service.get_devices(site_code=site_code)
+        devices = await sqal_service.get_devices(site_code=site_code, status=status)
         return DeviceListResponse(devices=devices, total=len(devices))
 
     except Exception as e:
@@ -114,8 +118,7 @@ async def get_device_detail(device_id: str):
         Device + statistiques 24h
     """
     try:
-        devices = await sqal_service.get_devices()
-        device = next((d for d in devices if d.device_id == device_id), None)
+        device = await sqal_service.get_device(device_id)
 
         if not device:
             raise HTTPException(status_code=404, detail=f"Device {device_id} introuvable")
@@ -236,6 +239,20 @@ async def predict(sample_id: str = Query(..., description="ID du sample (sample_
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         logger.error(f"Erreur prediction: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/alerts")
+async def create_alert(alert: AlertCreate):
+    try:
+        alert_id = await sqal_service.create_alert(alert)
+        if not alert_id:
+            raise HTTPException(status_code=500, detail="Unable to create alert")
+        return {"alert_id": alert_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Erreur création alerte: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -466,7 +483,7 @@ async def acknowledge_alert(
             "success": True,
             "alert_id": alert_id,
             "acknowledged_by": acknowledged_by,
-            "acknowledged_at": datetime.utcnow().isoformat()
+            "acknowledged_at": datetime.now(tz=timezone.utc).isoformat()
         }
 
     except HTTPException:
@@ -641,7 +658,7 @@ async def get_quality_for_all_lots(request: Request):
           ROUND(AVG(as7341_freshness_index)::numeric, 4) as indice_fraicheur,
           ROUND(AVG(as7341_fat_quality_index)::numeric, 4) as indice_qualite_gras,
           ROUND(AVG(as7341_oxidation_index)::numeric, 4) as indice_oxydation
-        FROM sqal_sensor_samples
+        FROM sensor_samples
         WHERE lot_id IS NOT NULL
         GROUP BY lot_id
         ORDER BY lot_id

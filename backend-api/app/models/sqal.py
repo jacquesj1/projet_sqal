@@ -323,7 +323,7 @@ class SensorDataMessage(BaseModel):
 # ============================================================================
 
 class SensorSampleDB(BaseModel):
-    """Échantillon capteur (lecture depuis sqal_sensor_samples)"""
+    """Échantillon capteur (lecture depuis sensor_samples)"""
     time: datetime
     sample_id: str
     device_id: str
@@ -370,7 +370,7 @@ class DeviceDB(BaseModel):
 
 
 class HourlyStatsDB(BaseModel):
-    """Statistiques horaires (lecture depuis sqal_hourly_stats)"""
+    """Statistiques horaires (agrégation depuis sensor_samples)"""
     bucket: datetime
     device_id: str
     sample_count: int
@@ -389,7 +389,7 @@ class HourlyStatsDB(BaseModel):
 
 
 class SiteStatsDB(BaseModel):
-    """Statistiques par site (lecture depuis sqal_site_stats)"""
+    """Statistiques par site (agrégation depuis sensor_samples + sqal_devices)"""
     bucket: datetime
     site_code: str
     total_samples: int

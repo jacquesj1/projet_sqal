@@ -64,6 +64,8 @@ class SensorSample(Base):
     fusion_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
     fusion_defects: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
+    poids_foie_estime_g: Mapped[float | None] = mapped_column(Float, nullable=True)
+
     meta_firmware_version: Mapped[str | None] = mapped_column(String(50), nullable=True)
     meta_temperature_c: Mapped[float | None] = mapped_column(Float, nullable=True)
     meta_humidity_percent: Mapped[float | None] = mapped_column(Float, nullable=True)

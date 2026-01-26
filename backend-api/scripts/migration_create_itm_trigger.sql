@@ -28,7 +28,7 @@ BEGIN
     INTO
         poids_moyen_g,
         nb_mesures
-    FROM sqal_sensor_samples
+    FROM sensor_samples
     WHERE lot_id = NEW.lot_id
       AND poids_foie_estime_g IS NOT NULL;
 
@@ -67,15 +67,15 @@ Formule: ITM = poids_foie_moyen_g / (total_corn_real / nb_accroches)';
 -- Trigger sur insertion/update SQAL
 -- ================================================================================
 
-DROP TRIGGER IF EXISTS trigger_calculate_itm_from_sqal ON sqal_sensor_samples;
+DROP TRIGGER IF EXISTS trigger_calculate_itm_from_sqal ON sensor_samples;
 
 CREATE TRIGGER trigger_calculate_itm_from_sqal
-AFTER INSERT OR UPDATE ON sqal_sensor_samples
+AFTER INSERT OR UPDATE ON sensor_samples
 FOR EACH ROW
 WHEN (NEW.lot_id IS NOT NULL AND NEW.poids_foie_estime_g IS NOT NULL)
 EXECUTE FUNCTION calculate_itm_from_sqal();
 
-COMMENT ON TRIGGER trigger_calculate_itm_from_sqal ON sqal_sensor_samples IS
+COMMENT ON TRIGGER trigger_calculate_itm_from_sqal ON sensor_samples IS
 'Recalcule automatiquement ITM du lot quand nouvelles mesures SQAL avec poids arrivent';
 
 -- ================================================================================
@@ -89,7 +89,7 @@ DECLARE
 BEGIN
     FOR lot_record IN
         SELECT DISTINCT lot_id
-        FROM sqal_sensor_samples
+        FROM sensor_samples
         WHERE lot_id IS NOT NULL
           AND poids_foie_estime_g IS NOT NULL
     LOOP
@@ -97,7 +97,7 @@ BEGIN
         SET
             itm = (
                 SELECT AVG(poids_foie_estime_g) / (l.total_corn_real / NULLIF(l.nb_accroches, 0))
-                FROM sqal_sensor_samples
+                FROM sensor_samples
                 WHERE lot_id = lot_record.lot_id
                   AND poids_foie_estime_g IS NOT NULL
             ),

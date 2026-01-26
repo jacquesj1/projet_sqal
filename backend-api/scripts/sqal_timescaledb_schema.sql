@@ -6,6 +6,11 @@
 -- Intégration : Backend FastAPI unifié
 -- Date        : 15 Décembre 2024
 -- Version     : 3.0.0
+--
+-- DEPRECATED (SQAL ORM Migration Phase 2):
+-- - Le backend utilise désormais la table sensor_samples (SQLAlchemy ORM)
+-- - Ne pas exécuter ce script sur les environnements de démo/prod
+-- - Conserver uniquement à titre d'archive/référence
 -- ================================================================================
 
 -- ================================================================================

@@ -28,7 +28,7 @@ class SensorsConsumer:
     Flux:
     1. Simulateur → WebSocket /ws/sensors/
     2. Validation Pydantic (SensorDataMessage)
-    3. Sauvegarde TimescaleDB (sqal_sensor_samples)
+    3. Sauvegarde TimescaleDB (sensor_samples)
     4. Génération alertes si qualité < seuils
     5. Broadcast aux dashboards via realtime_broadcaster
     """

@@ -1069,10 +1069,10 @@ async def get_qualite_lot(
                 COUNT(*) FILTER (WHERE fusion_is_compliant = TRUE) as nb_conformes,
 
                 -- Dates
-                MIN(time) as premiere_mesure,
-                MAX(time) as derniere_mesure
+                MIN(timestamp) as premiere_mesure,
+                MAX(timestamp) as derniere_mesure
 
-            FROM sqal_sensor_samples
+            FROM sensor_samples
             WHERE lot_id = $1
               AND poids_foie_estime_g IS NOT NULL
         """, lot_id)

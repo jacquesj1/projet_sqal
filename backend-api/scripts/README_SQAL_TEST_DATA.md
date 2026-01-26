@@ -30,12 +30,12 @@ Le script `generate_sqal_test_data.py` génère des mesures de capteurs IoT SQAL
 
 Vérifier :
 ```bash
-psql -d gaveurs_db -c "\d sqal_sensor_samples" | grep poids_foie_estime_g
+psql -d gaveurs_db -c "\d sensor_samples" | grep poids_foie_estime_g
 ```
 
 Si absent, appliquer migration :
 ```bash
-psql -d gaveurs_db -f scripts/migration_add_poids_foie.sql
+alembic upgrade head
 ```
 
 ### 2. Lots Existants
@@ -179,7 +179,7 @@ SELECT COUNT(*) as nb_total,
        COUNT(DISTINCT lot_id) as nb_lots,
        MIN(time) as premiere_mesure,
        MAX(time) as derniere_mesure
-FROM sqal_sensor_samples
+FROM sensor_samples
 WHERE poids_foie_estime_g IS NOT NULL;
 ```
 
@@ -197,7 +197,7 @@ SELECT fusion_final_grade,
        COUNT(*) as count,
        ROUND(AVG(fusion_final_score), 3) as avg_score,
        ROUND(AVG(poids_foie_estime_g), 1) as avg_poids_foie
-FROM sqal_sensor_samples
+FROM sensor_samples
 WHERE poids_foie_estime_g IS NOT NULL
 GROUP BY fusion_final_grade
 ORDER BY fusion_final_grade;
@@ -220,7 +220,7 @@ ORDER BY fusion_final_grade;
 SELECT COUNT(*) as nb_samples,
        ROUND(AVG(poids_foie_estime_g), 1) as poids_foie_moyen,
        MODE() WITHIN GROUP (ORDER BY fusion_final_grade) as grade_majoritaire
-FROM sqal_sensor_samples
+FROM sensor_samples
 WHERE lot_id = 3468
   AND poids_foie_estime_g IS NOT NULL;
 ```
@@ -374,13 +374,13 @@ Exemple :
 
 ## Dépannage
 
-### Erreur: "relation sqal_sensor_samples does not exist"
+### Erreur: "relation sensor_samples does not exist"
 
 **Cause** : Schéma SQAL pas créé
 
 **Solution** :
 ```bash
-psql -d gaveurs_db -f backend-api/scripts/sqal_timescaledb_schema.sql
+alembic upgrade head
 ```
 
 ### Erreur: "column poids_foie_estime_g does not exist"
@@ -389,7 +389,7 @@ psql -d gaveurs_db -f backend-api/scripts/sqal_timescaledb_schema.sql
 
 **Solution** :
 ```bash
-psql -d gaveurs_db -f backend-api/scripts/migration_add_poids_foie.sql
+alembic upgrade head
 ```
 
 ### Erreur: "Aucun lot trouvé"
@@ -417,7 +417,7 @@ pip install asyncpg
 **Vérification** :
 ```sql
 SELECT lot_id, COUNT(*)
-FROM sqal_sensor_samples
+FROM sensor_samples
 WHERE poids_foie_estime_g IS NOT NULL
 GROUP BY lot_id;
 ```
@@ -429,7 +429,7 @@ GROUP BY lot_id;
 ### Supprimer toutes les données SQAL test
 
 ```sql
-TRUNCATE TABLE sqal_sensor_samples;
+TRUNCATE TABLE sensor_samples;
 ```
 
 **Attention** : Supprime TOUTES les mesures SQAL (test et réelles).
@@ -437,7 +437,7 @@ TRUNCATE TABLE sqal_sensor_samples;
 ### Supprimer données d'un lot spécifique
 
 ```sql
-DELETE FROM sqal_sensor_samples WHERE lot_id = 3468;
+DELETE FROM sensor_samples WHERE lot_id = 3468;
 ```
 
 ### Supprimer device test

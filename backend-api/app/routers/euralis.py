@@ -457,7 +457,7 @@ async def get_dashboard_kpis(conn = Depends(get_db_connection)):
                             lot_id,
                             AVG(poids_foie_estime_g) as poids_moyen_g,
                             COUNT(*) as nb_mesures
-                        FROM sqal_sensor_samples
+                        FROM sensor_samples
                         WHERE poids_foie_estime_g IS NOT NULL
                         GROUP BY lot_id
                     ) s ON l2.id = s.lot_id

@@ -889,9 +889,9 @@ async def get_latest_product(request: Request):
                     SELECT
                         vl53l8ch_quality_score AS tof_score,
                         as7341_quality_score AS as7341_score
-                    FROM sqal_sensor_samples
+                    FROM sensor_samples
                     WHERE sample_id = $1
-                    ORDER BY time DESC
+                    ORDER BY timestamp DESC
                     LIMIT 1
                     """,
                     row["sample_id"],

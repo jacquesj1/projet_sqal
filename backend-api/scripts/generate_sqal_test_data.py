@@ -255,7 +255,7 @@ def generate_sqal_sample(
     sample_id = f"SAMPLE-{timestamp.strftime('%Y%m%d-%H%M%S')}-{random.randint(100,999)}"
 
     return {
-        'time': timestamp,
+        'timestamp': timestamp,
         'sample_id': sample_id,
         'device_id': device_id,
         'lot_id': lot_id,
@@ -264,8 +264,6 @@ def generate_sqal_sample(
         'vl53l8ch_distance_matrix': json.dumps(matrices['distance']),
         'vl53l8ch_reflectance_matrix': json.dumps(matrices['reflectance']),
         'vl53l8ch_amplitude_matrix': json.dumps(matrices['amplitude']),
-        'vl53l8ch_integration_time': random.randint(50, 150),
-        'vl53l8ch_temperature_c': round(random.uniform(18.5, 22.5), 1),
 
         # VL53L8CH analyses
         'vl53l8ch_volume_mm3': round(volume_mm3, 2),
@@ -293,8 +291,6 @@ def generate_sqal_sample(
         'fusion_final_grade': grade,
         'fusion_vl53l8ch_score': round(vl53l8ch_score, 4),
         'fusion_as7341_score': round(as7341_score, 4),
-        'fusion_is_compliant': grade not in ['REJECT'],
-
         # Poids foie calculé
         'poids_foie_estime_g': round(poids_foie_g, 1),
 
@@ -314,32 +310,53 @@ async def insert_sqal_samples(conn: asyncpg.Connection, samples: List[Dict[str, 
     """Insère les échantillons SQAL en base de données"""
 
     insert_query = """
-        INSERT INTO sqal_sensor_samples (
-            time, sample_id, device_id, lot_id,
-            vl53l8ch_distance_matrix, vl53l8ch_reflectance_matrix, vl53l8ch_amplitude_matrix,
-            vl53l8ch_integration_time, vl53l8ch_temperature_c,
-            vl53l8ch_volume_mm3, vl53l8ch_avg_height_mm, vl53l8ch_max_height_mm,
-            vl53l8ch_min_height_mm, vl53l8ch_surface_uniformity,
-            vl53l8ch_quality_score, vl53l8ch_grade,
-            as7341_channels, as7341_integration_time, as7341_gain,
-            as7341_freshness_index, as7341_fat_quality_index, as7341_oxidation_index,
-            as7341_quality_score, as7341_grade,
-            fusion_final_score, fusion_final_grade,
-            fusion_vl53l8ch_score, fusion_as7341_score, fusion_is_compliant,
+        INSERT INTO sensor_samples (
+            timestamp,
+            sample_id,
+            device_id,
+            lot_id,
+
+            vl53l8ch_distance_matrix,
+            vl53l8ch_reflectance_matrix,
+            vl53l8ch_amplitude_matrix,
+            vl53l8ch_volume_mm3,
+            vl53l8ch_avg_height_mm,
+            vl53l8ch_max_height_mm,
+            vl53l8ch_min_height_mm,
+            vl53l8ch_surface_uniformity,
+            vl53l8ch_quality_score,
+            vl53l8ch_grade,
+
+            as7341_channels,
+            as7341_integration_time,
+            as7341_gain,
+            as7341_freshness_index,
+            as7341_fat_quality_index,
+            as7341_oxidation_index,
+            as7341_quality_score,
+            as7341_grade,
+
+            fusion_final_score,
+            fusion_final_grade,
+            fusion_vl53l8ch_score,
+            fusion_as7341_score,
+
             poids_foie_estime_g,
-            meta_firmware_version, meta_temperature_c, meta_humidity_percent, meta_config_profile
+            meta_firmware_version,
+            meta_temperature_c,
+            meta_humidity_percent,
+            meta_config_profile
         ) VALUES (
             $1, $2, $3, $4,
             $5::jsonb, $6::jsonb, $7::jsonb,
-            $8, $9,
-            $10, $11, $12, $13, $14, $15, $16,
-            $17::jsonb, $18, $19,
-            $20, $21, $22, $23, $24,
-            $25, $26, $27, $28, $29,
-            $30,
-            $31, $32, $33, $34
+            $8, $9, $10, $11, $12, $13, $14,
+            $15::jsonb, $16, $17,
+            $18, $19, $20, $21, $22,
+            $23, $24, $25, $26,
+            $27,
+            $28, $29, $30, $31
         )
-        ON CONFLICT (time, sample_id) DO NOTHING
+        ON CONFLICT (sample_id) DO NOTHING
     """
 
     inserted = 0
@@ -347,9 +364,8 @@ async def insert_sqal_samples(conn: asyncpg.Connection, samples: List[Dict[str, 
         try:
             await conn.execute(
                 insert_query,
-                sample['time'], sample['sample_id'], sample['device_id'], sample['lot_id'],
+                sample['timestamp'], sample['sample_id'], sample['device_id'], sample['lot_id'],
                 sample['vl53l8ch_distance_matrix'], sample['vl53l8ch_reflectance_matrix'], sample['vl53l8ch_amplitude_matrix'],
-                sample['vl53l8ch_integration_time'], sample['vl53l8ch_temperature_c'],
                 sample['vl53l8ch_volume_mm3'], sample['vl53l8ch_avg_height_mm'], sample['vl53l8ch_max_height_mm'],
                 sample['vl53l8ch_min_height_mm'], sample['vl53l8ch_surface_uniformity'],
                 sample['vl53l8ch_quality_score'], sample['vl53l8ch_grade'],
@@ -357,7 +373,7 @@ async def insert_sqal_samples(conn: asyncpg.Connection, samples: List[Dict[str, 
                 sample['as7341_freshness_index'], sample['as7341_fat_quality_index'], sample['as7341_oxidation_index'],
                 sample['as7341_quality_score'], sample['as7341_grade'],
                 sample['fusion_final_score'], sample['fusion_final_grade'],
-                sample['fusion_vl53l8ch_score'], sample['fusion_as7341_score'], sample['fusion_is_compliant'],
+                sample['fusion_vl53l8ch_score'], sample['fusion_as7341_score'],
                 sample['poids_foie_estime_g'],
                 sample['meta_firmware_version'], sample['meta_temperature_c'], sample['meta_humidity_percent'], sample['meta_config_profile']
             )
