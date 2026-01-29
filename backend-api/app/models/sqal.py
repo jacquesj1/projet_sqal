@@ -460,9 +460,6 @@ class MLModelDB(BaseModel):
     hyperparameters: Optional[Dict[str, Any]]
     feature_importance: Optional[Dict[str, Any]]
 
-    class Config:
-        from_attributes = True
-
 
 # ============================================================================
 # BLOCKCHAIN
