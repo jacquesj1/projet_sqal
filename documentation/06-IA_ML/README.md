@@ -117,6 +117,12 @@ suggestions = await optimize_from_feedback(
 
 ---
 
+## 🧩 Annexes
+
+- [CLUSTERING_LOTS_PRED.md](CLUSTERING_LOTS_PRED.md) : clustering prédictif des lots (lot_pred) pour segmentation `genetique + site_code + cluster_pred`
+
+---
+
 ### 3. 📈 Production Forecasting (Prophet)
 
 **Fichier**: `app/ml/euralis/production_forecasting.py`
