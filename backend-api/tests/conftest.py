@@ -10,6 +10,13 @@ from typing import AsyncGenerator, Generator
 from httpx import AsyncClient
 import os
 
+import sys
+from pathlib import Path
+
+_BACKEND_API_DIR = Path(__file__).resolve().parents[1]
+if str(_BACKEND_API_DIR) not in sys.path:
+    sys.path.insert(0, str(_BACKEND_API_DIR))
+
 from app.main import app
 
 
