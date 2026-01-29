@@ -7,6 +7,7 @@ import pytest
 import asyncio
 import asyncpg
 from datetime import datetime
+import os
 
 from app.blockchain.blockchain_service import GaveursBlockchain
 from app.services.consumer_feedback_service import ConsumerFeedbackService
@@ -19,11 +20,18 @@ class TestBlockchainConsumerIntegration:
     @pytest.fixture
     async def db_pool(self):
         """Crée un pool de connexions PostgreSQL pour les tests"""
-        pool = await asyncpg.create_pool(
-            "postgresql://gaveurs_admin:gaveurs_secure_2024@localhost:5432/gaveurs_db",
-            min_size=1,
-            max_size=5
-        )
+        database_url = os.getenv("TEST_DATABASE_URL")
+        if not database_url:
+            pytest.skip("TEST_DATABASE_URL not set; skipping blockchain integration tests")
+
+        try:
+            pool = await asyncpg.create_pool(
+                database_url,
+                min_size=1,
+                max_size=5
+            )
+        except Exception as exc:
+            pytest.skip(f"Could not connect to TEST_DATABASE_URL; skipping blockchain integration tests: {exc}")
         yield pool
         await pool.close()
 
@@ -38,9 +46,11 @@ class TestBlockchainConsumerIntegration:
     async def consumer_service(self, db_pool):
         """Crée une instance du service consumer feedback"""
         service = ConsumerFeedbackService()
-        await service.init_pool(
-            "postgresql://gaveurs_admin:gaveurs_secure_2024@localhost:5432/gaveurs_db"
-        )
+        database_url = os.getenv("TEST_DATABASE_URL")
+        if not database_url:
+            pytest.skip("TEST_DATABASE_URL not set; skipping blockchain integration tests")
+
+        await service.init_pool(database_url)
         return service
 
     async def test_01_blockchain_initialization(self, blockchain):

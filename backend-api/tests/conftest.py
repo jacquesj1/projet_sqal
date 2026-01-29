@@ -35,12 +35,14 @@ def event_loop() -> Generator:
 @pytest.fixture(scope="session")
 async def db_pool() -> AsyncGenerator[asyncpg.Pool, None]:
     """Create database connection pool for tests"""
-    database_url = os.getenv(
-        "TEST_DATABASE_URL",
-        "postgresql://gaveurs_admin:gaveurs_secure_2024@localhost:5432/gaveurs_db_test"
-    )
+    database_url = os.getenv("TEST_DATABASE_URL")
+    if not database_url:
+        pytest.skip("TEST_DATABASE_URL not set; skipping DB-dependent tests")
 
-    pool = await asyncpg.create_pool(database_url, min_size=2, max_size=10)
+    try:
+        pool = await asyncpg.create_pool(database_url, min_size=2, max_size=10)
+    except Exception as exc:
+        pytest.skip(f"Could not connect to TEST_DATABASE_URL; skipping DB-dependent tests: {exc}")
 
     # Setup: Create test tables if needed
     async with pool.acquire() as conn:
