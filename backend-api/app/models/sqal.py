@@ -443,6 +443,8 @@ class AlertDB(BaseModel):
 
 class MLModelDB(BaseModel):
     """Modèle ML SQAL (lecture depuis sqal_ml_models)"""
+    model_config = {"protected_namespaces": (), "from_attributes": True}
+
     model_id: int
     model_name: str
     model_type: str
