@@ -12,7 +12,7 @@ Date        : 2026-01-09
 """
 
 from fastapi import APIRouter, HTTPException, Query, Depends
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from datetime import datetime, date
 from pydantic import BaseModel
 import asyncpg
@@ -559,6 +559,57 @@ async def get_courbe_predictive(lot_id: int):
     conn = await asyncpg.connect(DATABASE_URL)
 
     try:
+        async def _ensure_contract_deviation_tables(c: asyncpg.Connection) -> None:
+            await c.execute(
+                """
+                CREATE TABLE IF NOT EXISTS lot_contract_deviation_snapshots (
+                    id SERIAL PRIMARY KEY,
+                    lot_id INTEGER NOT NULL,
+                    site_code VARCHAR(2),
+                    genetique TEXT,
+                    cluster_refined_j4_id INTEGER,
+                    transition_policy_id INTEGER,
+                    snapshot_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    last_real_day INTEGER,
+                    window_days INTEGER,
+                    ecart_cumule_g DOUBLE PRECISION,
+                    ecart_abs_mean_g DOUBLE PRECISION,
+                    ecart_abs_max_g DOUBLE PRECISION,
+                    ecart_abs_max_pct DOUBLE PRECISION,
+                    nb_alertes INTEGER,
+                    details JSONB
+                );
+                """
+            )
+            await c.execute(
+                "CREATE INDEX IF NOT EXISTS idx_lot_dev_snap_lot ON lot_contract_deviation_snapshots(lot_id, snapshot_at DESC);"
+            )
+
+        await _ensure_contract_deviation_tables(conn)
+
+        lot_info = await conn.fetchrow(
+            """
+            SELECT
+                id,
+                site_code,
+                LOWER(genetique) AS genetique
+            FROM lots_gavage
+            WHERE id = $1
+            """,
+            int(lot_id),
+        )
+
+        site_code_lot = (
+            str(lot_info["site_code"]).strip().upper()
+            if lot_info is not None and lot_info["site_code"] is not None
+            else None
+        )
+        genetique_lot = (
+            str(lot_info["genetique"]).strip().lower()
+            if lot_info is not None and lot_info["genetique"] is not None
+            else None
+        )
+
         # 1. Récupérer courbe théorique
         courbe_theo = await conn.fetchrow("""
             SELECT id, courbe_theorique, courbe_modifiee, duree_gavage_jours
@@ -584,6 +635,81 @@ async def get_courbe_predictive(lot_id: int):
             WHERE lot_id = $1
             ORDER BY jour_gavage
         """, lot_id)
+
+        # Résoudre cluster_refined_j4 + policy transition active (T2)
+        cluster_refined_j4_id: Optional[int] = None
+        cluster_refined_j4_confidence: Optional[float] = None
+        transition_policy_id: Optional[int] = None
+        transition_policy_params: Optional[Dict[str, Any]] = None
+
+        try:
+            latest_refined_run_id = await conn.fetchval(
+                """
+                SELECT id
+                FROM lot_clustering_runs
+                WHERE clustering_type = 'lot_refined_j4'
+                ORDER BY created_at DESC
+                LIMIT 1
+                """
+            )
+            if latest_refined_run_id:
+                assign = await conn.fetchrow(
+                    """
+                    SELECT cluster_id, confidence
+                    FROM lot_clustering_assignments
+                    WHERE run_id = $1 AND lot_id = $2
+                    """,
+                    int(latest_refined_run_id),
+                    int(lot_id),
+                )
+                if assign:
+                    cluster_refined_j4_id = int(assign["cluster_id"])
+                    cluster_refined_j4_confidence = float(assign["confidence"]) if assign["confidence"] is not None else None
+        except asyncpg.exceptions.UndefinedTableError:
+            cluster_refined_j4_id = None
+
+        try:
+            await conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS transition_policies (
+                    id SERIAL PRIMARY KEY,
+                    genetique TEXT NOT NULL,
+                    site_code VARCHAR(2),
+                    lot_cluster_refined_j4_id INTEGER,
+                    params JSONB NOT NULL,
+                    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                    valid_from TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    valid_to TIMESTAMPTZ,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    created_by TEXT
+                );
+                """
+            )
+
+            if genetique_lot:
+                pol = await conn.fetchrow(
+                    """
+                    SELECT id, params
+                    FROM transition_policies
+                    WHERE genetique = $1
+                      AND ($2::varchar IS NULL OR site_code = $2)
+                      AND ($3::int IS NULL OR lot_cluster_refined_j4_id = $3)
+                      AND is_active = TRUE
+                      AND valid_from <= NOW()
+                      AND (valid_to IS NULL OR valid_to > NOW())
+                    ORDER BY created_at DESC
+                    LIMIT 1
+                    """,
+                    genetique_lot,
+                    site_code_lot,
+                    cluster_refined_j4_id,
+                )
+                if pol:
+                    transition_policy_id = int(pol["id"])
+                    transition_policy_params = pol["params"] if isinstance(pol["params"], dict) else None
+        except Exception:
+            transition_policy_id = None
+            transition_policy_params = None
 
         # 3. Calculer courbe prédictive
         courbe_predictive = []
@@ -639,7 +765,8 @@ async def get_courbe_predictive(lot_id: int):
                     doses_theoriques=doses_theoriques_fmt,
                     dernier_jour_reel=dernier_jour_reel,
                     duree_totale=duree_totale,
-                    race=None  # TODO: récupérer race du lot
+                    race=None,  # TODO: récupérer race du lot
+                    params=transition_policy_params,
                 )
 
                 # Construire courbe complète (passé réel + futur prédictif)
@@ -658,12 +785,103 @@ async def get_courbe_predictive(lot_id: int):
                 # Ajouter jours futurs (prédiction v2)
                 courbe_predictive.extend(courbe_pred_futur)
 
+        # Persister snapshot écarts "contrat" (cadré conseil)
+        deviations_snapshot_id: Optional[int] = None
+        try:
+            if doses_reelles:
+                last_real_day = int(doses_reelles[-1]["jour_gavage"]) if doses_reelles[-1].get("jour_gavage") else 0
+                window_days = min(4, last_real_day) if last_real_day else 0
+
+                # Fenêtre J1..J4 (ou moins si pas encore)
+                window = [d for d in doses_reelles if d.get("jour_gavage") and int(d["jour_gavage"]) <= window_days]
+
+                deltas_g: List[float] = []
+                abs_deltas_g: List[float] = []
+                abs_ecarts_pct: List[float] = []
+                nb_alertes = 0
+
+                for d in window:
+                    dr = float(d["dose_reelle_g"]) if d.get("dose_reelle_g") is not None else 0.0
+                    dt = float(d["dose_theorique_g"]) if d.get("dose_theorique_g") is not None else 0.0
+                    delta = dr - dt
+                    deltas_g.append(delta)
+                    abs_deltas_g.append(abs(delta))
+
+                    if d.get("ecart_pct") is not None:
+                        abs_ecarts_pct.append(abs(float(d["ecart_pct"])))
+
+                    if d.get("alerte_ecart"):
+                        nb_alertes += 1
+
+                ecart_cumule_g = float(sum(deltas_g)) if deltas_g else 0.0
+                ecart_abs_mean_g = float(sum(abs_deltas_g) / len(abs_deltas_g)) if abs_deltas_g else 0.0
+                ecart_abs_max_g = float(max(abs_deltas_g)) if abs_deltas_g else 0.0
+                ecart_abs_max_pct = float(max(abs_ecarts_pct)) if abs_ecarts_pct else 0.0
+
+                details = {
+                    "window": {
+                        "days": int(window_days),
+                        "deltas_g": deltas_g,
+                    },
+                    "cluster_refined_j4": {
+                        "cluster_id": cluster_refined_j4_id,
+                        "confidence": cluster_refined_j4_confidence,
+                    },
+                    "transition_policy": {
+                        "id": transition_policy_id,
+                    },
+                }
+
+                deviations_snapshot_id = await conn.fetchval(
+                    """
+                    INSERT INTO lot_contract_deviation_snapshots (
+                        lot_id,
+                        site_code,
+                        genetique,
+                        cluster_refined_j4_id,
+                        transition_policy_id,
+                        snapshot_at,
+                        last_real_day,
+                        window_days,
+                        ecart_cumule_g,
+                        ecart_abs_mean_g,
+                        ecart_abs_max_g,
+                        ecart_abs_max_pct,
+                        nb_alertes,
+                        details
+                    ) VALUES ($1,$2,$3,$4,$5,NOW(),$6,$7,$8,$9,$10,$11,$12,$13)
+                    RETURNING id
+                    """,
+                    int(lot_id),
+                    site_code_lot,
+                    genetique_lot,
+                    cluster_refined_j4_id,
+                    transition_policy_id,
+                    int(last_real_day),
+                    int(window_days),
+                    float(ecart_cumule_g),
+                    float(ecart_abs_mean_g),
+                    float(ecart_abs_max_g),
+                    float(ecart_abs_max_pct),
+                    int(nb_alertes),
+                    details,
+                )
+        except Exception:
+            deviations_snapshot_id = None
+
         return {
             'lot_id': lot_id,
             'courbe_predictive': courbe_predictive,
             'dernier_jour_reel': dernier_jour_reel,
             'a_des_ecarts': a_des_alertes,
-            'algorithme': 'v2_spline_cubique_contraintes' if a_des_alertes else 'courbe_theorique'
+            'algorithme': 'v2_spline_cubique_contraintes' if a_des_alertes else 'courbe_theorique',
+            'deviations_snapshot_id': deviations_snapshot_id,
+            'transition_policy_applied': {
+                'policy_id': transition_policy_id,
+                'genetique': genetique_lot,
+                'site_code': site_code_lot,
+                'cluster_refined_j4_id': cluster_refined_j4_id,
+            },
         }
 
     except HTTPException:

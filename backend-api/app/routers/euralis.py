@@ -11,7 +11,7 @@ Date        : 2024-12-14
 """
 
 from fastapi import APIRouter, HTTPException, Query, Depends, Request
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from datetime import datetime, date
 from pydantic import BaseModel
 import asyncpg
@@ -28,6 +28,114 @@ DATABASE_URL = os.getenv(
 
 # Router
 router = APIRouter(prefix="/api/euralis", tags=["euralis"])
+
+
+class FoieObjectivePolicy(BaseModel):
+    id: int
+    genetique: str
+    site_code: Optional[str] = None
+    lot_cluster_pred_id: Optional[int] = None
+    foie_min_g: float
+    foie_max_g: float
+    foie_target_g: float
+    weight_range: float
+    weight_target: float
+    is_active: bool
+    valid_from: datetime
+    valid_to: Optional[datetime] = None
+    created_at: datetime
+    created_by: Optional[str] = None
+
+
+class TransitionPolicy(BaseModel):
+    id: int
+    genetique: str
+    site_code: Optional[str] = None
+    lot_cluster_refined_j4_id: Optional[int] = None
+    params: Dict[str, Any]
+    is_active: bool
+    valid_from: datetime
+    valid_to: Optional[datetime] = None
+    created_at: datetime
+    created_by: Optional[str] = None
+
+
+class TransitionPolicyCreateRequest(BaseModel):
+    genetique: str
+    site_code: Optional[str] = None
+    lot_cluster_refined_j4_id: Optional[int] = None
+    params: Dict[str, Any]
+    valid_from: Optional[datetime] = None
+    valid_to: Optional[datetime] = None
+    created_by: Optional[str] = None
+
+
+class FoieObjectivePolicyCreateRequest(BaseModel):
+    genetique: str
+    site_code: Optional[str] = None
+    lot_cluster_pred_id: Optional[int] = None
+    foie_min_g: float = 400.0
+    foie_max_g: float = 700.0
+    foie_target_g: float = 550.0
+    weight_range: float = 0.5
+    weight_target: float = 0.5
+    valid_from: Optional[datetime] = None
+    valid_to: Optional[datetime] = None
+    created_by: Optional[str] = None
+
+
+async def _ensure_foie_objective_policy_tables(conn: asyncpg.Connection) -> None:
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS foie_objective_policies (
+            id SERIAL PRIMARY KEY,
+            genetique TEXT NOT NULL,
+            site_code VARCHAR(2),
+            lot_cluster_pred_id INTEGER,
+            foie_min_g DOUBLE PRECISION NOT NULL,
+            foie_max_g DOUBLE PRECISION NOT NULL,
+            foie_target_g DOUBLE PRECISION NOT NULL,
+            weight_range DOUBLE PRECISION NOT NULL,
+            weight_target DOUBLE PRECISION NOT NULL,
+            is_active BOOLEAN NOT NULL DEFAULT TRUE,
+            valid_from TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            valid_to TIMESTAMPTZ,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            created_by TEXT
+        );
+        """
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_foie_policy_segment ON foie_objective_policies(genetique, site_code, lot_cluster_pred_id);"
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_foie_policy_active ON foie_objective_policies(is_active, valid_from, valid_to);"
+    )
+
+
+async def _ensure_transition_policy_tables(conn: asyncpg.Connection) -> None:
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS transition_policies (
+            id SERIAL PRIMARY KEY,
+            genetique TEXT NOT NULL,
+            site_code VARCHAR(2),
+            lot_cluster_refined_j4_id INTEGER,
+            params JSONB NOT NULL,
+            is_active BOOLEAN NOT NULL DEFAULT TRUE,
+            valid_from TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            valid_to TIMESTAMPTZ,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            created_by TEXT
+        );
+        """
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_transition_policy_segment ON transition_policies(genetique, site_code, lot_cluster_refined_j4_id);"
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_transition_policy_active ON transition_policies(is_active, valid_from, valid_to);"
+    )
 
 
 # ============================================================================
@@ -53,6 +161,33 @@ class SiteStats(BaseModel):
     itm_moyen: Optional[float]
     mortalite_moyenne: Optional[float]
     production_foie_kg: Optional[float]
+
+
+class LotClusteringRun(BaseModel):
+    """Run de clustering lots (lot_pred)"""
+
+    run_id: int
+    clustering_type: str
+    modele_version: str
+    params: Optional[Dict[str, Any]]
+    features: Optional[List[str]]
+    n_clusters: Optional[int]
+    n_lots: Optional[int]
+    avg_confidence: Optional[float]
+    created_at: datetime
+
+
+class LotClusterAssignment(BaseModel):
+    """Assignation cluster pour un lot sur un run"""
+
+    run_id: int
+    lot_id: int
+    cluster_id: int
+    confidence: Optional[float]
+    modele_version: str
+    created_at: datetime
+    genetique: Optional[str] = None
+    site_code: Optional[str] = None
 
 
 class Lot(BaseModel):
@@ -154,6 +289,601 @@ async def get_db_connection():
         yield conn
     finally:
         await conn.close()
+
+
+# ============================================================================
+# ADMIN - Policy Objectif Foie (Conseil)
+# ============================================================================
+
+
+@router.post("/admin/foie-objectives", response_model=FoieObjectivePolicy)
+async def create_foie_objective_policy(
+    payload: FoieObjectivePolicyCreateRequest,
+    conn=Depends(get_db_connection),
+):
+    await _ensure_foie_objective_policy_tables(conn)
+
+    genetique = str(payload.genetique).strip().lower()
+    site_code = str(payload.site_code).strip().upper() if payload.site_code else None
+    lot_cluster_pred_id = int(payload.lot_cluster_pred_id) if payload.lot_cluster_pred_id is not None else None
+    valid_from = payload.valid_from or datetime.utcnow()
+    valid_to = payload.valid_to
+
+    row = await conn.fetchrow(
+        """
+        INSERT INTO foie_objective_policies (
+            genetique,
+            site_code,
+            lot_cluster_pred_id,
+            foie_min_g,
+            foie_max_g,
+            foie_target_g,
+            weight_range,
+            weight_target,
+            is_active,
+            valid_from,
+            valid_to,
+            created_by
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,TRUE,$9,$10,$11)
+        RETURNING *
+        """,
+        genetique,
+        site_code,
+        lot_cluster_pred_id,
+        float(payload.foie_min_g),
+        float(payload.foie_max_g),
+        float(payload.foie_target_g),
+        float(payload.weight_range),
+        float(payload.weight_target),
+        valid_from,
+        valid_to,
+        payload.created_by,
+    )
+    return FoieObjectivePolicy(**dict(row))
+
+
+@router.post("/admin/transition-policies", response_model=TransitionPolicy)
+async def create_transition_policy(
+    payload: TransitionPolicyCreateRequest,
+    conn=Depends(get_db_connection),
+):
+    await _ensure_transition_policy_tables(conn)
+
+    genetique = str(payload.genetique).strip().lower()
+    site_code = str(payload.site_code).strip().upper() if payload.site_code else None
+    lot_cluster_refined_j4_id = (
+        int(payload.lot_cluster_refined_j4_id) if payload.lot_cluster_refined_j4_id is not None else None
+    )
+    valid_from = payload.valid_from or datetime.utcnow()
+    valid_to = payload.valid_to
+
+    row = await conn.fetchrow(
+        """
+        INSERT INTO transition_policies (
+            genetique,
+            site_code,
+            lot_cluster_refined_j4_id,
+            params,
+            is_active,
+            valid_from,
+            valid_to,
+            created_by
+        ) VALUES ($1,$2,$3,$4,TRUE,$5,$6,$7)
+        RETURNING *
+        """,
+        genetique,
+        site_code,
+        lot_cluster_refined_j4_id,
+        payload.params,
+        valid_from,
+        valid_to,
+        payload.created_by,
+    )
+    return TransitionPolicy(**dict(row))
+
+
+@router.get("/admin/transition-policies", response_model=List[TransitionPolicy])
+async def list_transition_policies(
+    genetique: Optional[str] = Query(None),
+    site_code: Optional[str] = Query(None),
+    lot_cluster_refined_j4_id: Optional[int] = Query(None),
+    is_active: Optional[bool] = Query(None),
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+    conn=Depends(get_db_connection),
+):
+    await _ensure_transition_policy_tables(conn)
+
+    query = """
+        SELECT *
+        FROM transition_policies
+        WHERE 1=1
+    """
+    params: List[Any] = []
+
+    if genetique:
+        params.append(str(genetique).strip().lower())
+        query += f" AND genetique = ${len(params)}"
+
+    if site_code:
+        params.append(str(site_code).strip().upper())
+        query += f" AND site_code = ${len(params)}"
+
+    if lot_cluster_refined_j4_id is not None:
+        params.append(int(lot_cluster_refined_j4_id))
+        query += f" AND lot_cluster_refined_j4_id = ${len(params)}"
+
+    if is_active is not None:
+        params.append(bool(is_active))
+        query += f" AND is_active = ${len(params)}"
+
+    params.append(int(limit))
+    params.append(int(offset))
+    query += f" ORDER BY created_at DESC LIMIT ${len(params)-1} OFFSET ${len(params)}"
+
+    rows = await conn.fetch(query, *params)
+    return [TransitionPolicy(**dict(r)) for r in rows]
+
+
+@router.post("/admin/transition-policies/{policy_id}/deactivate", response_model=TransitionPolicy)
+async def deactivate_transition_policy(
+    policy_id: int,
+    conn=Depends(get_db_connection),
+):
+    await _ensure_transition_policy_tables(conn)
+
+    row = await conn.fetchrow(
+        """
+        UPDATE transition_policies
+        SET is_active = FALSE,
+            valid_to = COALESCE(valid_to, NOW())
+        WHERE id = $1
+        RETURNING *
+        """,
+        int(policy_id),
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Policy not found")
+    return TransitionPolicy(**dict(row))
+
+
+@router.get("/admin/foie-objectives", response_model=List[FoieObjectivePolicy])
+async def list_foie_objective_policies(
+    genetique: Optional[str] = Query(None),
+    site_code: Optional[str] = Query(None),
+    lot_cluster_pred_id: Optional[int] = Query(None),
+    is_active: Optional[bool] = Query(None),
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+    conn=Depends(get_db_connection),
+):
+    await _ensure_foie_objective_policy_tables(conn)
+
+    query = """
+        SELECT *
+        FROM foie_objective_policies
+        WHERE 1=1
+    """
+    params: List[Any] = []
+
+    if genetique:
+        params.append(str(genetique).strip().lower())
+        query += f" AND genetique = ${len(params)}"
+
+    if site_code:
+        params.append(str(site_code).strip().upper())
+        query += f" AND site_code = ${len(params)}"
+
+    if lot_cluster_pred_id is not None:
+        params.append(int(lot_cluster_pred_id))
+        query += f" AND lot_cluster_pred_id = ${len(params)}"
+
+    if is_active is not None:
+        params.append(bool(is_active))
+        query += f" AND is_active = ${len(params)}"
+
+    params.append(int(limit))
+    params.append(int(offset))
+    query += f" ORDER BY created_at DESC LIMIT ${len(params)-1} OFFSET ${len(params)}"
+
+    rows = await conn.fetch(query, *params)
+    return [FoieObjectivePolicy(**dict(r)) for r in rows]
+
+
+@router.post("/admin/foie-objectives/{policy_id}/deactivate", response_model=FoieObjectivePolicy)
+async def deactivate_foie_objective_policy(
+    policy_id: int,
+    conn=Depends(get_db_connection),
+):
+    await _ensure_foie_objective_policy_tables(conn)
+
+    row = await conn.fetchrow(
+        """
+        UPDATE foie_objective_policies
+        SET is_active = FALSE,
+            valid_to = COALESCE(valid_to, NOW())
+        WHERE id = $1
+        RETURNING *
+        """,
+        int(policy_id),
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Policy not found")
+    return FoieObjectivePolicy(**dict(row))
+
+
+# ============================================================================
+# Lecture policy active (par segment)
+# ============================================================================
+
+
+@router.get("/ml/foie-objectives/active", response_model=Optional[FoieObjectivePolicy])
+async def get_active_foie_objective_policy(
+    genetique: str = Query(...),
+    site_code: Optional[str] = Query(None),
+    lot_cluster_pred_id: Optional[int] = Query(None),
+    conn=Depends(get_db_connection),
+):
+    await _ensure_foie_objective_policy_tables(conn)
+
+    g = str(genetique).strip().lower()
+    sc = str(site_code).strip().upper() if site_code else None
+    lc = int(lot_cluster_pred_id) if lot_cluster_pred_id is not None else None
+
+    row = await conn.fetchrow(
+        """
+        SELECT *
+        FROM foie_objective_policies
+        WHERE genetique = $1
+          AND ($2::varchar IS NULL OR site_code = $2)
+          AND ($3::int IS NULL OR lot_cluster_pred_id = $3)
+          AND is_active = TRUE
+          AND valid_from <= NOW()
+          AND (valid_to IS NULL OR valid_to > NOW())
+        ORDER BY created_at DESC
+        LIMIT 1
+        """,
+        g,
+        sc,
+        lc,
+    )
+    if not row:
+        return None
+    return FoieObjectivePolicy(**dict(row))
+
+
+@router.get("/ml/transition/active", response_model=Optional[TransitionPolicy])
+async def get_active_transition_policy(
+    genetique: str = Query(...),
+    site_code: Optional[str] = Query(None),
+    lot_cluster_refined_j4_id: Optional[int] = Query(None),
+    conn=Depends(get_db_connection),
+):
+    await _ensure_transition_policy_tables(conn)
+
+    g = str(genetique).strip().lower()
+    sc = str(site_code).strip().upper() if site_code else None
+    lc = int(lot_cluster_refined_j4_id) if lot_cluster_refined_j4_id is not None else None
+
+    row = await conn.fetchrow(
+        """
+        SELECT *
+        FROM transition_policies
+        WHERE genetique = $1
+          AND ($2::varchar IS NULL OR site_code = $2)
+          AND ($3::int IS NULL OR lot_cluster_refined_j4_id = $3)
+          AND is_active = TRUE
+          AND valid_from <= NOW()
+          AND (valid_to IS NULL OR valid_to > NOW())
+        ORDER BY created_at DESC
+        LIMIT 1
+        """,
+        g,
+        sc,
+        lc,
+    )
+    if not row:
+        return None
+    return TransitionPolicy(**dict(row))
+
+
+@router.get("/ml/lots-clustering/runs/latest", response_model=LotClusteringRun)
+async def get_latest_lot_pred_clustering_run(
+    modele_version: Optional[str] = Query(None, description="Filtrer par modele_version"),
+    conn=Depends(get_db_connection),
+):
+    """Retourne le dernier run enregistré du clustering lots (lot_pred)."""
+
+    import json
+
+    query = """
+        SELECT
+            id as run_id,
+            clustering_type,
+            modele_version,
+            params,
+            features,
+            n_clusters,
+            n_lots,
+            avg_confidence,
+            created_at
+        FROM lot_clustering_runs
+        WHERE clustering_type = 'lot_pred'
+    """
+    params: List[Any] = []
+    if modele_version:
+        params.append(str(modele_version))
+        query += f" AND modele_version = ${len(params)}"
+    query += " ORDER BY created_at DESC LIMIT 1"
+
+    try:
+        row = await conn.fetchrow(query, *params)
+    except asyncpg.exceptions.UndefinedTableError:
+        raise HTTPException(status_code=404, detail="lot_clustering_runs table not found")
+
+    if not row:
+        raise HTTPException(status_code=404, detail="No lot_pred clustering run found")
+
+    payload = dict(row)
+    if isinstance(payload.get("params"), str):
+        try:
+            payload["params"] = json.loads(payload["params"])
+        except Exception:
+            payload["params"] = None
+
+    return LotClusteringRun(**payload)
+
+
+@router.get("/ml/lots/{lot_id}/cluster-pred", response_model=LotClusterAssignment)
+async def get_lot_cluster_pred(
+    lot_id: int,
+    run_id: Optional[int] = Query(None, description="Run id (sinon dernier run lot_pred)"),
+    conn=Depends(get_db_connection),
+):
+    """Retourne le cluster_pred (lot_pred) d'un lot pour un run (ou le dernier run)."""
+
+    resolved_run_id = run_id
+    if resolved_run_id is None:
+        try:
+            resolved_run_id = await conn.fetchval(
+                """
+                SELECT id
+                FROM lot_clustering_runs
+                WHERE clustering_type = 'lot_pred'
+                ORDER BY created_at DESC
+                LIMIT 1
+                """
+            )
+        except asyncpg.exceptions.UndefinedTableError:
+            raise HTTPException(status_code=404, detail="lot_clustering_runs table not found")
+
+    if not resolved_run_id:
+        raise HTTPException(status_code=404, detail="No lot_pred clustering run found")
+
+    try:
+        row = await conn.fetchrow(
+            """
+            SELECT
+                a.run_id,
+                a.lot_id,
+                a.cluster_id,
+                a.confidence,
+                r.modele_version,
+                r.created_at,
+                LOWER(lg.genetique) AS genetique,
+                lg.site_code AS site_code
+            FROM lot_clustering_assignments a
+            JOIN lot_clustering_runs r ON r.id = a.run_id
+            LEFT JOIN lots_gavage lg ON lg.id = a.lot_id
+            WHERE a.run_id = $1 AND a.lot_id = $2
+            """,
+            int(resolved_run_id),
+            int(lot_id),
+        )
+    except asyncpg.exceptions.UndefinedTableError:
+        raise HTTPException(status_code=404, detail="lot_clustering_assignments table not found")
+
+    if not row:
+        raise HTTPException(status_code=404, detail="No cluster_pred found for this lot/run")
+
+    return LotClusterAssignment(**dict(row))
+
+
+@router.get("/ml/lots/{lot_id}/cluster-refined-j4", response_model=LotClusterAssignment)
+async def get_lot_cluster_refined_j4(
+    lot_id: int,
+    run_id: Optional[int] = Query(None, description="Run id (sinon dernier run lot_refined_j4)"),
+    conn=Depends(get_db_connection),
+):
+    """Retourne le cluster_refined_j4 (lot_refined_j4) d'un lot pour un run (ou le dernier run)."""
+
+    resolved_run_id = run_id
+    if resolved_run_id is None:
+        try:
+            resolved_run_id = await conn.fetchval(
+                """
+                SELECT id
+                FROM lot_clustering_runs
+                WHERE clustering_type = 'lot_refined_j4'
+                ORDER BY created_at DESC
+                LIMIT 1
+                """
+            )
+        except asyncpg.exceptions.UndefinedTableError:
+            raise HTTPException(status_code=404, detail="lot_clustering_runs table not found")
+
+    if not resolved_run_id:
+        raise HTTPException(status_code=404, detail="No lot_refined_j4 clustering run found")
+
+    try:
+        row = await conn.fetchrow(
+            """
+            SELECT
+                a.run_id,
+                a.lot_id,
+                a.cluster_id,
+                a.confidence,
+                r.modele_version,
+                r.created_at,
+                LOWER(lg.genetique) AS genetique,
+                lg.site_code AS site_code
+            FROM lot_clustering_assignments a
+            JOIN lot_clustering_runs r ON r.id = a.run_id
+            LEFT JOIN lots_gavage lg ON lg.id = a.lot_id
+            WHERE a.run_id = $1 AND a.lot_id = $2
+            """,
+            int(resolved_run_id),
+            int(lot_id),
+        )
+    except asyncpg.exceptions.UndefinedTableError:
+        raise HTTPException(status_code=404, detail="lot_clustering_assignments table not found")
+
+    if not row:
+        raise HTTPException(status_code=404, detail="No cluster_refined_j4 found for this lot/run")
+
+    return LotClusterAssignment(**dict(row))
+
+
+@router.get("/ml/lots-clustering/assignments", response_model=List[LotClusterAssignment])
+async def list_lot_pred_clustering_assignments(
+    run_id: Optional[int] = Query(None, description="Run id (sinon dernier run lot_pred)"),
+    site_code: Optional[str] = Query(None, description="Filtrer par site_code (LL/LS/MT)"),
+    genetique: Optional[str] = Query(None, description="Filtrer par génétique (minuscule conseillé)"),
+    lot_id: Optional[int] = Query(None, description="Filtrer par lot_id"),
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+    conn=Depends(get_db_connection),
+):
+    """Liste les assignations de clusters lots (lot_pred) pour un run (ou le dernier)."""
+
+    resolved_run_id = run_id
+    if resolved_run_id is None:
+        try:
+            resolved_run_id = await conn.fetchval(
+                """
+                SELECT id
+                FROM lot_clustering_runs
+                WHERE clustering_type = 'lot_pred'
+                ORDER BY created_at DESC
+                LIMIT 1
+                """
+            )
+        except asyncpg.exceptions.UndefinedTableError:
+            raise HTTPException(status_code=404, detail="lot_clustering_runs table not found")
+
+    if not resolved_run_id:
+        raise HTTPException(status_code=404, detail="No lot_pred clustering run found")
+
+    query = """
+        SELECT
+            a.run_id,
+            a.lot_id,
+            a.cluster_id,
+            a.confidence,
+            r.modele_version,
+            r.created_at,
+            LOWER(lg.genetique) AS genetique,
+            lg.site_code AS site_code
+        FROM lot_clustering_assignments a
+        JOIN lot_clustering_runs r ON r.id = a.run_id
+        LEFT JOIN lots_gavage lg ON lg.id = a.lot_id
+        WHERE a.run_id = $1
+    """
+    params: List[Any] = [int(resolved_run_id)]
+
+    if lot_id is not None:
+        params.append(int(lot_id))
+        query += f" AND a.lot_id = ${len(params)}"
+
+    if site_code:
+        params.append(str(site_code).strip().upper())
+        query += f" AND lg.site_code = ${len(params)}"
+
+    if genetique:
+        params.append(str(genetique).strip().lower())
+        query += f" AND LOWER(lg.genetique) = ${len(params)}"
+
+    params.append(int(limit))
+    params.append(int(offset))
+    query += f" ORDER BY a.lot_id ASC LIMIT ${len(params)-1} OFFSET ${len(params)}"
+
+    try:
+        rows = await conn.fetch(query, *params)
+    except asyncpg.exceptions.UndefinedTableError:
+        raise HTTPException(status_code=404, detail="lot_clustering_assignments table not found")
+
+    return [LotClusterAssignment(**dict(r)) for r in rows]
+
+
+@router.get("/ml/lots-clustering/assignments-refined-j4", response_model=List[LotClusterAssignment])
+async def list_lot_refined_j4_clustering_assignments(
+    run_id: Optional[int] = Query(None, description="Run id (sinon dernier run lot_refined_j4)"),
+    site_code: Optional[str] = Query(None, description="Filtrer par site_code (LL/LS/MT)"),
+    genetique: Optional[str] = Query(None, description="Filtrer par génétique (minuscule conseillé)"),
+    lot_id: Optional[int] = Query(None, description="Filtrer par lot_id"),
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+    conn=Depends(get_db_connection),
+):
+    """Liste les assignations de clusters lots (lot_refined_j4) pour un run (ou le dernier)."""
+
+    resolved_run_id = run_id
+    if resolved_run_id is None:
+        try:
+            resolved_run_id = await conn.fetchval(
+                """
+                SELECT id
+                FROM lot_clustering_runs
+                WHERE clustering_type = 'lot_refined_j4'
+                ORDER BY created_at DESC
+                LIMIT 1
+                """
+            )
+        except asyncpg.exceptions.UndefinedTableError:
+            raise HTTPException(status_code=404, detail="lot_clustering_runs table not found")
+
+    if not resolved_run_id:
+        raise HTTPException(status_code=404, detail="No lot_refined_j4 clustering run found")
+
+    query = """
+        SELECT
+            a.run_id,
+            a.lot_id,
+            a.cluster_id,
+            a.confidence,
+            r.modele_version,
+            r.created_at,
+            LOWER(lg.genetique) AS genetique,
+            lg.site_code AS site_code
+        FROM lot_clustering_assignments a
+        JOIN lot_clustering_runs r ON r.id = a.run_id
+        LEFT JOIN lots_gavage lg ON lg.id = a.lot_id
+        WHERE a.run_id = $1
+    """
+    params: List[Any] = [int(resolved_run_id)]
+
+    if lot_id is not None:
+        params.append(int(lot_id))
+        query += f" AND a.lot_id = ${len(params)}"
+
+    if site_code:
+        params.append(str(site_code).strip().upper())
+        query += f" AND lg.site_code = ${len(params)}"
+
+    if genetique:
+        params.append(str(genetique).strip().lower())
+        query += f" AND LOWER(lg.genetique) = ${len(params)}"
+
+    params.append(int(limit))
+    params.append(int(offset))
+    query += f" ORDER BY a.lot_id ASC LIMIT ${len(params)-1} OFFSET ${len(params)}"
+
+    try:
+        rows = await conn.fetch(query, *params)
+    except asyncpg.exceptions.UndefinedTableError:
+        raise HTTPException(status_code=404, detail="lot_clustering_assignments table not found")
+
+    return [LotClusterAssignment(**dict(r)) for r in rows]
 
 
 # ============================================================================
@@ -1068,6 +1798,8 @@ async def get_gaveurs_by_cluster(
                 STDDEV(l.itm) as regularite,
                 AVG(l.pctg_perte_gavage) as mortalite,
                 SUM(COALESCE(l.itm * l.nb_accroches, 0)) as production_totale_kg,
+                gc.cluster_id as cluster_ml_id,
+                gc.cluster_label as cluster_ml_label,
                 -- Calcul cluster basé sur ITM (5 clusters: 0=Excellent, 1=Très bon, 2=Bon, 3=À améliorer, 4=Critique)
                 -- IMPORTANT: ITM = maïs_ingéré/poids_foie → Plus ITM est BAS, mieux c'est (rentabilité)
                 CASE
@@ -1084,6 +1816,7 @@ async def get_gaveurs_by_cluster(
                 END as performance_score
             FROM gaveurs_euralis g
             LEFT JOIN lots_gavage l ON g.id = l.gaveur_id AND l.itm IS NOT NULL
+            LEFT JOIN gaveurs_clusters gc ON gc.gaveur_id = g.id
             WHERE g.actif = TRUE
         """
 
@@ -1103,6 +1836,12 @@ async def get_gaveurs_by_cluster(
         # Convertir en liste de dicts
         result = []
         for row in rows:
+            cluster_ml_id = int(row['cluster_ml_id']) if row.get('cluster_ml_id') is not None else None
+            cluster_ml_label = str(row['cluster_ml_label']) if row.get('cluster_ml_label') is not None else None
+            cluster_rule_id = int(row['cluster']) if row.get('cluster') is not None else None
+            cluster_id_effective = cluster_ml_id if cluster_ml_id is not None else cluster_rule_id
+            cluster_source = 'kmeans' if cluster_ml_id is not None else 'rule_based'
+
             result.append({
                 'gaveur_id': row['gaveur_id'],
                 'nom': row['nom'] or '',
@@ -1116,13 +1855,16 @@ async def get_gaveurs_by_cluster(
                 'regularite': float(row['regularite']) if row['regularite'] else None,
                 'mortalite': float(row['mortalite']) if row['mortalite'] else None,
                 'production_totale_kg': float(row['production_totale_kg']) if row['production_totale_kg'] else 0,
-                'cluster': int(row['cluster']),
+                'cluster': cluster_id_effective,
+                'cluster_source': cluster_source,
+                'cluster_rule_id': cluster_rule_id,
+                'cluster_ml_id': cluster_ml_id,
+                'cluster_ml_label': cluster_ml_label,
                 'performance_score': float(row['performance_score']) if row['performance_score'] else 0,
-                'recommendation': _get_cluster_recommendation(int(row['cluster']))
+                'recommendation': _get_cluster_recommendation(cluster_id_effective)
             })
 
         return result
-
 
 def _get_cluster_recommendation(cluster_id: int) -> str:
     """Retourne la recommandation pour un cluster donné"""
