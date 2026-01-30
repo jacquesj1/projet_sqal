@@ -19,7 +19,7 @@ Sprint: 5 (amélioration Sprint 4)
 """
 
 import numpy as np
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 from scipy.interpolate import CubicSpline
 import logging
 
@@ -58,7 +58,8 @@ class ContraintesVeterinaires:
         cls,
         dose: float,
         dose_precedente: Optional[float] = None,
-        race: Optional[str] = None
+        race: Optional[str] = None,
+        overrides: Optional[Dict[str, Any]] = None,
     ) -> float:
         """
         Valide et ajuste une dose selon contraintes vétérinaires
@@ -72,23 +73,27 @@ class ContraintesVeterinaires:
             Dose ajustée respectant toutes les contraintes
         """
         # Contrainte absolue min/max
-        dose_max = cls.DOSE_MAX_ABSOLUE
-        increment_max = cls.INCREMENT_MAX_PAR_JOUR
+        overrides = overrides or {}
+
+        dose_min = float(overrides.get("dose_min_absolue", cls.DOSE_MIN_ABSOLUE))
+        dose_max = float(overrides.get("dose_max_absolue", cls.DOSE_MAX_ABSOLUE))
+        increment_max = float(overrides.get("increment_max_par_jour", cls.INCREMENT_MAX_PAR_JOUR))
+        variation_max_percent = float(overrides.get("variation_max_percent", cls.VARIATION_MAX_PERCENT))
 
         # Ajuster selon race si fournie
         if race and race in cls.CONTRAINTES_PAR_RACE:
             contraintes_race = cls.CONTRAINTES_PAR_RACE[race]
-            dose_max = contraintes_race["dose_max"]
-            increment_max = contraintes_race["increment_max"]
+            dose_max = float(overrides.get("dose_max_absolue", contraintes_race["dose_max"]))
+            increment_max = float(overrides.get("increment_max_par_jour", contraintes_race["increment_max"]))
 
         # Appliquer min/max absolu
-        dose = np.clip(dose, cls.DOSE_MIN_ABSOLUE, dose_max)
+        dose = np.clip(dose, dose_min, dose_max)
 
         # Si dose précédente fournie, appliquer contraintes dynamiques
         if dose_precedente is not None:
             # Contrainte variation max (15%)
-            max_dose_variation = dose_precedente * (1 + cls.VARIATION_MAX_PERCENT)
-            min_dose_variation = dose_precedente * (1 - cls.VARIATION_MAX_PERCENT)
+            max_dose_variation = dose_precedente * (1 + variation_max_percent)
+            min_dose_variation = dose_precedente * (1 - variation_max_percent)
 
             dose = np.clip(dose, min_dose_variation, max_dose_variation)
 
@@ -112,12 +117,13 @@ class CourbePredictiveV2:
     - Ajustement final (précision objectif)
     """
 
-    def __init__(self, race: Optional[str] = None):
+    def __init__(self, race: Optional[str] = None, params: Optional[Dict[str, Any]] = None):
         """
         Args:
             race: Race du canard pour contraintes spécifiques
         """
         self.race = race
+        self.params = params or {}
         self.contraintes = ContraintesVeterinaires()
 
     def generer_courbe_predictive(
@@ -252,7 +258,8 @@ class CourbePredictiveV2:
             dose_validee = self.contraintes.valider_dose(
                 dose=dose,
                 dose_precedente=dose_precedente,
-                race=self.race
+                race=self.race,
+                overrides=self.params,
             )
             doses_contraintes.append(dose_validee)
             dose_precedente = dose_validee
@@ -289,12 +296,19 @@ class CourbePredictiveV2:
             ecart = abs(dose_pred - dose_theo)
 
             # Ratio de lissage adaptatif
-            if ecart > 20:
-                poids_pred = 0.80  # 80/20
-            elif ecart > 10:
-                poids_pred = 0.65  # 65/35
+            seuil_haut = float(self.params.get("lissage_seuil_haut_g", 20.0))
+            seuil_bas = float(self.params.get("lissage_seuil_bas_g", 10.0))
+
+            poids_pred_haut = float(self.params.get("lissage_poids_pred_haut", 0.80))
+            poids_pred_moyen = float(self.params.get("lissage_poids_pred_moyen", 0.65))
+            poids_pred_faible = float(self.params.get("lissage_poids_pred_faible", 0.50))
+
+            if ecart > seuil_haut:
+                poids_pred = poids_pred_haut
+            elif ecart > seuil_bas:
+                poids_pred = poids_pred_moyen
             else:
-                poids_pred = 0.50  # 50/50
+                poids_pred = poids_pred_faible
 
             dose_lissee = dose_pred * poids_pred + dose_theo * (1 - poids_pred)
             doses_lissees.append(dose_lissee)
@@ -332,7 +346,8 @@ class CourbePredictiveV2:
             dose_validee = self.contraintes.valider_dose(
                 dose=dose,
                 dose_precedente=dose_precedente,
-                race=self.race
+                race=self.race,
+                overrides=self.params,
             )
             doses_finales.append(dose_validee)
             dose_precedente = dose_validee
@@ -346,7 +361,8 @@ def generer_courbe_predictive_v2(
     doses_theoriques: List[Dict],
     dernier_jour_reel: int,
     duree_totale: int,
-    race: Optional[str] = None
+    race: Optional[str] = None,
+    params: Optional[Dict[str, Any]] = None,
 ) -> List[Dict]:
     """
     Fonction wrapper pour génération courbe prédictive v2
@@ -376,7 +392,7 @@ def generer_courbe_predictive_v2(
         >>> len(courbe)
         11  # Jours 4-14
     """
-    generator = CourbePredictiveV2(race=race)
+    generator = CourbePredictiveV2(race=race, params=params)
     return generator.generer_courbe_predictive(
         doses_reelles=doses_reelles,
         doses_theoriques=doses_theoriques,
