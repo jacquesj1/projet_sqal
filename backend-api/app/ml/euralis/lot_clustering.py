@@ -193,6 +193,14 @@ def cluster_lots_pred(
     if res.get("status") != "success":
         return res
 
+    assignments_df: pd.DataFrame = res["assignments"]
+    counts = assignments_df["cluster_id"].value_counts().to_dict()
+    res["clusters"] = {int(k): int(v) for k, v in counts.items()}
+    res["avg_confidence"] = float(assignments_df["confidence"].mean()) if len(assignments_df) else 0.0
+    res["assignments"] = assignments_df.to_dict(orient="records")
+
+    return res
+
 
 def cluster_lots_refined_j4(
     *,
@@ -328,7 +336,6 @@ def cluster_lots_refined_j4(
 
     if res.get("status") != "success":
         return res
-
     assignments_df: pd.DataFrame = res["assignments"]
     counts = assignments_df["cluster_id"].value_counts().to_dict()
     res["clusters"] = {int(k): int(v) for k, v in counts.items()}

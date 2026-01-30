@@ -346,8 +346,6 @@ async def trigger_lot_refined_j4_clustering(
         "genetique": genetique,
         "modele_version": modele_version,
     }
-
-
 @router.post("/ml/anomalies/detect", response_model=Dict[str, str])
 async def trigger_anomaly_detection(site_code: Optional[str] = None):
     """

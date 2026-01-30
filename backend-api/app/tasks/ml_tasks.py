@@ -255,7 +255,6 @@ def train_pysr_async(
             foie_weight_range=float(resolved_w_range),
             foie_weight_target=float(resolved_w_target),
         )
-
         logger.info(
             f"✅ PySR training completed (lot_id={lot_id}, genetique={genetique}) - R²: {result.get('r2_score', 0):.3f}"
         )
@@ -317,7 +316,7 @@ def train_pysr_multi_async(
     """Entraîne PySR sur *toutes* les génétiques disponibles après application des filtres."""
     try:
         logger.info(
-            "Starting PySR multi training "
+            "🔬 Starting PySR multi training "
             f"(site_codes={site_codes}, seasons={seasons}, cluster_ids={cluster_ids}, premium={require_sqal_premium})"
         )
 
@@ -385,7 +384,6 @@ def train_pysr_multi_async(
                 float(override_w_range if override_w_range is not None else p_w_range),
                 float(override_w_target if override_w_target is not None else p_w_target),
             )
-
         async def _discover_genetiques(
             _site_codes: list[str] | None,
             _min_duree_gavage: int | None,
@@ -591,6 +589,7 @@ def train_pysr_multi_async(
                 }
 
                 res = train_pysr_model(
+                    lot_id=None,
                     genetique=g,
                     include_sqal_features=include_sqal_features,
                     premium_grades=premium_grades,
@@ -606,8 +605,9 @@ def train_pysr_multi_async(
                     foie_weight_range=float(resolved_w_range),
                     foie_weight_target=float(resolved_w_target),
                 )
-                results[g] = {
-                    "status": "success",
+                results[str(g)] = {
+                    "status": res.get("status", "success"),
+                    "genetique": g,
                     "formula": res.get("formula", ""),
                     "r2_score": res.get("r2_score", 0.0),
                     "n_samples": res.get("n_samples", 0),
@@ -1066,8 +1066,6 @@ def cluster_lots_refined_j4_async(
     except Exception as exc:
         logger.error(f"❌ lot_refined_j4 clustering failed: {exc}", exc_info=True)
         return {"status": "error", "error": str(exc)}
-
-
 @celery_app.task(time_limit=180)
 def detect_anomalies_async(site_code: str = None) -> Dict[str, Any]:
     """
