@@ -34,6 +34,11 @@ def train_pysr_async(
     max_duree_gavage: int | None = None,
     seasons: list[str] | None = None,
     cluster_ids: list[int] | None = None,
+    foie_min_g: float | None = None,
+    foie_max_g: float | None = None,
+    foie_target_g: float | None = None,
+    foie_weight_range: float | None = None,
+    foie_weight_target: float | None = None,
 ) -> Dict[str, Any]:
     """
     Entraînement PySR (Symbolic Regression) pour découvrir formules optimales
@@ -55,13 +60,187 @@ def train_pysr_async(
     try:
         logger.info(f"🔬 Starting PySR training (lot_id={lot_id}, genetique={genetique})")
 
+        import asyncio
+
+        async def _resolve_foie_objective(
+            *,
+            resolved_genetique: str | None,
+            resolved_site_code: str | None,
+            resolved_cluster_pred_id: int | None,
+            override_min: float | None,
+            override_max: float | None,
+            override_target: float | None,
+            override_w_range: float | None,
+            override_w_target: float | None,
+        ) -> tuple[float, float, float, float, float]:
+            default_min = 400.0
+            default_max = 700.0
+            default_target = 550.0
+            default_w_range = 0.5
+            default_w_target = 0.5
+
+            if not resolved_genetique:
+                return (
+                    float(override_min if override_min is not None else default_min),
+                    float(override_max if override_max is not None else default_max),
+                    float(override_target if override_target is not None else default_target),
+                    float(override_w_range if override_w_range is not None else default_w_range),
+                    float(override_w_target if override_w_target is not None else default_w_target),
+                )
+
+            pool = await asyncpg.create_pool(DATABASE_URL)
+            try:
+                async with pool.acquire() as conn:
+                    await conn.execute(
+                        """
+                        CREATE TABLE IF NOT EXISTS foie_objective_policies (
+                            id SERIAL PRIMARY KEY,
+                            genetique TEXT NOT NULL,
+                            site_code VARCHAR(2),
+                            lot_cluster_pred_id INTEGER,
+                            foie_min_g DOUBLE PRECISION NOT NULL,
+                            foie_max_g DOUBLE PRECISION NOT NULL,
+                            foie_target_g DOUBLE PRECISION NOT NULL,
+                            weight_range DOUBLE PRECISION NOT NULL,
+                            weight_target DOUBLE PRECISION NOT NULL,
+                            is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                            valid_from TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                            valid_to TIMESTAMPTZ,
+                            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                            created_by TEXT
+                        );
+                        """
+                    )
+
+                    row = await conn.fetchrow(
+                        """
+                        SELECT *
+                        FROM foie_objective_policies
+                        WHERE genetique = $1
+                          AND is_active = TRUE
+                          AND valid_from <= NOW()
+                          AND (valid_to IS NULL OR valid_to > NOW())
+                          AND ($2::varchar IS NULL OR site_code IS NULL OR site_code = $2)
+                          AND ($3::int IS NULL OR lot_cluster_pred_id IS NULL OR lot_cluster_pred_id = $3)
+                        ORDER BY
+                          (site_code IS NOT NULL AND site_code = $2) DESC,
+                          (lot_cluster_pred_id IS NOT NULL AND lot_cluster_pred_id = $3) DESC,
+                          created_at DESC
+                        LIMIT 1
+                        """,
+                        str(resolved_genetique).strip().lower(),
+                        (str(resolved_site_code).strip().upper() if resolved_site_code else None),
+                        (int(resolved_cluster_pred_id) if resolved_cluster_pred_id is not None else None),
+                    )
+            finally:
+                await pool.close()
+
+            if row:
+                p_min = float(row["foie_min_g"])
+                p_max = float(row["foie_max_g"])
+                p_target = float(row["foie_target_g"])
+                p_w_range = float(row["weight_range"])
+                p_w_target = float(row["weight_target"])
+            else:
+                p_min = default_min
+                p_max = default_max
+                p_target = default_target
+                p_w_range = default_w_range
+                p_w_target = default_w_target
+
+            return (
+                float(override_min if override_min is not None else p_min),
+                float(override_max if override_max is not None else p_max),
+                float(override_target if override_target is not None else p_target),
+                float(override_w_range if override_w_range is not None else p_w_range),
+                float(override_w_target if override_w_target is not None else p_w_target),
+            )
+
+        async def _infer_segment_from_lot(
+            lot_id: int,
+        ) -> tuple[str | None, str | None, int | None]:
+            pool = await asyncpg.create_pool(DATABASE_URL)
+            try:
+                async with pool.acquire() as conn:
+                    lot_row = await conn.fetchrow(
+                        "SELECT genetique, site_code FROM lots_gavage WHERE id = $1",
+                        int(lot_id),
+                    )
+                    if not lot_row:
+                        return None, None, None
+
+                    resolved_gen = str(lot_row["genetique"]).strip().lower() if lot_row.get("genetique") else None
+                    resolved_site = str(lot_row["site_code"]).strip().upper() if lot_row.get("site_code") else None
+
+                    run_id = await conn.fetchval(
+                        """
+                        SELECT id
+                        FROM lot_clustering_runs
+                        WHERE clustering_type = 'lot_pred'
+                        ORDER BY created_at DESC
+                        LIMIT 1
+                        """
+                    )
+                    if not run_id:
+                        return resolved_gen, resolved_site, None
+
+                    cluster_id = await conn.fetchval(
+                        """
+                        SELECT cluster_id
+                        FROM lot_clustering_assignments
+                        WHERE run_id = $1 AND lot_id = $2
+                        """,
+                        int(run_id),
+                        int(lot_id),
+                    )
+                    return resolved_gen, resolved_site, (int(cluster_id) if cluster_id is not None else None)
+            finally:
+                await pool.close()
+
         # Import lazy (évite imports inutiles au démarrage)
         from app.ml.symbolic_regression import train_pysr_model
+
+        resolved_genetique = genetique
+        resolved_site_code: str | None = None
+        resolved_cluster_pred_id: int | None = None
+
+        if lot_id is not None:
+            g, sc, lc = asyncio.run(_infer_segment_from_lot(int(lot_id)))
+            resolved_genetique = resolved_genetique or g
+            resolved_site_code = sc
+            resolved_cluster_pred_id = lc
+        elif site_codes and len(site_codes) == 1:
+            resolved_site_code = str(site_codes[0]).strip().upper()
+
+        (resolved_foie_min,
+         resolved_foie_max,
+         resolved_foie_target,
+         resolved_w_range,
+         resolved_w_target,) = asyncio.run(
+            _resolve_foie_objective(
+                resolved_genetique=str(resolved_genetique).strip().lower() if resolved_genetique else None,
+                resolved_site_code=resolved_site_code,
+                resolved_cluster_pred_id=resolved_cluster_pred_id,
+                override_min=foie_min_g,
+                override_max=foie_max_g,
+                override_target=foie_target_g,
+                override_w_range=foie_weight_range,
+                override_w_target=foie_weight_target,
+            )
+        )
+
+        resolved_foie_objective = {
+            "foie_min_g": float(resolved_foie_min),
+            "foie_max_g": float(resolved_foie_max),
+            "foie_target_g": float(resolved_foie_target),
+            "foie_weight_range": float(resolved_w_range),
+            "foie_weight_target": float(resolved_w_target),
+        }
 
         # Entraînement
         result = train_pysr_model(
             lot_id=lot_id,
-            genetique=genetique,
+            genetique=resolved_genetique,
             include_sqal_features=include_sqal_features,
             premium_grades=premium_grades,
             require_sqal_premium=require_sqal_premium,
@@ -70,6 +249,11 @@ def train_pysr_async(
             max_duree_gavage=max_duree_gavage,
             seasons=seasons,
             cluster_ids=cluster_ids,
+            foie_min_g=float(resolved_foie_min),
+            foie_max_g=float(resolved_foie_max),
+            foie_target_g=float(resolved_foie_target),
+            foie_weight_range=float(resolved_w_range),
+            foie_weight_target=float(resolved_w_target),
         )
 
         logger.info(
@@ -92,6 +276,7 @@ def train_pysr_async(
             "max_duree_gavage": max_duree_gavage,
             "seasons": seasons,
             "cluster_ids": cluster_ids,
+            "foie_objective": resolved_foie_objective,
         }
 
     except Exception as exc:
@@ -114,6 +299,7 @@ def train_pysr_async(
 @celery_app.task(bind=True, max_retries=1, time_limit=3600)
 def train_pysr_multi_async(
     self,
+    genetiques: list[str] | None = None,
     include_sqal_features: bool = False,
     premium_grades: list[str] | None = None,
     require_sqal_premium: bool = True,
@@ -122,17 +308,83 @@ def train_pysr_multi_async(
     max_duree_gavage: int | None = None,
     seasons: list[str] | None = None,
     cluster_ids: list[int] | None = None,
+    foie_min_g: float | None = None,
+    foie_max_g: float | None = None,
+    foie_target_g: float | None = None,
+    foie_weight_range: float | None = None,
+    foie_weight_target: float | None = None,
 ) -> Dict[str, Any]:
     """Entraîne PySR sur *toutes* les génétiques disponibles après application des filtres."""
     try:
         logger.info(
-            "🔬 Starting PySR multi training "
+            "Starting PySR multi training "
             f"(site_codes={site_codes}, seasons={seasons}, cluster_ids={cluster_ids}, premium={require_sqal_premium})"
         )
 
         import asyncio
 
         from app.ml.symbolic_regression import train_pysr_model
+
+        async def _resolve_foie_objective_for_gen(
+            *,
+            resolved_genetique: str,
+            resolved_site_code: str | None,
+            override_min: float | None,
+            override_max: float | None,
+            override_target: float | None,
+            override_w_range: float | None,
+            override_w_target: float | None,
+        ) -> tuple[float, float, float, float, float]:
+            default_min = 400.0
+            default_max = 700.0
+            default_target = 550.0
+            default_w_range = 0.5
+            default_w_target = 0.5
+
+            pool = await asyncpg.create_pool(DATABASE_URL)
+            try:
+                async with pool.acquire() as conn:
+                    row = await conn.fetchrow(
+                        """
+                        SELECT *
+                        FROM foie_objective_policies
+                        WHERE genetique = $1
+                          AND is_active = TRUE
+                          AND valid_from <= NOW()
+                          AND (valid_to IS NULL OR valid_to > NOW())
+                          AND ($2::varchar IS NULL OR site_code IS NULL OR site_code = $2)
+                          AND lot_cluster_pred_id IS NULL
+                        ORDER BY
+                          (site_code IS NOT NULL AND site_code = $2) DESC,
+                          created_at DESC
+                        LIMIT 1
+                        """,
+                        str(resolved_genetique).strip().lower(),
+                        (str(resolved_site_code).strip().upper() if resolved_site_code else None),
+                    )
+            finally:
+                await pool.close()
+
+            if row:
+                p_min = float(row["foie_min_g"])
+                p_max = float(row["foie_max_g"])
+                p_target = float(row["foie_target_g"])
+                p_w_range = float(row["weight_range"])
+                p_w_target = float(row["weight_target"])
+            else:
+                p_min = default_min
+                p_max = default_max
+                p_target = default_target
+                p_w_range = default_w_range
+                p_w_target = default_w_target
+
+            return (
+                float(override_min if override_min is not None else p_min),
+                float(override_max if override_max is not None else p_max),
+                float(override_target if override_target is not None else p_target),
+                float(override_w_range if override_w_range is not None else p_w_range),
+                float(override_w_target if override_w_target is not None else p_w_target),
+            )
 
         async def _discover_genetiques(
             _site_codes: list[str] | None,
@@ -308,8 +560,36 @@ def train_pysr_multi_async(
             }
 
         results: dict[str, Any] = {}
+        resolved_site_code: str | None = None
+        if site_codes and len(site_codes) == 1:
+            resolved_site_code = str(site_codes[0]).strip().upper()
+
         for g in genetiques:
             try:
+                (resolved_foie_min,
+                 resolved_foie_max,
+                 resolved_foie_target,
+                 resolved_w_range,
+                 resolved_w_target,) = asyncio.run(
+                    _resolve_foie_objective_for_gen(
+                        resolved_genetique=str(g).strip().lower(),
+                        resolved_site_code=resolved_site_code,
+                        override_min=foie_min_g,
+                        override_max=foie_max_g,
+                        override_target=foie_target_g,
+                        override_w_range=foie_weight_range,
+                        override_w_target=foie_weight_target,
+                    )
+                )
+
+                resolved_foie_objective = {
+                    "foie_min_g": float(resolved_foie_min),
+                    "foie_max_g": float(resolved_foie_max),
+                    "foie_target_g": float(resolved_foie_target),
+                    "foie_weight_range": float(resolved_w_range),
+                    "foie_weight_target": float(resolved_w_target),
+                }
+
                 res = train_pysr_model(
                     genetique=g,
                     include_sqal_features=include_sqal_features,
@@ -320,12 +600,18 @@ def train_pysr_multi_async(
                     max_duree_gavage=max_duree_gavage,
                     seasons=seasons,
                     cluster_ids=cluster_ids,
+                    foie_min_g=float(resolved_foie_min),
+                    foie_max_g=float(resolved_foie_max),
+                    foie_target_g=float(resolved_foie_target),
+                    foie_weight_range=float(resolved_w_range),
+                    foie_weight_target=float(resolved_w_target),
                 )
                 results[g] = {
                     "status": "success",
                     "formula": res.get("formula", ""),
                     "r2_score": res.get("r2_score", 0.0),
                     "n_samples": res.get("n_samples", 0),
+                    "foie_objective": resolved_foie_objective,
                 }
             except Exception as exc:
                 results[g] = {
@@ -358,7 +644,7 @@ def optimize_feeding_curve_async(self, lot_id: int) -> Dict[str, Any]:
     """
     Optimisation courbe gavage basée sur feedbacks consommateurs (Random Forest)
 
-    Analyse corrélations: paramètres gavage ↔ satisfaction consommateurs
+    Analyse corrélations: paramètres gavage -> satisfaction consommateurs
     Génère courbe optimisée pour maximiser qualité finale.
 
     Args:
@@ -492,7 +778,6 @@ def cluster_lots_pred_async(
         )
 
         from datetime import datetime
-        import json
         import asyncio
 
         from app.ml.euralis.lot_clustering import cluster_lots_pred
@@ -568,7 +853,7 @@ def cluster_lots_pred_async(
                         """,
                         "lot_pred",
                         str(result.get("modele_version") or modele_version),
-                        json.dumps(params),
+                        params,
                         result.get("features") or [],
                         int(result.get("n_clusters") or 0),
                         int(result.get("n_lots") or 0),
@@ -628,6 +913,158 @@ def cluster_lots_pred_async(
 
     except Exception as exc:
         logger.error(f"❌ lot_pred clustering failed: {exc}", exc_info=True)
+        return {"status": "error", "error": str(exc)}
+
+
+@celery_app.task(time_limit=300)
+def cluster_lots_refined_j4_async(
+    n_clusters: int = 3,
+    random_state: int = 42,
+    n_init: int = 10,
+    min_lots: int = 20,
+    min_days: int = 2,
+    site_codes: list[str] | None = None,
+    genetique: str | None = None,
+    modele_version: str = "lot_refined_j4_kmeans_v1",
+) -> Dict[str, Any]:
+    """Clustering phase B (lot_refined_j4) sur features J1..J4 pour piloter la transition courbe."""
+    try:
+        logger.info(
+            "📦 Starting lot_refined_j4 clustering "
+            f"(k={n_clusters}, site_codes={site_codes}, genetique={genetique}, min_days={min_days})"
+        )
+
+        from datetime import datetime
+        import asyncio
+
+        from app.ml.euralis.lot_clustering import cluster_lots_refined_j4
+
+        database_url = os.getenv("DATABASE_URL", DATABASE_URL)
+
+        async def _ensure_tables(conn: asyncpg.Connection):
+            await conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS lot_clustering_runs (
+                    id SERIAL PRIMARY KEY,
+                    clustering_type VARCHAR(50) NOT NULL,
+                    modele_version VARCHAR(100) NOT NULL,
+                    params JSONB,
+                    features TEXT[],
+                    n_clusters INTEGER,
+                    n_lots INTEGER,
+                    avg_confidence DOUBLE PRECISION,
+                    created_at TIMESTAMPTZ DEFAULT NOW()
+                );
+                """
+            )
+            await conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS lot_clustering_assignments (
+                    id SERIAL PRIMARY KEY,
+                    run_id INTEGER REFERENCES lot_clustering_runs(id) ON DELETE CASCADE,
+                    lot_id INTEGER REFERENCES lots_gavage(id) ON DELETE CASCADE,
+                    cluster_id INTEGER NOT NULL,
+                    confidence DOUBLE PRECISION,
+                    created_at TIMESTAMPTZ DEFAULT NOW(),
+                    UNIQUE(run_id, lot_id)
+                );
+                """
+            )
+            await conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_lot_clust_assign_lot ON lot_clustering_assignments(lot_id);"
+            )
+            await conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_lot_clust_assign_run ON lot_clustering_assignments(run_id);"
+            )
+
+        async def _persist(result: Dict[str, Any]) -> int:
+            pool = await asyncpg.create_pool(database_url)
+            try:
+                async with pool.acquire() as conn:
+                    await _ensure_tables(conn)
+
+                    params = {
+                        "n_clusters": n_clusters,
+                        "random_state": random_state,
+                        "n_init": n_init,
+                        "min_lots": min_lots,
+                        "min_days": min_days,
+                        "site_codes": site_codes,
+                        "genetique": genetique,
+                    }
+                    run_id = await conn.fetchval(
+                        """
+                        INSERT INTO lot_clustering_runs (
+                            clustering_type,
+                            modele_version,
+                            params,
+                            features,
+                            n_clusters,
+                            n_lots,
+                            avg_confidence,
+                            created_at
+                        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+                        RETURNING id
+                        """,
+                        "lot_refined_j4",
+                        str(result.get("modele_version") or modele_version),
+                        params,
+                        result.get("features") or [],
+                        int(result.get("n_clusters") or 0),
+                        int(result.get("n_lots") or 0),
+                        float(result.get("avg_confidence") or 0.0),
+                        datetime.utcnow(),
+                    )
+
+                    upsert = """
+                        INSERT INTO lot_clustering_assignments (
+                            run_id, lot_id, cluster_id, confidence, created_at
+                        ) VALUES ($1,$2,$3,$4,$5)
+                        ON CONFLICT (run_id, lot_id) DO UPDATE SET
+                            cluster_id = EXCLUDED.cluster_id,
+                            confidence = EXCLUDED.confidence,
+                            created_at = EXCLUDED.created_at
+                    """
+
+                    for a in result.get("assignments", []):
+                        await conn.execute(
+                            upsert,
+                            int(run_id),
+                            int(a["lot_id"]),
+                            int(a["cluster_id"]),
+                            float(a.get("confidence") or 0.0),
+                            datetime.utcnow(),
+                        )
+
+                    return int(run_id)
+            finally:
+                await pool.close()
+
+        result = cluster_lots_refined_j4(
+            n_clusters=n_clusters,
+            random_state=random_state,
+            n_init=n_init,
+            min_lots=min_lots,
+            min_days=min_days,
+            site_codes=site_codes,
+            genetique=genetique,
+            modele_version=modele_version,
+        )
+
+        if result.get("status") != "success":
+            return result
+
+        run_id = asyncio.run(_persist(result))
+        result["run_id"] = run_id
+
+        logger.info(
+            "✅ lot_refined_j4 clustering completed "
+            f"(run_id={run_id}, n_lots={result.get('n_lots')}, k={result.get('n_clusters')})"
+        )
+        return result
+
+    except Exception as exc:
+        logger.error(f"❌ lot_refined_j4 clustering failed: {exc}", exc_info=True)
         return {"status": "error", "error": str(exc)}
 
 

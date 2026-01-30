@@ -61,6 +61,11 @@ async def trigger_pysr_training(
     max_duree_gavage: Optional[int] = None,
     seasons: Optional[str] = None,
     cluster_ids: Optional[str] = None,
+    foie_min_g: Optional[float] = Query(None),
+    foie_max_g: Optional[float] = Query(None),
+    foie_target_g: Optional[float] = Query(None),
+    foie_weight_range: Optional[float] = Query(None),
+    foie_weight_target: Optional[float] = Query(None),
 ):
     """
     Déclenche entraînement PySR (Symbolic Regression)
@@ -116,6 +121,11 @@ async def trigger_pysr_training(
             max_duree_gavage=max_duree_gavage,
             seasons=parsed_seasons,
             cluster_ids=parsed_cluster_ids,
+            foie_min_g=(float(foie_min_g) if foie_min_g is not None else None),
+            foie_max_g=(float(foie_max_g) if foie_max_g is not None else None),
+            foie_target_g=(float(foie_target_g) if foie_target_g is not None else None),
+            foie_weight_range=(float(foie_weight_range) if foie_weight_range is not None else None),
+            foie_weight_target=(float(foie_weight_target) if foie_weight_target is not None else None),
         )
         return {
             "status": "submitted",
@@ -132,6 +142,13 @@ async def trigger_pysr_training(
             "max_duree_gavage": max_duree_gavage,
             "seasons": parsed_seasons,
             "cluster_ids": parsed_cluster_ids,
+            "foie_objective": {
+                "foie_min_g": (float(foie_min_g) if foie_min_g is not None else None),
+                "foie_max_g": (float(foie_max_g) if foie_max_g is not None else None),
+                "foie_target_g": (float(foie_target_g) if foie_target_g is not None else None),
+                "foie_weight_range": (float(foie_weight_range) if foie_weight_range is not None else None),
+                "foie_weight_target": (float(foie_weight_target) if foie_weight_target is not None else None),
+            },
             "message": "PySR multi training started",
         }
 
@@ -146,6 +163,11 @@ async def trigger_pysr_training(
         max_duree_gavage=max_duree_gavage,
         seasons=parsed_seasons,
         cluster_ids=parsed_cluster_ids,
+        foie_min_g=(float(foie_min_g) if foie_min_g is not None else None),
+        foie_max_g=(float(foie_max_g) if foie_max_g is not None else None),
+        foie_target_g=(float(foie_target_g) if foie_target_g is not None else None),
+        foie_weight_range=(float(foie_weight_range) if foie_weight_range is not None else None),
+        foie_weight_target=(float(foie_weight_target) if foie_weight_target is not None else None),
     )
     return {
         "status": "submitted",
@@ -161,6 +183,13 @@ async def trigger_pysr_training(
         "max_duree_gavage": max_duree_gavage,
         "seasons": parsed_seasons,
         "cluster_ids": parsed_cluster_ids,
+        "foie_objective": {
+            "foie_min_g": (float(foie_min_g) if foie_min_g is not None else None),
+            "foie_max_g": (float(foie_max_g) if foie_max_g is not None else None),
+            "foie_target_g": (float(foie_target_g) if foie_target_g is not None else None),
+            "foie_weight_range": (float(foie_weight_range) if foie_weight_range is not None else None),
+            "foie_weight_target": (float(foie_weight_target) if foie_weight_target is not None else None),
+        },
         "message": "PySR training started"
     }
 
@@ -272,6 +301,49 @@ async def trigger_lot_pred_clustering(
         "min_duree_gavage": min_duree_gavage,
         "max_duree_gavage": max_duree_gavage,
         "features": parsed_features,
+        "modele_version": modele_version,
+    }
+
+
+@router.post("/ml/clustering/lots-refined-j4", response_model=Dict[str, Any])
+async def trigger_lot_refined_j4_clustering(
+    n_clusters: int = Query(3, ge=2, le=20),
+    random_state: int = Query(42),
+    n_init: int = Query(10, ge=1, le=100),
+    min_lots: int = Query(20, ge=2),
+    min_days: int = Query(2, ge=1, le=4),
+    site_codes: Optional[str] = None,
+    genetique: Optional[str] = None,
+    modele_version: str = Query("lot_refined_j4_kmeans_v1"),
+):
+    """Déclenche clustering phase B des lots (lot_refined_j4) avec paramètres."""
+
+    parsed_site_codes: Optional[List[str]] = None
+    if site_codes:
+        parsed_site_codes = [x.strip().upper() for x in site_codes.split(",") if x.strip()]
+
+    task = ml_tasks.cluster_lots_refined_j4_async.delay(
+        n_clusters=n_clusters,
+        random_state=random_state,
+        n_init=n_init,
+        min_lots=min_lots,
+        min_days=min_days,
+        site_codes=parsed_site_codes,
+        genetique=(genetique.strip().lower() if genetique else None),
+        modele_version=modele_version,
+    )
+
+    return {
+        "status": "submitted",
+        "task_id": task.id,
+        "message": "lot_refined_j4 clustering started",
+        "n_clusters": n_clusters,
+        "random_state": random_state,
+        "n_init": n_init,
+        "min_lots": min_lots,
+        "min_days": min_days,
+        "site_codes": parsed_site_codes,
+        "genetique": genetique,
         "modele_version": modele_version,
     }
 
