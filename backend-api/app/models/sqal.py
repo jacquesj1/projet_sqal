@@ -443,6 +443,8 @@ class AlertDB(BaseModel):
 
 class MLModelDB(BaseModel):
     """Modèle ML SQAL (lecture depuis sqal_ml_models)"""
+    model_config = {"protected_namespaces": (), "from_attributes": True}
+
     model_id: int
     model_name: str
     model_type: str
@@ -457,9 +459,6 @@ class MLModelDB(BaseModel):
     is_active: bool
     hyperparameters: Optional[Dict[str, Any]]
     feature_importance: Optional[Dict[str, Any]]
-
-    class Config:
-        from_attributes = True
 
 
 # ============================================================================

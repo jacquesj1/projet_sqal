@@ -49,18 +49,147 @@ class TaskListResponse(BaseModel):
 # ML Tasks Routes
 # ============================================================================
 
-@router.post("/ml/pysr/train", response_model=Dict[str, str])
-async def trigger_pysr_training(lot_id: int):
+@router.post("/ml/pysr/train", response_model=Dict[str, Any])
+async def trigger_pysr_training(
+    lot_id: Optional[int] = None,
+    genetique: Optional[str] = None,
+    include_sqal_features: bool = False,
+    premium_mode: str = "extended",
+    require_sqal_premium: bool = True,
+    site_codes: Optional[str] = None,
+    min_duree_gavage: Optional[int] = None,
+    max_duree_gavage: Optional[int] = None,
+    seasons: Optional[str] = None,
+    cluster_ids: Optional[str] = None,
+    foie_min_g: Optional[float] = Query(None),
+    foie_max_g: Optional[float] = Query(None),
+    foie_target_g: Optional[float] = Query(None),
+    foie_weight_range: Optional[float] = Query(None),
+    foie_weight_target: Optional[float] = Query(None),
+):
     """
     Déclenche entraînement PySR (Symbolic Regression)
 
     Entraînement asynchrone qui peut prendre 5-30 minutes.
     """
-    task = ml_tasks.train_pysr_async.delay(lot_id)
+
+    premium_mode_norm = (premium_mode or "").strip().lower()
+    if premium_mode_norm == "strict":
+        premium_grades = ["A+", "A"]
+    elif premium_mode_norm in ("extended", ""):  # default
+        premium_grades = ["A+", "A", "B"]
+    elif premium_mode_norm in ("off", "none", "all"):
+        premium_grades = None
+        require_sqal_premium = False
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail="premium_mode must be one of: strict, extended, off",
+        )
+
+    parsed_site_codes: Optional[List[str]] = None
+    if site_codes:
+        parsed_site_codes = [
+            x.strip().upper() for x in site_codes.split(",") if x.strip()
+        ]
+
+    parsed_seasons: Optional[List[str]] = None
+    if seasons:
+        parsed_seasons = [
+            x.strip().lower() for x in seasons.split(",") if x.strip()
+        ]
+
+    parsed_cluster_ids: Optional[List[int]] = None
+    if cluster_ids:
+        try:
+            parsed_cluster_ids = [
+                int(x.strip()) for x in cluster_ids.split(",") if x.strip()
+            ]
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail="cluster_ids must be a comma-separated list of integers",
+            ) from exc
+
+    if lot_id is None and genetique is None:
+        task = ml_tasks.train_pysr_multi_async.delay(
+            include_sqal_features=include_sqal_features,
+            premium_grades=premium_grades,
+            require_sqal_premium=require_sqal_premium,
+            site_codes=parsed_site_codes,
+            min_duree_gavage=min_duree_gavage,
+            max_duree_gavage=max_duree_gavage,
+            seasons=parsed_seasons,
+            cluster_ids=parsed_cluster_ids,
+            foie_min_g=(float(foie_min_g) if foie_min_g is not None else None),
+            foie_max_g=(float(foie_max_g) if foie_max_g is not None else None),
+            foie_target_g=(float(foie_target_g) if foie_target_g is not None else None),
+            foie_weight_range=(float(foie_weight_range) if foie_weight_range is not None else None),
+            foie_weight_target=(float(foie_weight_target) if foie_weight_target is not None else None),
+        )
+        return {
+            "status": "submitted",
+            "task_id": task.id,
+            "mode": "multi_genetique",
+            "lot_id": lot_id,
+            "genetique": genetique,
+            "include_sqal_features": include_sqal_features,
+            "premium_mode": premium_mode_norm,
+            "premium_grades": premium_grades,
+            "require_sqal_premium": require_sqal_premium,
+            "site_codes": parsed_site_codes,
+            "min_duree_gavage": min_duree_gavage,
+            "max_duree_gavage": max_duree_gavage,
+            "seasons": parsed_seasons,
+            "cluster_ids": parsed_cluster_ids,
+            "foie_objective": {
+                "foie_min_g": (float(foie_min_g) if foie_min_g is not None else None),
+                "foie_max_g": (float(foie_max_g) if foie_max_g is not None else None),
+                "foie_target_g": (float(foie_target_g) if foie_target_g is not None else None),
+                "foie_weight_range": (float(foie_weight_range) if foie_weight_range is not None else None),
+                "foie_weight_target": (float(foie_weight_target) if foie_weight_target is not None else None),
+            },
+            "message": "PySR multi training started",
+        }
+
+    task = ml_tasks.train_pysr_async.delay(
+        lot_id=lot_id,
+        genetique=genetique,
+        include_sqal_features=include_sqal_features,
+        premium_grades=premium_grades,
+        require_sqal_premium=require_sqal_premium,
+        site_codes=parsed_site_codes,
+        min_duree_gavage=min_duree_gavage,
+        max_duree_gavage=max_duree_gavage,
+        seasons=parsed_seasons,
+        cluster_ids=parsed_cluster_ids,
+        foie_min_g=(float(foie_min_g) if foie_min_g is not None else None),
+        foie_max_g=(float(foie_max_g) if foie_max_g is not None else None),
+        foie_target_g=(float(foie_target_g) if foie_target_g is not None else None),
+        foie_weight_range=(float(foie_weight_range) if foie_weight_range is not None else None),
+        foie_weight_target=(float(foie_weight_target) if foie_weight_target is not None else None),
+    )
     return {
         "status": "submitted",
         "task_id": task.id,
         "lot_id": lot_id,
+        "genetique": genetique,
+        "include_sqal_features": include_sqal_features,
+        "premium_mode": premium_mode_norm,
+        "premium_grades": premium_grades,
+        "require_sqal_premium": require_sqal_premium,
+        "site_codes": parsed_site_codes,
+        "min_duree_gavage": min_duree_gavage,
+        "max_duree_gavage": max_duree_gavage,
+        "seasons": parsed_seasons,
+        "cluster_ids": parsed_cluster_ids,
+        "foie_objective": {
+            "foie_min_g": (float(foie_min_g) if foie_min_g is not None else None),
+            "foie_max_g": (float(foie_max_g) if foie_max_g is not None else None),
+            "foie_target_g": (float(foie_target_g) if foie_target_g is not None else None),
+            "foie_weight_range": (float(foie_weight_range) if foie_weight_range is not None else None),
+            "foie_weight_target": (float(foie_weight_target) if foie_weight_target is not None else None),
+        },
         "message": "PySR training started"
     }
 
@@ -116,6 +245,107 @@ async def trigger_gaveur_clustering():
     }
 
 
+@router.post("/ml/clustering/lots", response_model=Dict[str, Any])
+async def trigger_lot_pred_clustering(
+    n_clusters: int = Query(3, ge=2, le=20),
+    random_state: int = Query(42),
+    n_init: int = Query(10, ge=1, le=100),
+    min_lots: int = Query(20, ge=2),
+    site_codes: Optional[str] = None,
+    genetique: Optional[str] = None,
+    seasons: Optional[str] = None,
+    min_duree_gavage: Optional[int] = None,
+    max_duree_gavage: Optional[int] = None,
+    features: Optional[str] = None,
+    modele_version: str = Query("lot_pred_kmeans_v1"),
+):
+    """Déclenche clustering prédictif des lots (lot_pred) avec paramètres."""
+
+    parsed_site_codes: Optional[List[str]] = None
+    if site_codes:
+        parsed_site_codes = [x.strip().upper() for x in site_codes.split(",") if x.strip()]
+
+    parsed_seasons: Optional[List[str]] = None
+    if seasons:
+        parsed_seasons = [x.strip().lower() for x in seasons.split(",") if x.strip()]
+
+    parsed_features: Optional[List[str]] = None
+    if features:
+        parsed_features = [x.strip() for x in features.split(",") if x.strip()]
+
+    task = ml_tasks.cluster_lots_pred_async.delay(
+        n_clusters=n_clusters,
+        random_state=random_state,
+        n_init=n_init,
+        min_lots=min_lots,
+        site_codes=parsed_site_codes,
+        genetique=(genetique.strip().lower() if genetique else None),
+        seasons=parsed_seasons,
+        min_duree_gavage=min_duree_gavage,
+        max_duree_gavage=max_duree_gavage,
+        features=parsed_features,
+        modele_version=modele_version,
+    )
+
+    return {
+        "status": "submitted",
+        "task_id": task.id,
+        "message": "lot_pred clustering started",
+        "n_clusters": n_clusters,
+        "random_state": random_state,
+        "n_init": n_init,
+        "min_lots": min_lots,
+        "site_codes": parsed_site_codes,
+        "genetique": genetique,
+        "seasons": parsed_seasons,
+        "min_duree_gavage": min_duree_gavage,
+        "max_duree_gavage": max_duree_gavage,
+        "features": parsed_features,
+        "modele_version": modele_version,
+    }
+
+
+@router.post("/ml/clustering/lots-refined-j4", response_model=Dict[str, Any])
+async def trigger_lot_refined_j4_clustering(
+    n_clusters: int = Query(3, ge=2, le=20),
+    random_state: int = Query(42),
+    n_init: int = Query(10, ge=1, le=100),
+    min_lots: int = Query(20, ge=2),
+    min_days: int = Query(2, ge=1, le=4),
+    site_codes: Optional[str] = None,
+    genetique: Optional[str] = None,
+    modele_version: str = Query("lot_refined_j4_kmeans_v1"),
+):
+    """Déclenche clustering phase B des lots (lot_refined_j4) avec paramètres."""
+
+    parsed_site_codes: Optional[List[str]] = None
+    if site_codes:
+        parsed_site_codes = [x.strip().upper() for x in site_codes.split(",") if x.strip()]
+
+    task = ml_tasks.cluster_lots_refined_j4_async.delay(
+        n_clusters=n_clusters,
+        random_state=random_state,
+        n_init=n_init,
+        min_lots=min_lots,
+        min_days=min_days,
+        site_codes=parsed_site_codes,
+        genetique=(genetique.strip().lower() if genetique else None),
+        modele_version=modele_version,
+    )
+
+    return {
+        "status": "submitted",
+        "task_id": task.id,
+        "message": "lot_refined_j4 clustering started",
+        "n_clusters": n_clusters,
+        "random_state": random_state,
+        "n_init": n_init,
+        "min_lots": min_lots,
+        "min_days": min_days,
+        "site_codes": parsed_site_codes,
+        "genetique": genetique,
+        "modele_version": modele_version,
+    }
 @router.post("/ml/anomalies/detect", response_model=Dict[str, str])
 async def trigger_anomaly_detection(site_code: Optional[str] = None):
     """

@@ -6,14 +6,23 @@ from celery import Celery
 from celery.schedules import crontab
 import os
 
-# Configuration Redis
+# Configuration Redis / Celery
+# Priority:
+# 1) CELERY_BROKER_URL / CELERY_RESULT_BACKEND (docker-compose)
+# 2) REDIS_HOST/PORT + REDIS_*_DB (legacy defaults)
 REDIS_HOST = os.getenv('REDIS_HOST', 'gaveurs_redis')
 REDIS_PORT = os.getenv('REDIS_PORT', '6379')
 REDIS_BROKER_DB = os.getenv('REDIS_BROKER_DB', '0')
 REDIS_RESULT_DB = os.getenv('REDIS_RESULT_DB', '1')
 
-BROKER_URL = f'redis://{REDIS_HOST}:{REDIS_PORT}/{REDIS_BROKER_DB}'
-RESULT_BACKEND = f'redis://{REDIS_HOST}:{REDIS_PORT}/{REDIS_RESULT_DB}'
+BROKER_URL = os.getenv(
+    'CELERY_BROKER_URL',
+    f'redis://{REDIS_HOST}:{REDIS_PORT}/{REDIS_BROKER_DB}'
+)
+RESULT_BACKEND = os.getenv(
+    'CELERY_RESULT_BACKEND',
+    f'redis://{REDIS_HOST}:{REDIS_PORT}/{REDIS_RESULT_DB}'
+)
 
 # Créer instance Celery
 celery_app = Celery(
@@ -98,12 +107,14 @@ celery_app.conf.update(
 celery_app.conf.task_routes = {
     # Tâches ML lourdes → queue dédiée
     'app.tasks.ml_tasks.train_pysr_async': {'queue': 'ml_heavy'},
+    'app.tasks.ml_tasks.train_pysr_multi_async': {'queue': 'ml_heavy'},
     'app.tasks.ml_tasks.optimize_feeding_curve_async': {'queue': 'ml_heavy'},
     'app.tasks.ml_tasks.train_prophet_async': {'queue': 'ml_heavy'},
 
     # Tâches ML légères → queue standard
     'app.tasks.ml_tasks.detect_anomalies_*': {'queue': 'ml_light'},
     'app.tasks.ml_tasks.cluster_gaveurs_async': {'queue': 'ml_light'},
+    'app.tasks.ml_tasks.cluster_lots_pred_async': {'queue': 'ml_light'},
 
     # Exports → queue dédiée
     'app.tasks.export_tasks.*': {'queue': 'exports'},

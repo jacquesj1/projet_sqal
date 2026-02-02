@@ -57,11 +57,171 @@ class ConsumerFeedbackService:
             logger.info("Consumer Feedback service created dedicated database pool")
         self.blockchain = get_blockchain(self.pool)
 
+        await self._ensure_ml_trigger_schema()
+
+    async def _ensure_ml_trigger_schema(self) -> None:
+        try:
+            if not self.pool:
+                return
+
+            async with self.pool.acquire() as conn:
+                await conn.execute(
+                    """
+                    CREATE OR REPLACE FUNCTION auto_populate_ml_data()
+                    RETURNS TRIGGER AS $$
+                    DECLARE
+                        v_product RECORD;
+                        v_sqal RECORD;
+                        v_lot RECORD;
+                        v_delay_days INTEGER;
+                    BEGIN
+                        SELECT * INTO v_product FROM consumer_products WHERE product_id = NEW.product_id;
+
+                        IF NOT FOUND THEN
+                            RETURN NEW;
+                        END IF;
+
+                        IF v_product.sample_id IS NULL THEN
+                            RETURN NEW;
+                        END IF;
+
+                        SELECT
+                            fusion_final_score,
+                            fusion_final_grade,
+                            vl53l8ch_volume_mm3,
+                            vl53l8ch_surface_uniformity,
+                            as7341_freshness_index,
+                            as7341_fat_quality_index,
+                            as7341_oxidation_index
+                        INTO v_sqal
+                        FROM sensor_samples
+                        WHERE sample_id = v_product.sample_id
+                        ORDER BY timestamp DESC
+                        LIMIT 1;
+
+                        SELECT
+                            itm,
+                            poids_moyen_actuel AS poids_moyen_final_g,
+                            pctg_perte_gavage AS taux_mortalite_pct,
+                            NULL::NUMERIC AS indice_consommation
+                        INTO v_lot
+                        FROM lots_gavage
+                        WHERE id = v_product.lot_id;
+
+                        IF NOT FOUND THEN
+                            RETURN NEW;
+                        END IF;
+
+                        v_delay_days := COALESCE(NEW.consumption_date - v_product.production_date, 0);
+
+                        INSERT INTO consumer_feedback_ml_data (
+                            feedback_id,
+                            lot_id,
+                            sample_id,
+                            lot_itm,
+                            lot_avg_weight,
+                            lot_mortality_rate,
+                            lot_feed_conversion,
+                            sqal_score,
+                            sqal_grade,
+                            vl53l8ch_volume_mm3,
+                            vl53l8ch_surface_uniformity,
+                            as7341_freshness_index,
+                            as7341_fat_quality_index,
+                            as7341_oxidation_index,
+                            consumer_overall_rating,
+                            consumer_texture_rating,
+                            consumer_flavor_rating,
+                            consumer_freshness_rating,
+                            consumer_would_recommend,
+                            site_code,
+                            production_date,
+                            consumption_delay_days
+                        ) VALUES (
+                            NEW.feedback_id,
+                            v_product.lot_id,
+                            v_product.sample_id,
+                            v_lot.itm,
+                            v_lot.poids_moyen_final_g,
+                            v_lot.taux_mortalite_pct,
+                            v_lot.indice_consommation,
+                            v_sqal.fusion_final_score,
+                            v_sqal.fusion_final_grade,
+                            v_sqal.vl53l8ch_volume_mm3,
+                            v_sqal.vl53l8ch_surface_uniformity,
+                            v_sqal.as7341_freshness_index,
+                            v_sqal.as7341_fat_quality_index,
+                            v_sqal.as7341_oxidation_index,
+                            NEW.overall_rating,
+                            NEW.texture_rating,
+                            NEW.flavor_rating,
+                            NEW.freshness_rating,
+                            NEW.would_recommend,
+                            v_product.site_code,
+                            v_product.production_date,
+                            v_delay_days
+                        );
+
+                        RETURN NEW;
+                    END;
+                    $$ LANGUAGE plpgsql;
+
+                    DROP TRIGGER IF EXISTS trigger_auto_populate_ml_data ON consumer_feedbacks;
+                    CREATE TRIGGER trigger_auto_populate_ml_data
+                        AFTER INSERT ON consumer_feedbacks
+                        FOR EACH ROW
+                        EXECUTE FUNCTION auto_populate_ml_data();
+                    """
+                )
+
+        except Exception as e:
+            logger.warning(f"⚠️ Unable to ensure ML trigger schema: {e}")
+
     async def close_pool(self):
         """Ferme le pool de connexions"""
         if self.pool:
             await self.pool.close()
             logger.info("Pool de connexions Consumer Feedback fermé")
+
+    async def get_product_id_from_qr_code(self, qr_code: str) -> Optional[str]:
+        """Retourne le product_id correspondant à un qr_code actif, ou None si introuvable."""
+        try:
+            if not self.pool:
+                return None
+
+            async with self.pool.acquire() as conn:
+                return await conn.fetchval(
+                    """
+                    SELECT product_id
+                    FROM consumer_products
+                    WHERE qr_code = $1 AND is_active = TRUE
+                    """,
+                    qr_code,
+                )
+        except Exception as e:
+            logger.error(f"❌ Erreur get_product_id_from_qr_code: {e}", exc_info=True)
+            return None
+
+    async def validate_feedback_product(self, product_id: str, qr_code: str) -> bool:
+        """Valide que product_id existe et correspond au qr_code."""
+        try:
+            if not self.pool:
+                return False
+
+            async with self.pool.acquire() as conn:
+                exists = await conn.fetchval(
+                    """
+                    SELECT 1
+                    FROM consumer_products
+                    WHERE product_id = $1 AND qr_code = $2 AND is_active = TRUE
+                    """,
+                    product_id,
+                    qr_code,
+                )
+                return bool(exists)
+        except Exception as e:
+            logger.error(f"❌ Erreur validate_feedback_product: {e}", exc_info=True)
+            return False
 
     # ============================================================================
     # QR CODE GENERATION
@@ -119,8 +279,23 @@ class ConsumerFeedbackService:
                     product_id
                 )
 
-                # Initialiser blockchain si nécessaire
-                gaveur_id = product_data["gaveur_id"] if product_data and product_data["gaveur_id"] else 1
+                # Résoudre un gaveur_id valide (FK blockchain_gaveur_id_fkey)
+                gaveur_id = product_data["gaveur_id"] if product_data and product_data["gaveur_id"] else None
+                if gaveur_id is not None:
+                    exists = await conn.fetchval(
+                        "SELECT 1 FROM gaveurs WHERE id = $1",
+                        gaveur_id,
+                    )
+                    if not exists:
+                        logger.warning(
+                            f"⚠️ gaveur_id={gaveur_id} not found in gaveurs; falling back to an existing gaveur_id for blockchain insert"
+                        )
+                        gaveur_id = None
+
+                if gaveur_id is None:
+                    gaveur_id = await conn.fetchval("SELECT MIN(id) FROM gaveurs")
+                    if gaveur_id is None:
+                        raise RuntimeError("No rows in gaveurs; cannot write blockchain event")
 
                 if self.blockchain and not self.blockchain.initialise:
                     await self.blockchain.initialiser_blockchain(gaveur_id, [])
