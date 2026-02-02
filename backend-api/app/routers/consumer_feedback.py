@@ -97,6 +97,21 @@ async def submit_feedback(feedback: ConsumerFeedbackCreate, request: Request):
         # Récupérer IP pour anti-doublons (hashée, pas stockée en clair)
         client_ip = request.client.host if request.client else "unknown"
 
+        # Valider que le produit existe et correspond au QR scanné
+        qr_product_id = await consumer_feedback_service.get_product_id_from_qr_code(feedback.qr_code)
+        if not qr_product_id:
+            raise HTTPException(status_code=404, detail="QR code invalide ou produit introuvable")
+
+        if feedback.product_id != qr_product_id:
+            raise HTTPException(status_code=400, detail="Le product_id ne correspond pas au QR code")
+
+        is_valid_product = await consumer_feedback_service.validate_feedback_product(
+            feedback.product_id,
+            feedback.qr_code,
+        )
+        if not is_valid_product:
+            raise HTTPException(status_code=404, detail="Produit introuvable")
+
         # Vérifier doublon
         already_reviewed = await consumer_feedback_service.check_already_reviewed(feedback.qr_code, client_ip)
         if already_reviewed:
@@ -527,7 +542,7 @@ async def link_product_to_blockchain(
             "success": True,
             "product_id": product_id,
             "blockchain_hash": blockchain_hash,
-            "message": "Produit lié à la blockchain avec succès"
+            "message": "Produit lie a la blockchain avec succes"
         }
 
     except HTTPException:
@@ -570,7 +585,7 @@ async def verify_blockchain_hash(blockchain_hash: str, request: Request):
             return {
                 "valid": False,
                 "error": verification_result.get("error", "Hash invalide"),
-                "message": "Ce produit ne peut pas être vérifié sur la blockchain. Il pourrait s'agir d'une contrefaçon."
+                "message": "Ce produit ne peut pas etre verifie sur la blockchain. Il pourrait s'agir d'une contrefacon."
             }
 
         return {
@@ -580,7 +595,7 @@ async def verify_blockchain_hash(blockchain_hash: str, request: Request):
             "type_evenement": verification_result["type_evenement"],
             "product_data": verification_result["data"],
             "verified_at": verification_result["verified_at"],
-            "message": "✅ Produit authentique - Traçabilité blockchain vérifiée"
+            "message": "Produit authentique - Tracabilite blockchain verifiee"
         }
 
     except Exception as e:
