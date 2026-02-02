@@ -53,10 +53,10 @@ CREATE TABLE IF NOT EXISTS consumer_products (
 );
 
 -- Index pour recherches rapides
-CREATE INDEX idx_consumer_products_qr ON consumer_products(qr_code);
-CREATE INDEX idx_consumer_products_lot ON consumer_products(lot_id);
-CREATE INDEX idx_consumer_products_sample ON consumer_products(sample_id);
-CREATE INDEX idx_consumer_products_site_date ON consumer_products(site_code, production_date);
+CREATE INDEX IF NOT EXISTS idx_consumer_products_qr ON consumer_products(qr_code);
+CREATE INDEX IF NOT EXISTS idx_consumer_products_lot ON consumer_products(lot_id);
+CREATE INDEX IF NOT EXISTS idx_consumer_products_sample ON consumer_products(sample_id);
+CREATE INDEX IF NOT EXISTS idx_consumer_products_site_date ON consumer_products(site_code, production_date);
 
 -- Commentaire
 COMMENT ON TABLE consumer_products IS 'Produits finaux avec QR code pour traçabilité consommateur';
@@ -118,9 +118,9 @@ CREATE TABLE IF NOT EXISTS consumer_feedbacks (
 SELECT create_hypertable('consumer_feedbacks', 'time', if_not_exists => TRUE);
 
 -- Index pour analytics
-CREATE INDEX idx_feedbacks_product ON consumer_feedbacks(product_id, time DESC);
-CREATE INDEX idx_feedbacks_rating ON consumer_feedbacks(overall_rating, time DESC);
-CREATE INDEX idx_feedbacks_public ON consumer_feedbacks(is_public, time DESC) WHERE is_public = TRUE;
+CREATE INDEX IF NOT EXISTS idx_feedbacks_product ON consumer_feedbacks(product_id, time DESC);
+CREATE INDEX IF NOT EXISTS idx_feedbacks_rating ON consumer_feedbacks(overall_rating, time DESC);
+CREATE INDEX IF NOT EXISTS idx_feedbacks_public ON consumer_feedbacks(is_public, time DESC) WHERE is_public = TRUE;
 
 -- Compression après 30 jours
 ALTER TABLE consumer_feedbacks SET (
@@ -129,10 +129,22 @@ ALTER TABLE consumer_feedbacks SET (
     timescaledb.compress_orderby = 'time DESC'
 );
 
-SELECT add_compression_policy('consumer_feedbacks', INTERVAL '30 days');
+DO $$
+BEGIN
+    PERFORM add_compression_policy('consumer_feedbacks', INTERVAL '30 days');
+EXCEPTION
+    WHEN duplicate_object THEN
+        NULL;
+END $$;
 
 -- Rétention 5 ans (données précieuses pour IA long terme)
-SELECT add_retention_policy('consumer_feedbacks', INTERVAL '5 years');
+DO $$
+BEGIN
+    PERFORM add_retention_policy('consumer_feedbacks', INTERVAL '5 years');
+EXCEPTION
+    WHEN duplicate_object THEN
+        NULL;
+END $$;
 
 -- Commentaire
 COMMENT ON TABLE consumer_feedbacks IS 'Feedbacks consommateurs collectés via QR code';
@@ -142,47 +154,54 @@ COMMENT ON TABLE consumer_feedbacks IS 'Feedbacks consommateurs collectés via Q
 -- 3. VUE MATÉRIALISÉE - STATISTIQUES PRODUITS
 -- ============================================================================
 
-CREATE MATERIALIZED VIEW consumer_product_stats AS
-SELECT
-    p.product_id,
-    p.lot_id,
-    p.site_code,
-    p.production_date,
-    p.sqal_quality_score,
-    p.sqal_grade,
+DO $$
+BEGIN
+    IF to_regclass('public.consumer_product_stats') IS NULL THEN
+        EXECUTE $mv$
+        CREATE MATERIALIZED VIEW consumer_product_stats AS
+        SELECT
+            p.product_id,
+            p.lot_id,
+            p.site_code,
+            p.production_date,
+            p.sqal_quality_score,
+            p.sqal_grade,
 
-    -- Statistiques feedbacks
-    COUNT(f.feedback_id) as total_feedbacks,
-    AVG(f.overall_rating) as avg_overall_rating,
-    AVG(f.texture_rating) as avg_texture_rating,
-    AVG(f.flavor_rating) as avg_flavor_rating,
-    AVG(f.color_rating) as avg_color_rating,
-    AVG(f.aroma_rating) as avg_aroma_rating,
-    AVG(f.freshness_rating) as avg_freshness_rating,
+            -- Statistiques feedbacks
+            COUNT(f.feedback_id) as total_feedbacks,
+            AVG(f.overall_rating) as avg_overall_rating,
+            AVG(f.texture_rating) as avg_texture_rating,
+            AVG(f.flavor_rating) as avg_flavor_rating,
+            AVG(f.color_rating) as avg_color_rating,
+            AVG(f.aroma_rating) as avg_aroma_rating,
+            AVG(f.freshness_rating) as avg_freshness_rating,
 
-    -- Répartition notes
-    COUNT(*) FILTER (WHERE f.overall_rating = 5) as count_5_stars,
-    COUNT(*) FILTER (WHERE f.overall_rating = 4) as count_4_stars,
-    COUNT(*) FILTER (WHERE f.overall_rating = 3) as count_3_stars,
-    COUNT(*) FILTER (WHERE f.overall_rating = 2) as count_2_stars,
-    COUNT(*) FILTER (WHERE f.overall_rating = 1) as count_1_star,
+            -- Répartition notes
+            COUNT(*) FILTER (WHERE f.overall_rating = 5) as count_5_stars,
+            COUNT(*) FILTER (WHERE f.overall_rating = 4) as count_4_stars,
+            COUNT(*) FILTER (WHERE f.overall_rating = 3) as count_3_stars,
+            COUNT(*) FILTER (WHERE f.overall_rating = 2) as count_2_stars,
+            COUNT(*) FILTER (WHERE f.overall_rating = 1) as count_1_star,
 
-    -- Recommandation
-    (COUNT(*) FILTER (WHERE f.would_recommend = TRUE)::FLOAT / NULLIF(COUNT(*), 0) * 100) as recommendation_rate_pct,
-    AVG(f.repurchase_intent) as avg_repurchase_intent,
+            -- Recommandation
+            (COUNT(*) FILTER (WHERE f.would_recommend = TRUE)::FLOAT / NULLIF(COUNT(*), 0) * 100) as recommendation_rate_pct,
+            AVG(f.repurchase_intent) as avg_repurchase_intent,
 
-    -- Dernière mise à jour
-    MAX(f.time) as last_feedback_date
+            -- Dernière mise à jour
+            MAX(f.time) as last_feedback_date
 
-FROM consumer_products p
-LEFT JOIN consumer_feedbacks f ON p.product_id = f.product_id AND f.is_public = TRUE
-GROUP BY p.product_id, p.lot_id, p.site_code, p.production_date, p.sqal_quality_score, p.sqal_grade;
+        FROM consumer_products p
+        LEFT JOIN consumer_feedbacks f ON p.product_id = f.product_id AND f.is_public = TRUE
+        GROUP BY p.product_id, p.lot_id, p.site_code, p.production_date, p.sqal_quality_score, p.sqal_grade;
+        $mv$;
+    END IF;
+END $$;
 
 -- Index pour recherches rapides
-CREATE UNIQUE INDEX idx_product_stats_product ON consumer_product_stats(product_id);
-CREATE INDEX idx_product_stats_lot ON consumer_product_stats(lot_id);
-CREATE INDEX idx_product_stats_site ON consumer_product_stats(site_code, production_date);
-CREATE INDEX idx_product_stats_rating ON consumer_product_stats(avg_overall_rating DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_product_stats_product ON consumer_product_stats(product_id);
+CREATE INDEX IF NOT EXISTS idx_product_stats_lot ON consumer_product_stats(lot_id);
+CREATE INDEX IF NOT EXISTS idx_product_stats_site ON consumer_product_stats(site_code, production_date);
+CREATE INDEX IF NOT EXISTS idx_product_stats_rating ON consumer_product_stats(avg_overall_rating DESC);
 
 -- Commentaire
 COMMENT ON MATERIALIZED VIEW consumer_product_stats IS 'Stats agrégées feedbacks par produit (refresh quotidien)';
@@ -192,87 +211,137 @@ COMMENT ON MATERIALIZED VIEW consumer_product_stats IS 'Stats agrégées feedbac
 -- 4. VUE MATÉRIALISÉE - STATISTIQUES LOTS (Continuous Aggregate)
 -- ============================================================================
 
-CREATE MATERIALIZED VIEW consumer_lot_stats
-WITH (timescaledb.continuous) AS
-SELECT
-    time_bucket('1 day', f.time) AS bucket,
-    p.lot_id,
-    p.site_code,
+DO $$
+BEGIN
+    IF to_regclass('public.consumer_lot_stats') IS NULL THEN
+        EXECUTE $mv$
+        CREATE MATERIALIZED VIEW consumer_lot_stats
+        WITH (timescaledb.continuous) AS
+        SELECT
+            time_bucket('1 day', f.time) AS bucket,
+            p.lot_id,
+            p.site_code,
 
-    -- Feedbacks
-    COUNT(f.feedback_id) as daily_feedbacks,
-    AVG(f.overall_rating) as avg_overall_rating,
-    AVG(f.texture_rating) as avg_texture_rating,
-    AVG(f.flavor_rating) as avg_flavor_rating,
-    AVG(f.freshness_rating) as avg_freshness_rating,
+            -- Feedbacks
+            COUNT(f.feedback_id) as daily_feedbacks,
+            AVG(f.overall_rating) as avg_overall_rating,
+            AVG(f.texture_rating) as avg_texture_rating,
+            AVG(f.flavor_rating) as avg_flavor_rating,
+            AVG(f.freshness_rating) as avg_freshness_rating,
 
-    -- Recommandation
-    (COUNT(*) FILTER (WHERE f.would_recommend = TRUE)::FLOAT / NULLIF(COUNT(*), 0) * 100) as recommendation_rate_pct,
+            -- Recommandation
+            (COUNT(*) FILTER (WHERE f.would_recommend = TRUE)::FLOAT / NULLIF(COUNT(*), 0) * 100) as recommendation_rate_pct,
 
-    -- Satisfaction
-    (COUNT(*) FILTER (WHERE f.overall_rating >= 4)::FLOAT / NULLIF(COUNT(*), 0) * 100) as satisfaction_rate_pct
+            -- Satisfaction
+            (COUNT(*) FILTER (WHERE f.overall_rating >= 4)::FLOAT / NULLIF(COUNT(*), 0) * 100) as satisfaction_rate_pct
 
-FROM consumer_feedbacks f
-JOIN consumer_products p ON f.product_id = p.product_id
-WHERE f.is_public = TRUE
-GROUP BY bucket, p.lot_id, p.site_code;
+        FROM consumer_feedbacks f
+        JOIN consumer_products p ON f.product_id = p.product_id
+        WHERE f.is_public = TRUE
+        GROUP BY bucket, p.lot_id, p.site_code;
+        $mv$;
+    END IF;
+END $$;
 
 -- Auto-refresh quotidien
-SELECT add_continuous_aggregate_policy('consumer_lot_stats',
-    start_offset => INTERVAL '3 days',
-    end_offset => INTERVAL '1 day',
-    schedule_interval => INTERVAL '1 day'
-);
+DO $$
+BEGIN
+    PERFORM add_continuous_aggregate_policy('consumer_lot_stats',
+        start_offset => INTERVAL '3 days',
+        end_offset => INTERVAL '1 day',
+        schedule_interval => INTERVAL '1 day'
+    );
+EXCEPTION
+    WHEN OTHERS THEN
+        NULL;
+END $$;
 
 -- Commentaire
-COMMENT ON MATERIALIZED VIEW consumer_lot_stats IS 'Stats feedbacks par lot et jour (pour tendances)';
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'public'
+          AND c.relname = 'consumer_lot_stats'
+          AND c.relkind = 'm'
+    ) THEN
+        EXECUTE 'COMMENT ON MATERIALIZED VIEW consumer_lot_stats IS ''Stats feedbacks par lot et jour (pour tendances)''';
+    END IF;
+END $$;
 
 
 -- ============================================================================
 -- 5. VUE MATÉRIALISÉE - STATISTIQUES SITES (Continuous Aggregate)
 -- ============================================================================
 
-CREATE MATERIALIZED VIEW consumer_site_stats
-WITH (timescaledb.continuous) AS
-SELECT
-    time_bucket('1 week', f.time) AS bucket,
-    p.site_code,
+DO $$
+BEGIN
+    IF to_regclass('public.consumer_site_stats') IS NULL THEN
+        EXECUTE $mv$
+        CREATE MATERIALIZED VIEW consumer_site_stats
+        WITH (timescaledb.continuous) AS
+        SELECT
+            time_bucket('1 week', f.time) AS bucket,
+            p.site_code,
 
-    -- Feedbacks
-    COUNT(f.feedback_id) as weekly_feedbacks,
-    AVG(f.overall_rating) as avg_overall_rating,
-    AVG(f.texture_rating) as avg_texture_rating,
-    AVG(f.flavor_rating) as avg_flavor_rating,
-    AVG(f.color_rating) as avg_color_rating,
-    AVG(f.aroma_rating) as avg_aroma_rating,
-    AVG(f.freshness_rating) as avg_freshness_rating,
+            -- Feedbacks
+            COUNT(f.feedback_id) as weekly_feedbacks,
+            AVG(f.overall_rating) as avg_overall_rating,
+            AVG(f.texture_rating) as avg_texture_rating,
+            AVG(f.flavor_rating) as avg_flavor_rating,
+            AVG(f.color_rating) as avg_color_rating,
+            AVG(f.aroma_rating) as avg_aroma_rating,
+            AVG(f.freshness_rating) as avg_freshness_rating,
 
-    -- Recommandation
-    (COUNT(*) FILTER (WHERE f.would_recommend = TRUE)::FLOAT / NULLIF(COUNT(*), 0) * 100) as recommendation_rate_pct,
+            -- Recommandation
+            (COUNT(*) FILTER (WHERE f.would_recommend = TRUE)::FLOAT / NULLIF(COUNT(*), 0) * 100) as recommendation_rate_pct,
 
-    -- Satisfaction
-    (COUNT(*) FILTER (WHERE f.overall_rating >= 4)::FLOAT / NULLIF(COUNT(*), 0) * 100) as satisfaction_rate_pct,
+            -- Satisfaction
+            (COUNT(*) FILTER (WHERE f.overall_rating >= 4)::FLOAT / NULLIF(COUNT(*), 0) * 100) as satisfaction_rate_pct,
 
-    -- NPS (Net Promoter Score approximatif)
-    (
-        (COUNT(*) FILTER (WHERE f.overall_rating = 5)::FLOAT / NULLIF(COUNT(*), 0) * 100) -
-        (COUNT(*) FILTER (WHERE f.overall_rating <= 2)::FLOAT / NULLIF(COUNT(*), 0) * 100)
-    ) as nps_score
+            -- NPS (Net Promoter Score approximatif)
+            (
+                (COUNT(*) FILTER (WHERE f.overall_rating = 5)::FLOAT / NULLIF(COUNT(*), 0) * 100) -
+                (COUNT(*) FILTER (WHERE f.overall_rating <= 2)::FLOAT / NULLIF(COUNT(*), 0) * 100)
+            ) as nps_score
 
-FROM consumer_feedbacks f
-JOIN consumer_products p ON f.product_id = p.product_id
-WHERE f.is_public = TRUE
-GROUP BY bucket, p.site_code;
+        FROM consumer_feedbacks f
+        JOIN consumer_products p ON f.product_id = p.product_id
+        WHERE f.is_public = TRUE
+        GROUP BY bucket, p.site_code;
+        $mv$;
+    END IF;
+END $$;
 
 -- Auto-refresh hebdomadaire
-SELECT add_continuous_aggregate_policy('consumer_site_stats',
-    start_offset => INTERVAL '2 weeks',
-    end_offset => INTERVAL '1 week',
-    schedule_interval => INTERVAL '1 week'
-);
+DO $$
+BEGIN
+    PERFORM add_continuous_aggregate_policy('consumer_site_stats',
+        start_offset => INTERVAL '2 weeks',
+        end_offset => INTERVAL '1 week',
+        schedule_interval => INTERVAL '1 week'
+    );
+EXCEPTION
+    WHEN OTHERS THEN
+        NULL;
+END $$;
 
 -- Commentaire
-COMMENT ON MATERIALIZED VIEW consumer_site_stats IS 'Stats feedbacks par site et semaine (benchmarking sites)';
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'public'
+          AND c.relname = 'consumer_site_stats'
+          AND c.relkind = 'm'
+    ) THEN
+        EXECUTE 'COMMENT ON MATERIALIZED VIEW consumer_site_stats IS ''Stats feedbacks par site et semaine (benchmarking sites)''';
+    END IF;
+END $$;
 
 
 -- ============================================================================
@@ -321,9 +390,9 @@ CREATE TABLE IF NOT EXISTS consumer_feedback_ml_data (
 );
 
 -- Index pour requêtes ML
-CREATE INDEX idx_ml_data_lot ON consumer_feedback_ml_data(lot_id);
-CREATE INDEX idx_ml_data_site ON consumer_feedback_ml_data(site_code, production_date);
-CREATE INDEX idx_ml_data_training ON consumer_feedback_ml_data(used_for_training, train_test_split);
+CREATE INDEX IF NOT EXISTS idx_ml_data_lot ON consumer_feedback_ml_data(lot_id);
+CREATE INDEX IF NOT EXISTS idx_ml_data_site ON consumer_feedback_ml_data(site_code, production_date);
+CREATE INDEX IF NOT EXISTS idx_ml_data_training ON consumer_feedback_ml_data(used_for_training, train_test_split);
 
 -- Commentaire
 COMMENT ON TABLE consumer_feedback_ml_data IS 'Données préparées pour entraînement IA (corrélation prod ↔ feedback)';
@@ -364,9 +433,9 @@ CREATE TABLE IF NOT EXISTS consumer_feedback_ml_insights (
 );
 
 -- Index
-CREATE INDEX idx_ml_insights_model ON consumer_feedback_ml_insights(model_name, model_version);
-CREATE INDEX idx_ml_insights_site ON consumer_feedback_ml_insights(site_code, generated_at DESC);
-CREATE INDEX idx_ml_insights_active ON consumer_feedback_ml_insights(is_active) WHERE is_active = TRUE;
+CREATE INDEX IF NOT EXISTS idx_ml_insights_model ON consumer_feedback_ml_insights(model_name, model_version);
+CREATE INDEX IF NOT EXISTS idx_ml_insights_site ON consumer_feedback_ml_insights(site_code, generated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ml_insights_active ON consumer_feedback_ml_insights(is_active) WHERE is_active = TRUE;
 
 -- Commentaire
 COMMENT ON TABLE consumer_feedback_ml_insights IS 'Insights IA générés depuis corrélations production ↔ feedback';
@@ -387,9 +456,10 @@ DECLARE
     v_qr_code VARCHAR;
     v_signature VARCHAR;
 BEGIN
+    p_site_code := COALESCE(p_site_code, 'LL');
     -- Générer product_id unique : FG_{site}_{date}_{seq}
     v_product_id := 'FG_' || p_site_code || '_' || TO_CHAR(NOW(), 'YYYYMMDD') || '_' ||
-                    LPAD(nextval('consumer_products_seq')::TEXT, 4, '0');
+                    to_char(nextval('consumer_products_seq'), 'FM0000000000');
 
     -- Générer signature cryptographique (SHA256)
     v_signature := encode(digest(v_product_id || p_lot_id::TEXT || COALESCE(p_sample_id, '') || NOW()::TEXT, 'sha256'), 'hex');
@@ -430,7 +500,27 @@ DECLARE
     v_signature VARCHAR;
     v_sqal_data RECORD;
     v_lot_data RECORD;
+    v_attempts INTEGER := 0;
+    v_violation_constraint TEXT;
+    v_violation_sqlstate TEXT;
+    v_violation_message TEXT;
+    v_violation_detail TEXT;
+    v_violation_hint TEXT;
 BEGIN
+    p_site_code := COALESCE(p_site_code, 'LL');
+    -- Idempotence: si un produit existe déjà pour ce sample_id, le retourner
+    SELECT p.product_id, p.qr_code
+    INTO v_product_id, v_qr_code
+    FROM consumer_products p
+    WHERE p.sample_id = p_sample_id
+    ORDER BY p.created_at DESC
+    LIMIT 1;
+
+    IF v_product_id IS NOT NULL THEN
+        RETURN QUERY SELECT v_product_id, v_qr_code;
+        RETURN;
+    END IF;
+
     -- Récupérer données SQAL
     SELECT
         fusion_final_score,
@@ -455,55 +545,119 @@ BEGIN
     FROM lots_gavage l
     WHERE l.id = p_lot_id;
 
-    -- Générer QR code
-    v_qr_code := generate_qr_code(p_lot_id, p_sample_id, p_site_code);
+    LOOP
+        v_attempts := v_attempts + 1;
+        IF v_attempts > 5 THEN
+            RAISE EXCEPTION 'register_consumer_product: failed to insert after % attempts (lot_id=%, sample_id=%). Last unique violation: constraint=% sqlstate=% message=% detail=% hint=% last_product_id=% last_qr_code=%',
+                v_attempts - 1,
+                p_lot_id,
+                p_sample_id,
+                v_violation_constraint,
+                v_violation_sqlstate,
+                v_violation_message,
+                v_violation_detail,
+                v_violation_hint,
+                v_product_id,
+                v_qr_code;
+        END IF;
 
-    -- Extraire product_id du QR code
-    v_product_id := regexp_replace(
-        regexp_replace(v_qr_code, '^SQAL_[0-9]+_[^_]+_', ''),
-        '_[0-9a-f]{16}$',
-        ''
-    );
+        -- Générer QR code
+        v_qr_code := generate_qr_code(p_lot_id, p_sample_id, p_site_code);
 
-    -- Extraire signature
-    v_signature := regexp_replace(v_qr_code, '^.*_([0-9a-f]{16})$', '\\1');
+        -- Extraire product_id du QR code
+        v_product_id := regexp_replace(
+            regexp_replace(v_qr_code, '^SQAL_[0-9]+_[^_]+_', ''),
+            '_[0-9a-f]{16}$',
+            ''
+        );
 
-    -- Insérer produit
-    INSERT INTO consumer_products (
-        product_id,
-        qr_code,
-        qr_signature,
-        lot_id,
-        sample_id,
-        site_code,
-        production_date,
-        quality_control_date,
-        sqal_quality_score,
-        sqal_grade,
-        sqal_compliance,
-        lot_itm,
-        lot_avg_weight,
-        gavage_duration_days,
-        certifications,
-        production_method
-    ) VALUES (
-        v_product_id,
-        v_qr_code,
-        v_signature,
-        p_lot_id,
-        p_sample_id,
-        LEFT(p_site_code, 2),  -- Tronquer à 2 caractères (varchar(2))
-        CURRENT_DATE,
-        NOW(),
-        v_sqal_data.fusion_final_score,
-        v_sqal_data.fusion_final_grade,
-        v_sqal_data.fusion_is_compliant,
-        v_lot_data.itm,
-        v_lot_data.poids_foie_moyen_g,
-        v_lot_data.duree_gavage_reelle,
-        '["IGP Périgord"]'::jsonb,
-        'traditionnel'
-    );
+        -- Extraire signature
+        v_signature := regexp_replace(v_qr_code, '^.*_([0-9a-f]{16})$', '\\1');
+
+        BEGIN
+            INSERT INTO consumer_products (
+                product_id,
+                qr_code,
+                qr_signature,
+                lot_id,
+                sample_id,
+                site_code,
+                production_date,
+                quality_control_date,
+                sqal_quality_score,
+                sqal_grade,
+                sqal_compliance,
+                lot_itm,
+                lot_avg_weight,
+                gavage_duration_days,
+                certifications,
+                production_method
+            ) VALUES (
+                v_product_id,
+                v_qr_code,
+                v_signature,
+                p_lot_id,
+                p_sample_id,
+                LEFT(COALESCE(p_site_code, 'LL'), 2),  -- Tronquer à 2 caractères (varchar(2))
+                CURRENT_DATE,
+                NOW(),
+                v_sqal_data.fusion_final_score,
+                v_sqal_data.fusion_final_grade,
+                CASE
+                    WHEN v_sqal_data.fusion_final_grade IS NULL THEN NULL
+                    WHEN v_sqal_data.fusion_final_grade = 'REJECT' THEN FALSE
+                    ELSE TRUE
+                END,
+                v_lot_data.itm,
+                v_lot_data.poids_foie_moyen_g,
+                v_lot_data.duree_gavage_reelle,
+                '["IGP Périgord"]'::jsonb,
+                'traditionnel'
+            );
+
+            EXIT;
+        EXCEPTION WHEN unique_violation THEN
+            GET STACKED DIAGNOSTICS
+                v_violation_constraint = CONSTRAINT_NAME,
+                v_violation_sqlstate = RETURNED_SQLSTATE,
+                v_violation_message = MESSAGE_TEXT,
+                v_violation_detail = PG_EXCEPTION_DETAIL,
+                v_violation_hint = PG_EXCEPTION_HINT;
+
+            -- Si un autre worker a déjà créé le produit pour ce sample_id, retourner l'existant
+            SELECT p.product_id, p.qr_code
+            INTO v_product_id, v_qr_code
+            FROM consumer_products p
+            WHERE p.sample_id = p_sample_id
+            ORDER BY p.created_at DESC
+            LIMIT 1;
+
+            IF v_product_id IS NOT NULL THEN
+                RETURN QUERY SELECT v_product_id, v_qr_code;
+                RETURN;
+            END IF;
+
+            -- Diagnostic: essayer de retrouver l'enregistrement en collision si possible
+            IF v_violation_constraint IS NOT NULL THEN
+                IF v_violation_constraint = 'consumer_products_pkey' THEN
+                    SELECT p.product_id, p.qr_code
+                    INTO v_product_id, v_qr_code
+                    FROM consumer_products p
+                    WHERE p.product_id = v_product_id
+                    LIMIT 1;
+                ELSIF v_violation_constraint = 'consumer_products_qr_code_key' THEN
+                    SELECT p.product_id, p.qr_code
+                    INTO v_product_id, v_qr_code
+                    FROM consumer_products p
+                    WHERE p.qr_code = v_qr_code
+                    LIMIT 1;
+                END IF;
+            END IF;
+
+            -- Sinon, collision product_id/qr_code sur un autre produit => retenter avec un nouvel ID
+            CONTINUE;
+        END;
+    END LOOP;
 
     RETURN QUERY SELECT v_product_id, v_qr_code;
 END;
@@ -539,8 +693,6 @@ $$ LANGUAGE plpgsql;
 -- Commentaire
 COMMENT ON FUNCTION calculate_consumption_delay IS 'Calcule délai entre production et consommation (jours)';
 
-
--- ============================================================================
 -- 11. TRIGGER - AUTO-REMPLISSAGE ML DATA
 -- ============================================================================
 
@@ -554,6 +706,10 @@ DECLARE
 BEGIN
     -- Récupérer produit
     SELECT * INTO v_product FROM consumer_products WHERE product_id = NEW.product_id;
+
+    IF NOT FOUND THEN
+        RETURN NEW;
+    END IF;
 
     -- Si pas de sample_id SQAL, skip
     IF v_product.sample_id IS NULL THEN
@@ -577,13 +733,17 @@ BEGIN
 
     -- Récupérer données lot
     SELECT
-        itm_moyen,
-        poids_moyen_final_g,
-        taux_mortalite_pct,
-        indice_consommation
+        itm,
+        poids_moyen_actuel AS poids_moyen_final_g,
+        pctg_perte_gavage AS taux_mortalite_pct,
+        NULL::NUMERIC AS indice_consommation
     INTO v_lot
     FROM lots_gavage
     WHERE id = v_product.lot_id;
+
+    IF NOT FOUND THEN
+        RETURN NEW;
+    END IF;
 
     -- Calculer délai consommation
     v_delay_days := COALESCE(NEW.consumption_date - v_product.production_date, 0);
@@ -616,7 +776,7 @@ BEGIN
         NEW.feedback_id,
         v_product.lot_id,
         v_product.sample_id,
-        v_lot.itm_moyen,
+        v_lot.itm,
         v_lot.poids_moyen_final_g,
         v_lot.taux_mortalite_pct,
         v_lot.indice_consommation,
