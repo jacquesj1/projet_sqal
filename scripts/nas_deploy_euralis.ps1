@@ -338,10 +338,38 @@ Write-Step "  git push nas --all"
 & git push nas --all 2>&1 | ForEach-Object { Write-Host ("  " + $_) -ForegroundColor Gray }
 Pop-Location
 
-# Pull sur NAS (bash interprete && correctement)
+# Pull sur NAS - visible + verification fichiers critiques
 Write-Step "  git pull sur NAS"
-$pullCmd = "cd " + $NAS_PROJECT + " && git fetch origin && (git reset --hard origin/main 2>/dev/null || git reset --hard origin/master 2>/dev/null) && echo pull_ok"
-Invoke-Ssh $pullCmd -Silent | Out-Null
+$sshTarget   = $NAS_USER + "@" + $script:NAS_HOST
+$fullPullCmd = "export PATH=/usr/local/bin:/usr/bin:/bin:/usr/syno/bin; cd " + $NAS_PROJECT + " && git fetch origin 2>&1 && (git reset --hard origin/main || git reset --hard origin/master) 2>&1 && echo pull_ok"
+$pullOut     = ssh $sshTarget $fullPullCmd 2>&1
+$pullOut | ForEach-Object { Write-Host ("  [NAS] " + $_) -ForegroundColor Gray }
+if ($pullOut -match "pull_ok") {
+    Write-OK "git pull reussi"
+} else {
+    Write-Warn "git pull incertain - verification et copie directe des fichiers critiques"
+}
+
+# Verification presence fichiers NAS critiques (fallback copie directe si git pull a echoue)
+$nasFilesToVerify = @(
+    @{ local = "docker-compose.euralis.nas.yml"; remote = ($NAS_PROJECT + "/docker-compose.euralis.nas.yml") },
+    @{ local = "docker/nginx/nginx.nas.conf";    remote = ($NAS_PROJECT + "/docker/nginx/nginx.nas.conf") }
+)
+foreach ($f in $nasFilesToVerify) {
+    $existOut = ssh $sshTarget ("export PATH=/usr/local/bin:/usr/bin:/bin:/usr/syno/bin; test -f '" + $f.remote + "' && echo ok || echo missing") 2>&1
+    if ($existOut -match "missing") {
+        Write-Warn ("  Absent sur NAS, copie directe : " + $f.local)
+        $parentDir   = ($f.remote -replace "/[^/]+$", "")
+        ssh $sshTarget ("export PATH=/usr/local/bin:/usr/bin:/bin:/usr/syno/bin; mkdir -p '" + $parentDir + "'") 2>&1 | Out-Null
+        $localFile   = Join-Path $ProjectRoot $f.local
+        $fileContent = Get-Content $localFile -Raw
+        $fileContent | ssh $sshTarget ("cat > '" + $f.remote + "'") 2>&1 | Out-Null
+        if ($LASTEXITCODE -eq 0) { Write-OK ("  Copie OK : " + $f.local) }
+        else { Write-Err ("  Echec copie directe : " + $f.local + " - Arret."); exit 1 }
+    } else {
+        Write-OK ("  Fichier present : " + $f.local)
+    }
+}
 Write-OK "Code synchronise"
 
 # ---------------------------------------------------------------------------

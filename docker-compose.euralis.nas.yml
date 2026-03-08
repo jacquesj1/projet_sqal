@@ -266,7 +266,7 @@ services:
   # ============================================================================
   frontend-sqal:
     build:
-      context: ./sqal/frontend
+      context: ./sqal/FrontEnd
       dockerfile: Dockerfile
       args:
         VITE_API_URL: "http://${NAS_IP:-DEEP_NAS}:8084"
@@ -291,7 +291,7 @@ services:
   # ============================================================================
   control-panel:
     build:
-      context: ./control-panel-v2
+      context: ./control-panel-frontend
       dockerfile: Dockerfile
       args:
         VITE_API_URL: "http://${NAS_IP:-DEEP_NAS}:8085"
