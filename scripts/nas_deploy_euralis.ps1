@@ -284,95 +284,68 @@ if (-not $dc) {
 Write-OK ("Docker Compose : " + $dc)
 
 # ---------------------------------------------------------------------------
-# Etape 2 : Setup repertoire NAS (bare repo + working dir)
+# Etape 2 : Setup repertoire NAS
 # ---------------------------------------------------------------------------
 Write-Step "Etape 2 : Setup repertoire NAS"
 
-Invoke-Ssh ("mkdir -p /volume1/DevProject/euralis/backups") -Silent | Out-Null
+$sshTarget = $NAS_USER + "@" + $script:NAS_HOST
 Invoke-Ssh ("mkdir -p " + $NAS_PROJECT) -Silent | Out-Null
-
-# Bare repo
-$bareCheck = ssh ($NAS_USER + "@" + $script:NAS_HOST) `
-    ("export PATH=/usr/local/bin:/usr/bin:/bin:/usr/syno/bin; test -d " + $NAS_BARE + "/objects && echo exists") 2>&1
-if ($bareCheck -notmatch "exists") {
-    Write-Step "  Initialisation bare repo git"
-    Invoke-Ssh ("git init --bare " + $NAS_BARE) -Silent | Out-Null
-    Write-OK ("Bare repo cree : " + $NAS_BARE)
-} else {
-    Write-OK ("Bare repo OK : " + $NAS_BARE)
-}
-
-# Working dir (clone depuis bare repo)
-$workCheck = ssh ($NAS_USER + "@" + $script:NAS_HOST) `
-    ("export PATH=/usr/local/bin:/usr/bin:/bin:/usr/syno/bin; test -f " + $NAS_PROJECT + "/.git/config && echo exists") 2>&1
-if ($workCheck -notmatch "exists") {
-    Write-Step "  Initialisation repertoire de travail"
-    Invoke-Ssh ("git clone " + $NAS_BARE + " " + $NAS_PROJECT) | Out-Null
-    Write-OK ("Repertoire de travail cree : " + $NAS_PROJECT)
-} else {
-    Write-OK ("Repertoire de travail OK : " + $NAS_PROJECT)
-}
-
-Invoke-Ssh ("git config --global --add safe.directory " + $NAS_PROJECT) -Silent | Out-Null
+Write-OK ("Repertoire pret : " + $NAS_PROJECT)
 
 # ---------------------------------------------------------------------------
-# Etape 3 : Synchronisation code -> NAS
+# Etape 3 : Synchronisation code -> NAS  (git archive + base64 + SSH + tar)
+# Methode robuste : aucun git requis sur le NAS
+#   1. git archive HEAD  -> tar de tous les fichiers trackes (local)
+#   2. base64 encode     -> texte, compatible pipe PS 5.1 (pas de probleme binaire)
+#   3. ssh cat >         -> envoi via stdin SSH (fonctionne deja pour .env)
+#   4. base64 -d | tar   -> decode et extrait sur NAS (tar + base64 = standard Synology)
 # ---------------------------------------------------------------------------
-Write-Step "Etape 3 : Synchronisation code -> NAS"
+Write-Step "Etape 3 : Synchronisation code -> NAS (git archive)"
 
 Push-Location $ProjectRoot
 
-# Ajouter remote 'nas' si absent
-$nasRemoteUrl  = "ssh://" + $NAS_USER + "@" + $NAS_HOST_LAN + $NAS_BARE
-$remoteGetUrl  = & git remote get-url nas 2>&1
-if ($LASTEXITCODE -ne 0) {
-    Write-Step "  Ajout remote git 'nas'"
-    & git remote add nas $nasRemoteUrl 2>&1 | Out-Null
-    Write-OK ("Remote 'nas' ajoute : " + $nasRemoteUrl)
-} else {
-    Write-OK ("Remote 'nas' : " + ($remoteGetUrl | Select-Object -First 1).Trim())
+# Etape 3a : archive tar locale (seulement les fichiers trackes par git)
+Write-Step "  Creation archive git locale..."
+$tempTar = Join-Path $env:TEMP "euralis_deploy.tar"
+& git archive HEAD -o $tempTar 2>&1 | Out-Null
+if (-not (Test-Path $tempTar)) {
+    Write-Err "git archive echoue - HEAD est-il un commit valide ?"
+    Pop-Location
+    exit 1
 }
-
-# Push vers NAS
-Write-Step "  git push nas --all"
-& git push nas --all 2>&1 | ForEach-Object { Write-Host ("  " + $_) -ForegroundColor Gray }
+$tarSizeMB = [math]::Round((Get-Item $tempTar).Length / 1MB, 1)
+$nbFiles   = (& git ls-files | Measure-Object -Line).Lines
 Pop-Location
+Write-OK ("Archive : " + $tarSizeMB + " MB - " + $nbFiles + " fichiers")
 
-# Pull sur NAS - FETCH_HEAD (independant du nom de branche : main / master / dev / ...)
-Write-Step "  git pull sur NAS"
-$sshTarget   = $NAS_USER + "@" + $script:NAS_HOST
-$fullPullCmd = "export PATH=/usr/local/bin:/usr/bin:/bin:/usr/syno/bin; cd " + $NAS_PROJECT + " && git fetch origin 2>&1 && git reset --hard FETCH_HEAD 2>&1 && echo pull_ok"
-$pullOut     = ssh $sshTarget $fullPullCmd 2>&1
-$pullOut | ForEach-Object { Write-Host ("  [NAS] " + $_) -ForegroundColor Gray }
-if ($pullOut -match "pull_ok") {
-    Write-OK "git pull reussi (FETCH_HEAD)"
-} else {
-    Write-Warn "git pull incertain - copie directe des fichiers critiques en cours..."
-}
+# Etape 3b : encodage base64 (evite les problemes de pipe binaire PS 5.1)
+Write-Step "  Encodage base64..."
+$b64       = [System.Convert]::ToBase64String([System.IO.File]::ReadAllBytes($tempTar))
+$b64SizeMB = [math]::Round($b64.Length / 1MB, 1)
+Remove-Item $tempTar -Force -ErrorAction SilentlyContinue
+Write-OK ("Base64 : " + $b64SizeMB + " MB")
 
-# Verification presence fichiers NAS critiques + copie directe SSH si absents
-# Inclut backend-api/Dockerfile.prod (requis par docker build)
-$nasFilesToVerify = @(
-    @{ local = "docker-compose.euralis.nas.yml";   remote = ($NAS_PROJECT + "/docker-compose.euralis.nas.yml") },
-    @{ local = "docker/nginx/nginx.nas.conf";       remote = ($NAS_PROJECT + "/docker/nginx/nginx.nas.conf") },
-    @{ local = "backend-api/Dockerfile.prod";       remote = ($NAS_PROJECT + "/backend-api/Dockerfile.prod") }
-)
-foreach ($f in $nasFilesToVerify) {
-    $existOut = ssh $sshTarget ("export PATH=/usr/local/bin:/usr/bin:/bin:/usr/syno/bin; test -f '" + $f.remote + "' && echo ok || echo missing") 2>&1
-    if ($existOut -match "missing") {
-        Write-Warn ("  Absent sur NAS, copie directe : " + $f.local)
-        $parentDir   = ($f.remote -replace "/[^/]+$", "")
-        ssh $sshTarget ("export PATH=/usr/local/bin:/usr/bin:/bin:/usr/syno/bin; mkdir -p '" + $parentDir + "'") 2>&1 | Out-Null
-        $localFile   = Join-Path $ProjectRoot $f.local
-        $fileContent = Get-Content $localFile -Raw
-        $fileContent | ssh $sshTarget ("cat > '" + $f.remote + "'") 2>&1 | Out-Null
-        if ($LASTEXITCODE -eq 0) { Write-OK ("  Copie OK : " + $f.local) }
-        else { Write-Err ("  Echec copie directe : " + $f.local + " - Arret."); exit 1 }
-    } else {
-        Write-OK ("  Fichier present : " + $f.local)
-    }
+# Etape 3c : transfert sur NAS via SSH stdin (meme mecanisme que la copie .env)
+$b64TmpPath = "/tmp/euralis_deploy_nas.b64"
+Write-Step "  Transfert base64 vers NAS (SSH stdin)..."
+$b64 | ssh $sshTarget ("cat > " + $b64TmpPath) 2>&1 | Out-Null
+if ($LASTEXITCODE -ne 0) {
+    Write-Err "Echec transfert SSH - verifiez la connexion NAS"
+    exit 1
 }
-Write-OK "Code synchronise"
+Write-OK "Fichier base64 recu sur NAS (/tmp)"
+
+# Etape 3d : extraction sur NAS (base64 -d | tar xf - en une seule commande)
+Write-Step "  Extraction tar sur NAS..."
+$extractCmd = "export PATH=/usr/local/bin:/usr/bin:/bin:/usr/syno/bin; base64 -d '" + $b64TmpPath + "' | tar xf - -C '" + $NAS_PROJECT + "' --overwrite; TAR_CODE=" + '$?' + "; rm -f '" + $b64TmpPath + "'; exit " + '$TAR_CODE'
+$extractOut = ssh $sshTarget $extractCmd 2>&1
+$extractOut | ForEach-Object { Write-Host ("  [NAS] " + $_) -ForegroundColor Gray }
+if ($LASTEXITCODE -ne 0) {
+    Write-Err ("Extraction tar echouee (code " + $LASTEXITCODE + ")")
+    Write-Warn "  Verifiez : base64 -d et tar disponibles sur NAS"
+    exit 1
+}
+Write-OK "Code synchronise sur NAS (tous fichiers trackes)"
 
 # ---------------------------------------------------------------------------
 # Etape 4 : Copie .env
