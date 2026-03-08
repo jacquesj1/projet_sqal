@@ -338,22 +338,24 @@ Write-Step "  git push nas --all"
 & git push nas --all 2>&1 | ForEach-Object { Write-Host ("  " + $_) -ForegroundColor Gray }
 Pop-Location
 
-# Pull sur NAS - visible + verification fichiers critiques
+# Pull sur NAS - FETCH_HEAD (independant du nom de branche : main / master / dev / ...)
 Write-Step "  git pull sur NAS"
 $sshTarget   = $NAS_USER + "@" + $script:NAS_HOST
-$fullPullCmd = "export PATH=/usr/local/bin:/usr/bin:/bin:/usr/syno/bin; cd " + $NAS_PROJECT + " && git fetch origin 2>&1 && (git reset --hard origin/main || git reset --hard origin/master) 2>&1 && echo pull_ok"
+$fullPullCmd = "export PATH=/usr/local/bin:/usr/bin:/bin:/usr/syno/bin; cd " + $NAS_PROJECT + " && git fetch origin 2>&1 && git reset --hard FETCH_HEAD 2>&1 && echo pull_ok"
 $pullOut     = ssh $sshTarget $fullPullCmd 2>&1
 $pullOut | ForEach-Object { Write-Host ("  [NAS] " + $_) -ForegroundColor Gray }
 if ($pullOut -match "pull_ok") {
-    Write-OK "git pull reussi"
+    Write-OK "git pull reussi (FETCH_HEAD)"
 } else {
-    Write-Warn "git pull incertain - verification et copie directe des fichiers critiques"
+    Write-Warn "git pull incertain - copie directe des fichiers critiques en cours..."
 }
 
-# Verification presence fichiers NAS critiques (fallback copie directe si git pull a echoue)
+# Verification presence fichiers NAS critiques + copie directe SSH si absents
+# Inclut backend-api/Dockerfile.prod (requis par docker build)
 $nasFilesToVerify = @(
-    @{ local = "docker-compose.euralis.nas.yml"; remote = ($NAS_PROJECT + "/docker-compose.euralis.nas.yml") },
-    @{ local = "docker/nginx/nginx.nas.conf";    remote = ($NAS_PROJECT + "/docker/nginx/nginx.nas.conf") }
+    @{ local = "docker-compose.euralis.nas.yml";   remote = ($NAS_PROJECT + "/docker-compose.euralis.nas.yml") },
+    @{ local = "docker/nginx/nginx.nas.conf";       remote = ($NAS_PROJECT + "/docker/nginx/nginx.nas.conf") },
+    @{ local = "backend-api/Dockerfile.prod";       remote = ($NAS_PROJECT + "/backend-api/Dockerfile.prod") }
 )
 foreach ($f in $nasFilesToVerify) {
     $existOut = ssh $sshTarget ("export PATH=/usr/local/bin:/usr/bin:/bin:/usr/syno/bin; test -f '" + $f.remote + "' && echo ok || echo missing") 2>&1
