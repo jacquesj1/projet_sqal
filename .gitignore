@@ -13,6 +13,9 @@
 .env.*.local
 **/.env
 **/.env.local
+# NAS deployment config (contient des mots de passe)
+.env.euralis.nas
+.env.nas
 
 # GitHub Actions local testing
 .github/workflows/.env

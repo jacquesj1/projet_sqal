@@ -1,0 +1,636 @@
+# ==============================================================================
+# Docker Compose NAS — Système Gaveurs V3.0 (Démo LAN Synology D720+)
+# ==============================================================================
+# Usage :
+#   docker compose -f docker-compose.euralis.nas.yml --env-file .env.euralis.nas up -d
+#   docker compose -f docker-compose.euralis.nas.yml --env-file .env.euralis.nas down
+#
+# Ports NAS (accès LAN) :
+#   http://DEEP_NAS:8081  → Gaveurs
+#   http://DEEP_NAS:8082  → Euralis
+#   http://DEEP_NAS:8083  → Traçabilité
+#   http://DEEP_NAS:8084  → SQAL
+#   http://DEEP_NAS:8085  → Control Panel
+#   http://DEEP_NAS:5556  → Flower (monitoring Celery)
+#
+# Profiles optionnels :
+#   --profile monitoring  → Prometheus (9091) + Grafana (3031)
+#   --profile auth        → Keycloak (8090) + sa BDD
+#   --profile init        → simulator-gavage (CSV one-shot, execute puis termine)
+# ==============================================================================
+
+services:
+
+  # ============================================================================
+  # TimescaleDB — port 5436 (évite DSM:5432 et geodemo:5435)
+  # ============================================================================
+  timescaledb:
+    image: timescale/timescaledb:latest-pg15
+    container_name: euralis_timescaledb
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       ${POSTGRES_DB:-gaveurs_db}
+      POSTGRES_USER:     ${POSTGRES_USER:-gaveurs_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-gaveurs_secure_2024}
+      POSTGRES_INITDB_ARGS: "-E UTF8"
+    ports:
+      - "5436:5432"
+    volumes:
+      - euralis_timescaledb_data:/var/lib/postgresql/data
+      - ./backend-api/scripts:/docker-entrypoint-initdb.d:ro
+    networks:
+      - euralis_nas_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-gaveurs_admin} -d ${POSTGRES_DB:-gaveurs_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ============================================================================
+  # Redis — port 6380 (évite geodemo:6379)
+  # Pas de persistance AOF (permissions Synology)
+  # ============================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: euralis_redis
+    restart: unless-stopped
+    ports:
+      - "6380:6379"
+    networks:
+      - euralis_nas_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    command: redis-server --appendonly no --save "" --dir /tmp --maxmemory 256mb --maxmemory-policy allkeys-lru
+
+  # ============================================================================
+  # Backend — FastAPI + Julia (Dockerfile.prod multi-stage, gunicorn 2 workers)
+  # Non exposé sur l'hôte : nginx fait le proxy /api/ et /ws/
+  # ⏱  Premier build ~20-30 min (Julia SymbolicRegression.jl compilation)
+  # ============================================================================
+  backend:
+    build:
+      context: ./backend-api
+      dockerfile: Dockerfile.prod
+    container_name: euralis_backend
+    restart: unless-stopped
+    environment:
+      # Database
+      DATABASE_HOST:     timescaledb
+      DATABASE_PORT:     5432
+      DATABASE_NAME:     ${POSTGRES_DB:-gaveurs_db}
+      DATABASE_USER:     ${POSTGRES_USER:-gaveurs_admin}
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-gaveurs_secure_2024}
+
+      # Redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_URL:  redis://redis:6379
+
+      # Celery
+      CELERY_BROKER_URL:    redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+
+      # Auth (désactivée pour la démo)
+      DISABLE_AUTH:           "true"
+      KEYCLOAK_URL:           http://keycloak:8080
+      KEYCLOAK_REALM:         gaveurs-production
+      KEYCLOAK_CLIENT_ID:     backend-api
+      KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET:-JBrF0CkXH9xPop9n3EGGqiLhZT9GDrK2}
+      VERIFY_TOKEN_ISSUER:    "false"
+
+      # Application
+      APP_ENV:   production
+      LOG_LEVEL: info
+      SECRET_KEY: ${SECRET_KEY:-euralis_nas_secret_2026}
+
+      # PySR — Julia activé (PYSR_USE_NUMPY=false → régression symbolique réelle)
+      PYSR_USE_NUMPY:          "false"
+      PYSR_ABSOLUTE_MIN_ROWS:  "5"
+
+      # CORS — toutes les origines nginx (même hôte → en pratique inutile, mais safe)
+      CORS_ORIGINS: >-
+        http://${NAS_IP:-DEEP_NAS}:8081,
+        http://${NAS_IP:-DEEP_NAS}:8082,
+        http://${NAS_IP:-DEEP_NAS}:8083,
+        http://${NAS_IP:-DEEP_NAS}:8084,
+        http://${NAS_IP:-DEEP_NAS}:8085,
+        http://localhost:8000
+    # Pas de port exposé : nginx proxifie /api/ et /ws/
+    # Override gunicorn : 2 workers (NAS D720+) + logs stdout (évite pb permissions appuser)
+    command:
+      - "gunicorn"
+      - "app.main:app"
+      - "--worker-class"
+      - "uvicorn.workers.UvicornWorker"
+      - "--workers"
+      - "2"
+      - "--bind"
+      - "0.0.0.0:8000"
+      - "--timeout"
+      - "120"
+      - "--keepalive"
+      - "5"
+      - "--access-logfile"
+      - "-"
+      - "--error-logfile"
+      - "-"
+      - "--log-level"
+      - "info"
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - euralis_nas_network
+    volumes:
+      - ./backend-api/app:/app/app:ro
+      - ./backend-api/models:/app/models:ro
+      - ./simulators:/simulators:ro
+      - ./simulator-sqal:/simulator-sqal:ro
+      - /var/run/docker.sock:/var/run/docker.sock:rw
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+
+  # ============================================================================
+  # Migrations Alembic (one-shot)
+  # ============================================================================
+  migrate:
+    build:
+      context: ./backend-api
+      dockerfile: Dockerfile.prod
+    container_name: euralis_migrate
+    restart: "no"
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-gaveurs_admin}:${POSTGRES_PASSWORD:-gaveurs_secure_2024}@timescaledb:5432/${POSTGRES_DB:-gaveurs_db}
+      REDIS_URL:    redis://redis:6379
+      APP_ENV:      production
+      LOG_LEVEL:    info
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+    networks:
+      - euralis_nas_network
+    volumes:
+      - ./backend-api/app:/app/app:ro
+      - ./backend-api/alembic:/app/alembic:ro
+      - ./backend-api/alembic.ini:/app/alembic.ini:ro
+    command: ["alembic", "upgrade", "head"]
+
+  # ============================================================================
+  # Frontend Gaveurs — Next.js 14 (port interne 3000)
+  # API_URL baked au build = http://DEEP_NAS:8081 → passe par nginx
+  # ============================================================================
+  frontend-gaveurs:
+    build:
+      context: ./gaveurs-frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: "http://${NAS_IP:-DEEP_NAS}:8081"
+    container_name: euralis_frontend_gaveurs
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+    # Port 3000 non exposé sur hôte — nginx fait le proxy
+    depends_on:
+      - backend
+    networks:
+      - euralis_nas_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # ============================================================================
+  # Frontend Euralis — Next.js 14 (port interne 3001)
+  # ============================================================================
+  frontend-euralis:
+    build:
+      context: ./euralis-frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: "http://${NAS_IP:-DEEP_NAS}:8082"
+    container_name: euralis_frontend_euralis
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+    depends_on:
+      - backend
+    networks:
+      - euralis_nas_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # ============================================================================
+  # Frontend Traçabilité — Next.js 15 (port interne 3000)
+  # ============================================================================
+  frontend-traceability:
+    build:
+      context: ./frontend-traceability
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: "http://${NAS_IP:-DEEP_NAS}:8083"
+    container_name: euralis_frontend_traceability
+    restart: unless-stopped
+    environment:
+      NODE_ENV:                  production
+      NEXT_PUBLIC_APP_NAME:      "Traçabilité Euralis"
+      NEXT_PUBLIC_APP_VERSION:   "2.1.0"
+    depends_on:
+      - backend
+    networks:
+      - euralis_nas_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # ============================================================================
+  # Frontend SQAL — React + Vite (nginx interne port 80)
+  # ============================================================================
+  frontend-sqal:
+    build:
+      context: ./sqal/frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: "http://${NAS_IP:-DEEP_NAS}:8084"
+        VITE_WS_URL:  "ws://${NAS_IP:-DEEP_NAS}:8084"
+    container_name: euralis_frontend_sqal
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+    depends_on:
+      - backend
+    networks:
+      - euralis_nas_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ============================================================================
+  # Frontend Control Panel — React + Vite (nginx interne port 80)
+  # ============================================================================
+  control-panel:
+    build:
+      context: ./control-panel-v2
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: "http://${NAS_IP:-DEEP_NAS}:8085"
+        VITE_WS_URL:  "ws://${NAS_IP:-DEEP_NAS}:8085"
+    container_name: euralis_control_panel
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+    depends_on:
+      - backend
+    networks:
+      - euralis_nas_network
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ============================================================================
+  # Nginx NAS — Reverse proxy multi-ports (8081–8085)
+  # ============================================================================
+  nginx-nas:
+    image: nginx:alpine
+    container_name: euralis_nginx
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+      - "8082:8082"
+      - "8083:8083"
+      - "8084:8084"
+      - "8085:8085"
+    volumes:
+      - ./docker/nginx/nginx.nas.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - backend
+      - frontend-gaveurs
+      - frontend-euralis
+      - frontend-traceability
+      - frontend-sqal
+      - control-panel
+    networks:
+      - euralis_nas_network
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ============================================================================
+  # Celery Worker — traitement ML asynchrone
+  # ============================================================================
+  celery-worker:
+    build:
+      context: ./backend-api
+      dockerfile: Dockerfile.prod
+    container_name: euralis_celery_worker
+    restart: unless-stopped
+    environment:
+      DATABASE_URL:          postgresql://${POSTGRES_USER:-gaveurs_admin}:${POSTGRES_PASSWORD:-gaveurs_secure_2024}@timescaledb:5432/${POSTGRES_DB:-gaveurs_db}
+      CELERY_BROKER_URL:     redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      APP_ENV:               production
+      LOG_LEVEL:             info
+      PYSR_USE_NUMPY:        "false"
+      PYSR_ABSOLUTE_MIN_ROWS: "5"
+      BACKUP_DIR:            /tmp/backups
+    command: celery -A app.tasks.celery_app worker --loglevel=info --concurrency=2 --queues=ml_heavy,ml_light,exports,notifications,default
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - euralis_nas_network
+    volumes:
+      - ./backend-api/app:/app/app:ro
+
+  # ============================================================================
+  # Celery Beat — planificateur de tâches
+  # ============================================================================
+  celery-beat:
+    build:
+      context: ./backend-api
+      dockerfile: Dockerfile.prod
+    container_name: euralis_celery_beat
+    restart: unless-stopped
+    environment:
+      DATABASE_URL:          postgresql://${POSTGRES_USER:-gaveurs_admin}:${POSTGRES_PASSWORD:-gaveurs_secure_2024}@timescaledb:5432/${POSTGRES_DB:-gaveurs_db}
+      CELERY_BROKER_URL:     redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      APP_ENV:               production
+      LOG_LEVEL:             info
+      PYSR_USE_NUMPY:        "false"
+    command: celery -A app.tasks.celery_app beat --loglevel=info
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - euralis_nas_network
+    volumes:
+      - ./backend-api/app:/app/app:ro
+
+  # ============================================================================
+  # Flower — Interface Celery (toujours actif)
+  # Port 5556 pour éviter conflit avec d'autres services
+  # ============================================================================
+  flower:
+    build:
+      context: ./backend-api
+      dockerfile: Dockerfile.prod
+    container_name: euralis_flower
+    restart: unless-stopped
+    environment:
+      CELERY_BROKER_URL:     redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      FLOWER_PORT:           5555
+      FLOWER_BASIC_AUTH:     ${FLOWER_BASIC_AUTH:-admin:gaveurs_flower_2026}
+    command: celery -A app.tasks.celery_app flower --port=5555
+    ports:
+      - "5556:5555"
+    depends_on:
+      - redis
+      - celery-worker
+    networks:
+      - euralis_nas_network
+
+  # ============================================================================
+  # Simulateurs — toujours actifs (IoT + temps réel)
+  # ============================================================================
+
+  simulator-consumer:
+    build:
+      context: .
+      dockerfile: simulators/Dockerfile.consumer
+    container_name: euralis_simulator_consumer
+    restart: unless-stopped
+    environment:
+      TZ:        Europe/Paris
+      API_URL:   http://backend:8000
+      INTERVAL:  30
+      LOG_LEVEL: info
+    command: python main.py --api-url http://backend:8000 --interval 30
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - euralis_nas_network
+
+  simulator-sqal:
+    build:
+      context: .
+      dockerfile: simulators/Dockerfile.sqal
+    container_name: euralis_simulator_sqal
+    restart: unless-stopped
+    environment:
+      TZ:              Europe/Paris
+      BACKEND_WS_URL:  ws://backend:8000/ws/sensors/
+      DEVICE_ID:       ESP32_NAS_01
+      LOG_LEVEL:       info
+    volumes:
+      - ./simulator-sqal:/app/simulator_original:ro
+      - ./simulators/sqal:/app/sqal:ro
+    command: >
+      python main.py
+      --device ESP32_NAS_01
+      --location "Ligne A - NAS Demo"
+      --backend-url ws://backend:8000/ws/sensors/
+      --interval 30
+      --config-profile foiegras_standard_barquette
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - euralis_nas_network
+
+  simulator-gavage-realtime:
+    build:
+      context: .
+      dockerfile: simulators/Dockerfile.gavage_realtime
+    container_name: euralis_simulator_gavage_realtime
+    restart: unless-stopped
+    environment:
+      TZ:              Europe/Paris
+      BACKEND_WS_URL:  ws://backend:8000/ws/gavage
+      LOG_LEVEL:       info
+      ACCELERATION:    "1440"
+      NB_LOTS:         "3"
+    command: >
+      python main.py
+      --backend-url ws://backend:8000/ws/gavage
+      --nb-lots 3
+      --acceleration 1440
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - euralis_nas_network
+
+  # ============================================================================
+  # Profile "init" — Simulateur Gavage CSV (one-shot, lance une fois)
+  # Usage : --profile init (intégré dans le script nas_deploy_euralis.ps1)
+  # ============================================================================
+  simulator-gavage:
+    build:
+      context: .
+      dockerfile: simulators/Dockerfile.gavage
+    container_name: euralis_simulator_gavage
+    restart: "no"
+    profiles:
+      - init
+    environment:
+      TZ: Europe/Paris
+    volumes:
+      - ./simulators/data:/data
+      - ./Simulator:/app/simulator_original:ro
+    command: >
+      python main.py
+      --nb-lots 100
+      --nb-gaveurs 65
+      --output /data/simulated_gavage_data.csv
+      --start-date 2024-01-01
+    networks:
+      - euralis_nas_network
+
+  # ============================================================================
+  # Profile "monitoring" — Prometheus + Grafana
+  # ============================================================================
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: euralis_prometheus
+    restart: unless-stopped
+    profiles:
+      - monitoring
+    ports:
+      - "9091:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - euralis_prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    networks:
+      - euralis_nas_network
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: euralis_grafana
+    restart: unless-stopped
+    profiles:
+      - monitoring
+    ports:
+      - "3031:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER:     ${GF_SECURITY_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GF_SECURITY_ADMIN_PASSWORD:-gaveurs_admin_2026}
+    volumes:
+      - euralis_grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    depends_on:
+      - prometheus
+    networks:
+      - euralis_nas_network
+
+  # ============================================================================
+  # Profile "auth" — Keycloak (DISABLE_AUTH=true → non nécessaire pour la démo)
+  # ============================================================================
+  keycloak-db:
+    image: postgres:15
+    container_name: euralis_keycloak_db
+    restart: unless-stopped
+    profiles:
+      - auth
+    environment:
+      POSTGRES_DB:       keycloak
+      POSTGRES_USER:     keycloak
+      POSTGRES_PASSWORD: ${KEYCLOAK_DB_PASSWORD:-keycloak_secure_2024}
+    volumes:
+      - euralis_keycloak_db_data:/var/lib/postgresql/data
+    networks:
+      - euralis_nas_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloak"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:23.0
+    container_name: euralis_keycloak
+    restart: unless-stopped
+    profiles:
+      - auth
+    environment:
+      KC_DB:                    postgres
+      KC_DB_URL:                jdbc:postgresql://keycloak-db:5432/keycloak
+      KC_DB_USERNAME:           keycloak
+      KC_DB_PASSWORD:           ${KEYCLOAK_DB_PASSWORD:-keycloak_secure_2024}
+      KEYCLOAK_ADMIN:           admin
+      KEYCLOAK_ADMIN_PASSWORD:  ${KEYCLOAK_ADMIN_PASSWORD:-admin_secure_2024}
+      KC_HOSTNAME:              ${NAS_IP:-DEEP_NAS}
+      KC_HOSTNAME_PORT:         8090
+      KC_HOSTNAME_STRICT:       false
+      KC_HOSTNAME_STRICT_HTTPS: false
+      KC_HTTP_ENABLED:          true
+      KC_HTTP_PORT:             8080
+      KC_HEALTH_ENABLED:        true
+    command:
+      - start-dev
+    ports:
+      - "8090:8080"
+    depends_on:
+      keycloak-db:
+        condition: service_healthy
+    networks:
+      - euralis_nas_network
+
+# ==============================================================================
+# Réseau dédié (coexiste avec geodemo_network geopolitical-topology)
+# ==============================================================================
+networks:
+  euralis_nas_network:
+    driver: bridge
+    name: euralis_nas_network
+
+# ==============================================================================
+# Volumes
+# ==============================================================================
+volumes:
+  euralis_timescaledb_data:
+    name: euralis_timescaledb_data
+  euralis_keycloak_db_data:
+    name: euralis_keycloak_db_data
+  euralis_prometheus_data:
+    name: euralis_prometheus_data
+  euralis_grafana_data:
+    name: euralis_grafana_data
