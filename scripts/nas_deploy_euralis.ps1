@@ -398,10 +398,14 @@ Write-Warn "Julia SymbolicRegression.jl + 5 frontends... patience (~25-35 min pr
 $baseCmd = "cd " + $NAS_PROJECT + " && " + $dc + " -f " + $NAS_COMPOSE + " --env-file " + $NAS_ENV_FILE
 
 if ($Rebuild) {
-    Write-Warn "Mode --no-cache actif"
-    $buildExec = $baseCmd + " build --no-cache 2>&1 | tail -30"
+    Write-Warn "Mode --no-cache actif + purge cache BuildKit (evite corruption apres build avorte)"
+    # Purge BuildKit cache : indispensable apres un build avorte pour eviter
+    # l'erreur "failed to calculate checksum of ref ... not found"
+    Invoke-Ssh "docker builder prune -f 2>&1" -Silent | Out-Null
+    Write-OK "Cache BuildKit purgé"
+    $buildExec = $baseCmd + " build --no-cache 2>&1 | tail -50"
 } else {
-    $buildExec = $baseCmd + " build 2>&1 | tail -30"
+    $buildExec = $baseCmd + " build 2>&1 | tail -50"
 }
 
 Invoke-Ssh $buildExec
