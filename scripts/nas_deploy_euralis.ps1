@@ -395,23 +395,37 @@ Write-OK "Repertoires crees : backend-api/models, simulators/data, logs"
 Write-Step "Etape 6 : Docker build images"
 Write-Warn "Julia SymbolicRegression.jl + 5 frontends... patience (~25-35 min premier build)"
 
+# --- Diagnostic NAS : verifier que backend-api/app/ et requirements.txt existent
+Write-Step "  Verification contexte build NAS"
+$diagBackend = ssh $sshTarget ("export PATH=/usr/local/bin:/usr/bin:/bin:/usr/syno/bin; test -d '" + $NAS_PROJECT + "/backend-api/app' && test -f '" + $NAS_PROJECT + "/backend-api/requirements.txt' && echo ctx_ok || echo ctx_missing") 2>&1
+if ($diagBackend -match "ctx_missing") {
+    Write-Err "backend-api/app/ ou backend-api/requirements.txt absent sur NAS"
+    Write-Warn ("  Diagnostic : ssh " + $NAS_USER + "@" + $script:NAS_HOST + " 'ls " + $NAS_PROJECT + "/backend-api/'")
+    Write-Warn "  Cause probable : git pull incomplet. Relancez le script."
+    exit 1
+}
+Write-OK "Contexte build OK (backend-api/app + requirements.txt presents sur NAS)"
+
 $baseCmd = "cd " + $NAS_PROJECT + " && " + $dc + " -f " + $NAS_COMPOSE + " --env-file " + $NAS_ENV_FILE
 
+# --- Construction de la commande build
+# DOCKER_BUILDKIT=0 : bypass BuildKit (evite l'erreur "checksum of ref UUID not found"
+# qui survient quand le daemon BuildKit du NAS a un etat corrompu apres un build avorte)
+# Le sentinel "BUILD_STATUS:$?" remplace | tail -N qui ecrase le code de retour
 if ($Rebuild) {
-    Write-Warn "Mode --no-cache actif + purge cache BuildKit (evite corruption apres build avorte)"
-    # Purge BuildKit cache : indispensable apres un build avorte pour eviter
-    # l'erreur "failed to calculate checksum of ref ... not found"
-    Invoke-Ssh "docker builder prune -f 2>&1" -Silent | Out-Null
-    Write-OK "Cache BuildKit purgé"
-    $buildExec = $baseCmd + " build --no-cache 2>&1 | tail -50"
+    Write-Warn "Mode --no-cache actif (DOCKER_BUILDKIT=0 - bypass BuildKit corrompu)"
+    $buildExec = "export DOCKER_BUILDKIT=0; " + $baseCmd + " build --no-cache 2>&1; echo 'BUILD_STATUS:'$?"
 } else {
-    $buildExec = $baseCmd + " build 2>&1 | tail -50"
+    $buildExec = "export DOCKER_BUILDKIT=0; " + $baseCmd + " build 2>&1; echo 'BUILD_STATUS:'$?"
 }
 
-Invoke-Ssh $buildExec
-if ($LASTEXITCODE -ne 0) {
-    Write-Err "docker build a echoue"
-    Write-Warn ("Logs : ssh " + $NAS_USER + "@" + $script:NAS_HOST + " 'docker logs euralis_backend'")
+Write-Host "  Sortie (60 dernieres lignes) :" -ForegroundColor DarkGray
+$buildOut = ssh $sshTarget ("export PATH=/usr/local/bin:/usr/bin:/bin:/usr/syno/bin; " + $buildExec) 2>&1
+$buildOut | Select-Object -Last 60 | ForEach-Object { Write-Host ("  [NAS] " + $_) -ForegroundColor Gray }
+
+if ($buildOut -notmatch "BUILD_STATUS:0") {
+    Write-Err "docker build a echoue (voir sortie ci-dessus)"
+    Write-Warn ("  Logs backend : ssh " + $NAS_USER + "@" + $script:NAS_HOST + " 'export PATH=/usr/local/bin:/usr/bin:/bin:/usr/syno/bin; docker logs euralis_backend 2>&1 | tail -30'")
     exit 1
 }
 Write-OK "Images Docker construites"
