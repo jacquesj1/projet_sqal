@@ -657,7 +657,7 @@ export default function AdvancedSurface3DViewer({
       </div>
 
       {/* 3D Canvas */}
-      <div className="relative" style={{ width: "100%", height: `${height}px` }}>
+      <div className="relative" style={{ width: width ? `${width}px` : "100%", height: `${height}px` }}>
         <Canvas>
           <PerspectiveCamera makeDefault position={[8, 7, 8]} fov={50} />
 
