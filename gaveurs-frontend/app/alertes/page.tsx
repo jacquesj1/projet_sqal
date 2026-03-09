@@ -35,14 +35,12 @@ export default function AlertesPage() {
       // Données factices temporaires
       setAlertes([]);
       setDashboard({
-        total_actives: 0,
-        par_niveau: {
-          warning: 0,
-          alert: 0,
-          critical: 0
-        },
-        alertes_recentes: []
-      } as AlerteDashboard);
+        critiques_actives: 0,
+        importantes_actives: 0,
+        info_actives: 0,
+        alertes_24h: 0,
+        sms_envoyes: 0,
+      });
 
       // if (Array.isArray(alertesData)) {
       //   setAlertes(alertesData as Alerte[]);
