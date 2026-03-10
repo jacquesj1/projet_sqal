@@ -11,7 +11,7 @@ interface Lot {
   id: number;
   code_lot: string;
   site_code: string;
-  gaveur_id: number;
+  gaveur_id?: number;
   souche?: string;
   debut_lot: string;
   itm?: number;

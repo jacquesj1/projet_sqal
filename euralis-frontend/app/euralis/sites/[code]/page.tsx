@@ -35,7 +35,7 @@ interface SiteStats {
 interface Lot {
   id: number;
   code_lot: string;
-  gaveur_id: number;
+  gaveur_id?: number;
   debut_lot: string;
   statut: string;
   itm?: number;
