@@ -24,12 +24,12 @@ interface SiteStats {
   site_code: string;
   site_nom: string;
   nb_lots: number;
-  nb_lots_actifs: number;
+  nb_lots_actifs?: number;
   nb_gaveurs: number;
-  itm_moyen: number;
-  mortalite_moyenne: number;
-  production_totale_kg: number;
-  derniere_maj: string;
+  itm_moyen?: number;
+  mortalite_moyenne?: number;
+  production_totale_kg?: number;
+  derniere_maj?: string;
 }
 
 interface Lot {

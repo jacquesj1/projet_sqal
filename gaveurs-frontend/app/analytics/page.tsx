@@ -305,7 +305,7 @@ export default function AnalyticsPage() {
       }
     };
 
-    const explanation = explanations[selectedTab];
+    const explanation = (explanations as Record<string, typeof explanations.heatmap | undefined>)[selectedTab];
     if (!explanation) return null;
 
     return (
