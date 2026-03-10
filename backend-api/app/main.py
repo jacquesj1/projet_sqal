@@ -154,6 +154,11 @@ async def lifespan(app: FastAPI):
             logger.info(f"⏳ Connecting to Redis: {redis_url}")
             cache_manager = CacheManager(redis_url)
             await cache_manager.connect()
+            try:
+                import app.core.cache as cache_module
+                cache_module.cache_manager = cache_manager
+            except Exception:
+                pass
             app.state.cache = cache_manager
             logger.info("  ✅ Redis cache connected")
             try:
@@ -277,6 +282,11 @@ async def lifespan(app: FastAPI):
     if cache_manager:
         try:
             await cache_manager.disconnect()
+            try:
+                import app.core.cache as cache_module
+                cache_module.cache_manager = None
+            except Exception:
+                pass
             logger.info("  🔴 Redis cache disconnected")
         except Exception as e:
             logger.error(f"Error closing cache: {e}")
@@ -320,9 +330,23 @@ app = FastAPI(
 # ============================================
 
 # CORS
+cors_origins_env = (
+    os.getenv("CORS_ALLOW_ORIGINS", "").strip()
+    or os.getenv("CORS_ORIGINS", "").strip()
+)
+if cors_origins_env:
+    cors_origins = [o.strip() for o in cors_origins_env.split(",") if o.strip()]
+else:
+    cors_origins = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3001",
+    ]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -409,7 +433,7 @@ if CORE_MODULES_AVAILABLE:
         Kubernetes Startup Probe
         Indicates if application has started (one-time check)
         """
-        return health_manager.check_startup()
+        return await health_manager.check_startup()
 
     @app.get("/health/live")
     async def health_liveness():
@@ -417,7 +441,7 @@ if CORE_MODULES_AVAILABLE:
         Kubernetes Liveness Probe
         Indicates if application is responsive (should restart if fails)
         """
-        return health_manager.check_liveness()
+        return await health_manager.check_liveness()
 
     @app.get("/health/ready")
     async def health_readiness():
@@ -425,7 +449,7 @@ if CORE_MODULES_AVAILABLE:
         Kubernetes Readiness Probe
         Indicates if application can serve traffic (remove from LB if fails)
         """
-        return health_manager.check_readiness()
+        return await health_manager.check_readiness()
 
 
 @app.get("/metrics")

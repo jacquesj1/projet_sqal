@@ -17,9 +17,10 @@ import {
 import { DEFAULT_GAVEUR_ID } from '@/lib/constants';
 import HeatmapPerformance from '@/components/analytics/HeatmapPerformance';
 import SankeyFluxProduction from '@/components/analytics/SankeyFluxProduction';
+import TerrainKpiDashboard from '@/components/analytics/TerrainKpiDashboard';
 import Breadcrumb from '@/components/Breadcrumb';
 
-type TabId = 'heatmap' | 'sankey';
+type TabId = 'terrain' | 'heatmap' | 'sankey';
 
 interface AnalyticsSettings {
   periode: 7 | 14 | 30 | 0; // 0 = tous
@@ -37,7 +38,7 @@ const DEFAULT_SETTINGS: AnalyticsSettings = {
 
 export default function AnalyticsPage() {
   const searchParams = useSearchParams();
-  const [selectedTab, setSelectedTab] = useState<TabId>('heatmap');
+  const [selectedTab, setSelectedTab] = useState<TabId>('terrain');
   const [filteredLotId, setFilteredLotId] = useState<number | null>(null);
   const [lotName, setLotName] = useState<string>('');
   const [showSettings, setShowSettings] = useState(false);
@@ -85,6 +86,12 @@ export default function AnalyticsPage() {
 
   const tabs = [
     {
+      id: 'terrain' as TabId,
+      label: 'Terrain (KPI)',
+      icon: Activity,
+      description: 'KPI simples + explications (conformité, régularité, saisie)'
+    },
+    {
       id: 'heatmap' as TabId,
       label: 'Performance Heatmap',
       icon: Grid3x3,
@@ -102,6 +109,16 @@ export default function AnalyticsPage() {
     const commonClass = 'mt-6';
 
     switch (selectedTab) {
+      case 'terrain':
+        return (
+          <TerrainKpiDashboard
+            gaveurId={DEFAULT_GAVEUR_ID}
+            filteredLotId={filteredLotId}
+            periode={settings.periode}
+            seuilAlerte={settings.seuilAlerte}
+            className={commonClass}
+          />
+        );
       case 'heatmap':
         return <HeatmapPerformance gaveurId={DEFAULT_GAVEUR_ID} filteredLotId={filteredLotId} className={commonClass} />;
       case 'sankey':

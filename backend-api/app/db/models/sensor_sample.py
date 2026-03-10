@@ -17,6 +17,7 @@ class SensorSample(Base):
     device_id: Mapped[str] = mapped_column(String(100), index=True)
     sample_id: Mapped[str] = mapped_column(String(100), unique=True)
     lot_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    code_lot: Mapped[str | None] = mapped_column(String(20), index=True, nullable=True)
 
     vl53l8ch_distance_matrix: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     vl53l8ch_reflectance_matrix: Mapped[dict | None] = mapped_column(JSONB, nullable=True)

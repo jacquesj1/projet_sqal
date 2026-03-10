@@ -18,6 +18,7 @@ import { Line } from 'react-chartjs-2';
 import { AlertTriangle, Cloud, TrendingUp, History, BarChart3 } from 'lucide-react';
 import LotSelector from '@/components/dashboard/LotSelector';
 import { courbesAPI, type Dashboard3Courbes, type CorrectionIA } from '@/lib/courbes-api';
+import type { Lot } from '@/types/lot';
 
 ChartJS.register(
   CategoryScale,
@@ -42,6 +43,7 @@ export default function HomePage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [selectedLotId, setSelectedLotId] = useState<number | null>(null);
+  const [lot, setLot] = useState<Lot | null>(null);
   const [dashboard, setDashboard] = useState<Dashboard3Courbes | null>(null);
   const [corrections, setCorrections] = useState<CorrectionIA[]>([]);
   const [courbePredictive, setCourbePredictive] = useState<any>(null);
@@ -115,15 +117,25 @@ export default function HomePage() {
     setError(null);
 
     try {
-      const [dashboardData, correctionsData, predictiveData] = await Promise.all([
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
+      const [dashboardData, correctionsData, predictiveData, lotRes] = await Promise.all([
         courbesAPI.getDashboard3Courbes(lotId),
         courbesAPI.getCorrectionsGaveur(1, true).catch(() => []),
-        courbesAPI.getCourbePredictive(lotId).catch(() => null)
+        courbesAPI.getCourbePredictive(lotId).catch(() => null),
+        fetch(`${apiUrl}/api/lots/${lotId}`).catch(() => null),
       ]);
 
       setDashboard(dashboardData);
       setCorrections(correctionsData.filter(c => c.lot_id === lotId));
       setCourbePredictive(predictiveData);
+
+      if (lotRes && (lotRes as any).ok) {
+        const lotData = await (lotRes as Response).json();
+        setLot(lotData);
+      } else {
+        setLot(null);
+      }
     } catch (err) {
       console.error('Erreur chargement dashboard:', err);
       setError(err instanceof Error ? err.message : 'Erreur chargement');
@@ -237,7 +249,7 @@ export default function HomePage() {
       },
       title: {
         display: true,
-        text: `Dashboard 3-Courbes IA - Lot ${selectedLotId || ''}`,
+        text: `Dashboard 3-Courbes IA - Lot ${lot?.code_lot || selectedLotId || ''}`,
         font: { size: 18, weight: 'bold' as const }
       },
       tooltip: {
@@ -290,7 +302,9 @@ export default function HomePage() {
               📈 Dashboard 3-Courbes IA
             </h1>
             <p className="text-gray-600">
-              Suivez vos courbes de gavage en temps réel avec l'intelligence artificielle
+              {selectedLotId
+                ? `Lot ${lot?.code_lot || selectedLotId} • Suivi en temps réel avec l'intelligence artificielle`
+                : "Suivez vos courbes de gavage en temps réel avec l'intelligence artificielle"}
             </p>
           </div>
 
@@ -381,9 +395,13 @@ export default function HomePage() {
 
             <div className="bg-white rounded-lg shadow-md p-4 border-l-4 border-green-500">
               <div className="text-sm text-gray-600 font-medium">Écart moyen</div>
-              <div className={`text-3xl font-bold mt-1 ${Math.abs(dashboard.statistiques.ecart_moyen_pct) > 10 ? 'text-red-600' : 'text-green-600'}`}>
-                {dashboard.statistiques.ecart_moyen_pct > 0 ? '+' : ''}{dashboard.statistiques.ecart_moyen_pct.toFixed(1)}%
-              </div>
+              {typeof dashboard.statistiques.ecart_moyen_pct === 'number' ? (
+                <div className={`text-3xl font-bold mt-1 ${Math.abs(dashboard.statistiques.ecart_moyen_pct) > 10 ? 'text-red-600' : 'text-green-600'}`}>
+                  {dashboard.statistiques.ecart_moyen_pct > 0 ? '+' : ''}{dashboard.statistiques.ecart_moyen_pct.toFixed(1)}%
+                </div>
+              ) : (
+                <div className="text-3xl font-bold mt-1 text-gray-400">N/A</div>
+              )}
               <div className="text-xs text-gray-500 mt-1">
                 vs courbe théorique
               </div>
@@ -391,9 +409,13 @@ export default function HomePage() {
 
             <div className="bg-white rounded-lg shadow-md p-4 border-l-4 border-orange-500">
               <div className="text-sm text-gray-600 font-medium">Écart maximum</div>
-              <div className={`text-3xl font-bold mt-1 ${Math.abs(dashboard.statistiques.ecart_max_pct) > 10 ? 'text-orange-600' : 'text-green-600'}`}>
-                {dashboard.statistiques.ecart_max_pct.toFixed(1)}%
-              </div>
+              {typeof dashboard.statistiques.ecart_max_pct === 'number' ? (
+                <div className={`text-3xl font-bold mt-1 ${Math.abs(dashboard.statistiques.ecart_max_pct) > 10 ? 'text-orange-600' : 'text-green-600'}`}>
+                  {dashboard.statistiques.ecart_max_pct.toFixed(1)}%
+                </div>
+              ) : (
+                <div className="text-3xl font-bold mt-1 text-gray-400">N/A</div>
+              )}
               <div className="text-xs text-gray-500 mt-1">
                 Pire écart détecté
               </div>

@@ -15,11 +15,13 @@ export default function EuralisLayout({
   const [userInfo, setUserInfo] = useState<any>(null);
 
   const navigation = [
+    { name: 'Pilotage', href: '/euralis/pilotage' },
     { name: 'Dashboard', href: '/euralis/dashboard' },
     { name: '🧠 Analytics', href: '/euralis/analytics' },
     { name: 'Sites', href: '/euralis/sites' },
     { name: 'Gaveurs', href: '/euralis/gaveurs' },
-    { name: '📈 Courbes PySR', href: '/euralis/courbes' },
+    { name: '📈 Courbes PySR (références)', href: '/euralis/courbes-optimales' },
+    { name: '🧪 Courbes PySR · Admin', href: '/euralis/courbes-optimales/pysr' },
     { name: 'Prévisions', href: '/euralis/previsions' },
     { name: 'Alertes', href: '/euralis/alertes' },
     { name: 'Qualité', href: '/euralis/qualite' },

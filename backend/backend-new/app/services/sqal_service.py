@@ -134,24 +134,65 @@ class SQALService:
         """
         try:
             async with self.pool.acquire() as conn:
+                cols_rows = await conn.fetch(
+                    """
+                    SELECT column_name
+                    FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                      AND table_name = 'sqal_alerts'
+                    """
+                )
+                cols = {str(r["column_name"]) for r in cols_rows}
+
                 data_context_json = json.dumps(alert.data_context) if alert.data_context else None
 
-                alert_id = await conn.fetchval(
-                    """
-                    INSERT INTO sqal_alerts (
-                        time, device_id, sample_id, alert_type, severity, message, data_context
+                # Older schema (some envs): data_context exists.
+                if "data_context" in cols:
+                    alert_id = await conn.fetchval(
+                        """
+                        INSERT INTO sqal_alerts (
+                            time, device_id, sample_id, alert_type, severity, message, data_context
+                        )
+                        VALUES ($1, $2, $3, $4, $5, $6, $7)
+                        RETURNING alert_id
+                        """,
+                        datetime.utcnow(),
+                        alert.device_id,
+                        alert.sample_id,
+                        alert.alert_type,
+                        str(alert.severity),
+                        alert.message,
+                        data_context_json,
                     )
-                    VALUES ($1, $2, $3, $4, $5, $6, $7)
-                    RETURNING alert_id
-                    """,
-                    datetime.utcnow(),
-                    alert.device_id,
-                    alert.sample_id,
-                    alert.alert_type,
-                    alert.severity,
-                    alert.message,
-                    data_context_json
-                )
+                else:
+                    # Current schema (sqal_timescaledb_schema.sql): defect_details JSONB + title required.
+                    defect_details_json = data_context_json
+                    title = str(alert.alert_type).strip() or "sqal_alert"
+
+                    alert_id = await conn.fetchval(
+                        """
+                        INSERT INTO sqal_alerts (
+                            time,
+                            device_id,
+                            sample_id,
+                            alert_type,
+                            severity,
+                            title,
+                            message,
+                            defect_details
+                        )
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
+                        RETURNING alert_id
+                        """,
+                        datetime.utcnow(),
+                        alert.device_id,
+                        alert.sample_id,
+                        alert.alert_type,
+                        str(alert.severity),
+                        title,
+                        alert.message,
+                        defect_details_json,
+                    )
 
                 logger.info(f"🚨 Alerte créée: {alert_id} - {alert.alert_type}")
                 return alert_id
@@ -412,6 +453,17 @@ class SQALService:
                 start_time = end_time - timedelta(days=1)
 
             async with self.pool.acquire() as conn:
+                cols_rows = await conn.fetch(
+                    """
+                    SELECT column_name
+                    FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                      AND table_name = 'sqal_alerts'
+                    """
+                )
+                cols = {str(r["column_name"]) for r in cols_rows}
+                ack_col = "is_acknowledged" if "is_acknowledged" in cols else "acknowledged" if "acknowledged" in cols else None
+
                 query = "SELECT * FROM sqal_alerts WHERE time BETWEEN $1 AND $2"
                 params = [start_time, end_time]
                 param_idx = 3
@@ -421,8 +473,8 @@ class SQALService:
                     params.append(severity)
                     param_idx += 1
 
-                if is_acknowledged is not None:
-                    query += f" AND is_acknowledged = ${param_idx}"
+                if is_acknowledged is not None and ack_col:
+                    query += f" AND {ack_col} = ${param_idx}"
                     params.append(is_acknowledged)
                     param_idx += 1
 

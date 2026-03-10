@@ -278,15 +278,15 @@ class FoieGrasFusionSimulator:
             foie_gras_metrics['estimated_volume_cm3'] = self.tof_dimensional_analyzer.estimate_volume(distances)
 
             # NOUVEAU: Calcul du poids du foie à partir du volume ToF
-            # Utilise le volume trapézoïdal calculé par l'analyseur
-            if 'stats' in tof_analysis and 'volume_trapezoidal_mm3' in tof_analysis['stats']:
-                volume_mm3 = tof_analysis['stats']['volume_trapezoidal_mm3']
+            # Utilise le volume Simpson calculé par l'analyseur
+            if 'stats' in tof_analysis and 'volume_simpson_mm3' in tof_analysis['stats']:
+                volume_mm3 = tof_analysis['stats']['volume_simpson_mm3']
                 estimated_weight_g = self._calculate_liver_weight_from_volume(volume_mm3)
                 foie_gras_metrics['estimated_weight_g'] = estimated_weight_g
                 logger.debug(f"Calculated liver weight: {estimated_weight_g}g from volume {volume_mm3}mm³")
             else:
                 foie_gras_metrics['estimated_weight_g'] = None
-                logger.warning("Volume trapézoïdal not available, cannot calculate weight")
+                logger.warning("Volume Simpson not available, cannot calculate weight")
 
             # Niveau de remplissage (si produit fini)
             fill_analysis = self.tof_dimensional_analyzer.analyze_fill_level(distances)

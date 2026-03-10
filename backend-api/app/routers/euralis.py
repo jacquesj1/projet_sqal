@@ -10,13 +10,19 @@ Date        : 2024-12-14
 ================================================================================
 """
 
-from fastapi import APIRouter, HTTPException, Query, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from typing import List, Optional, Dict, Any
 from datetime import datetime, date
 from pydantic import BaseModel
 import asyncpg
 import os
 import logging
+import json
+import math
+
+from celery.result import AsyncResult
+
+from app.tasks.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +34,26 @@ DATABASE_URL = os.getenv(
 
 # Router
 router = APIRouter(prefix="/api/euralis", tags=["euralis"])
+
+
+# ============================================================================
+# DÉPENDANCES
+# ============================================================================
+
+async def get_db_connection():
+    """Obtenir une connexion à la base de données"""
+    # Disable SSL for Docker internal connections
+    conn = await asyncpg.connect(DATABASE_URL, ssl=False)
+    try:
+        yield conn
+    finally:
+        await conn.close()
+
+
+def _capacity_end_exclusive(start: date, duree_jours: int, buffer_jours: int) -> date:
+    from datetime import timedelta
+
+    return start + timedelta(days=int(duree_jours + buffer_jours))
 
 
 class FoieObjectivePolicy(BaseModel):
@@ -45,6 +71,120 @@ class FoieObjectivePolicy(BaseModel):
     valid_to: Optional[datetime] = None
     created_at: datetime
     created_by: Optional[str] = None
+
+
+class PySRReferenceCurvePublishRequest(BaseModel):
+    site_code: str
+    genetique: str
+    cluster_id: int
+    task_id: str
+    created_by: Optional[str] = None
+    reference_curve: Optional[List[Dict[str, Any]]] = None
+
+
+class PySRReferenceCurveAssignRequest(BaseModel):
+    gaveur_ids: List[int]
+    nb_canards: int = 800
+    souche: str = "Mulard"
+    assigned_by: Optional[str] = None
+
+
+class PySRTrainingHistoryRow(BaseModel):
+    id: int
+    task_id: Optional[str] = None
+    site_code: Optional[str] = None
+    genetique: Optional[str] = None
+    cluster_id: Optional[int] = None
+    statut: str
+    best_equation: Optional[str] = None
+    r2_score: Optional[float] = None
+    mae: Optional[float] = None
+    complexity: Optional[int] = None
+    candidate_curve_json: Optional[Any] = None
+    candidate_metrics_json: Optional[Any] = None
+    error_message: Optional[str] = None
+    started_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+
+
+class PlanningAbattageRow(BaseModel):
+    id: int
+    code_lot: str
+    site_code: str
+    date_abattage_prevue: str
+    abattoir: str
+    creneau_horaire: str
+    nb_canards_prevu: int
+    capacite_abattoir_jour: int
+    taux_utilisation_pct: float
+    distance_km: float
+    cout_transport: float
+    priorite: int
+    statut: str
+
+
+class PySRTrainingPreviewResponse(BaseModel):
+    task_id: str
+    segment: Dict[str, Any]
+    pysr: Dict[str, Any]
+    courbe: Dict[str, Any]
+
+
+@router.get("/ml/pysr/genetiques", response_model=List[str])
+async def list_pysr_available_genetiques(
+    site_code: Optional[str] = Query(None, description="Code site"),
+    cluster_id: Optional[int] = Query(None, ge=0, description="Cluster lot_pred (dernier run)"),
+    conn=Depends(get_db_connection),
+):
+    """Liste les génétiques réellement disponibles en base pour lancer un training PySR.
+
+    Critères:
+    - lots_gavage.itm non NULL
+    - au moins 1 ligne dans gavage_data_lots pour le lot
+    - filtres optionnels: site_code, cluster_id (basé sur le dernier run lot_pred)
+    """
+
+    resolved_site = str(site_code).strip().upper() if site_code else None
+
+    params: list[object] = []
+    where: list[str] = [
+        "lg.itm IS NOT NULL",
+        "EXISTS (SELECT 1 FROM gavage_data_lots gdl WHERE gdl.lot_gavage_id = lg.id)",
+        "COALESCE(lg.genetique, lg.souche) IS NOT NULL",
+        "TRIM(COALESCE(lg.genetique, lg.souche)) <> ''",
+    ]
+
+    if resolved_site:
+        params.append(resolved_site)
+        where.append(f"lg.site_code = ${len(params)}")
+
+    cluster_join = ""
+    if cluster_id is not None:
+        params.append(int(cluster_id))
+        cluster_join = """
+        JOIN (
+            SELECT id
+            FROM lot_clustering_runs
+            WHERE clustering_type = 'lot_pred'
+            ORDER BY created_at DESC
+            LIMIT 1
+        ) lcr ON TRUE
+        JOIN lot_clustering_assignments lca
+          ON lca.run_id = lcr.id AND lca.lot_id = lg.id
+        """
+        where.append(f"lca.cluster_id = ${len(params)}")
+
+    query = f"""
+    SELECT DISTINCT LOWER(COALESCE(lg.genetique, lg.souche)) AS genetique
+    FROM lots_gavage lg
+    {cluster_join}
+    WHERE {' AND '.join(where)}
+    ORDER BY genetique
+    """
+
+    rows = await conn.fetch(query, *params)
+    return [str(r["genetique"]) for r in rows if r.get("genetique")]
 
 
 class TransitionPolicy(BaseModel):
@@ -138,6 +278,34 @@ async def _ensure_transition_policy_tables(conn: asyncpg.Connection) -> None:
     )
 
 
+async def _ensure_pysr_reference_curve_tables(conn: asyncpg.Connection) -> None:
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS pysr_reference_curves_segments (
+            id SERIAL PRIMARY KEY,
+            site_code VARCHAR(2) NOT NULL,
+            genetique TEXT NOT NULL,
+            cluster_id INTEGER NOT NULL,
+            version INTEGER NOT NULL DEFAULT 1,
+            task_id TEXT,
+            pysr_formula TEXT,
+            pysr_r2_score DOUBLE PRECISION,
+            pysr_complexity INTEGER,
+            reference_curve_json JSONB NOT NULL,
+            params JSONB,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            created_by TEXT
+        );
+        """
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_pysr_ref_seg ON pysr_reference_curves_segments(site_code, genetique, cluster_id, created_at DESC);"
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_pysr_ref_task ON pysr_reference_curves_segments(task_id);"
+    )
+
+
 # ============================================================================
 # MODÈLES PYDANTIC
 # ============================================================================
@@ -198,11 +366,45 @@ class Lot(BaseModel):
     gaveur_id: Optional[int]
     souche: Optional[str]
     debut_lot: date
+    duree_gavage_prevue: Optional[int] = None
+    buffer_jours: Optional[int] = None
+    fin_capacite_prevue: Optional[date] = None
     itm: Optional[float]
     sigma: Optional[float]
     duree_gavage_reelle: Optional[int]
     pctg_perte_gavage: Optional[float]
     statut: str
+    courbe_pysr_snapshot_json: Optional[Any] = None
+    pysr_formula: Optional[str] = None
+    pysr_r2_score: Optional[float] = None
+
+
+class LotPlanCreateRequest(BaseModel):
+    code_lot: str
+    site_code: str
+    gaveur_id: int
+    debut_lot: date
+    duree_gavage_prevue: int
+    buffer_jours: int = 0
+    nb_canards_initial: int = 800
+    souche: Optional[str] = None
+    genetique: Optional[str] = None
+
+
+class LotAssignCurveSnapshotRequest(BaseModel):
+    courbe_pysr_snapshot_json: Any
+    pysr_formula: Optional[str] = None
+    pysr_r2_score: Optional[float] = None
+    assigned_by: Optional[str] = None
+
+
+class GaveurCapacityRow(BaseModel):
+    gaveur_id: int
+    nom: Optional[str] = None
+    prenom: Optional[str] = None
+    site_code: Optional[str] = None
+    active_lots_count: int
+    can_plan_new_lot: bool
 
 
 class DashboardKPIs(BaseModel):
@@ -258,37 +460,1093 @@ class GaveurAnalytics(BaseModel):
     nb_lots_total: int
     itm_moyen: float
     sigma_moyen: float
-    mortalite_moyenne: float
-    production_totale_kg: float
-
-    # Clustering
-    cluster_id: Optional[int]
-    cluster_label: Optional[str]
-
-    # Comparaisons
-    itm_site_moyen: Optional[float]
-    itm_euralis_moyen: Optional[float]
-    rang_site: Optional[int]
-    total_gaveurs_site: Optional[int]
-    rang_euralis: Optional[int]
-    total_gaveurs_euralis: Optional[int]
-
-    # Evolution (7 derniers jours)
-    evolution_itm_7j: Optional[List[dict]]
 
 
 # ============================================================================
-# DÉPENDANCES
+# PYSR - COURBES DE RÉFÉRENCE SEGMENTÉES (site_code + genetique + cluster)
 # ============================================================================
 
-async def get_db_connection():
-    """Obtenir une connexion à la base de données"""
-    # Disable SSL for Docker internal connections
-    conn = await asyncpg.connect(DATABASE_URL, ssl=False)
+
+async def _ensure_lots_gavage_planning_columns(conn: asyncpg.Connection) -> None:
+    await conn.execute(
+        """
+        ALTER TABLE lots_gavage
+        ADD COLUMN IF NOT EXISTS duree_gavage_prevue INTEGER;
+        """
+    )
+    await conn.execute(
+        """
+        ALTER TABLE lots_gavage
+        ADD COLUMN IF NOT EXISTS buffer_jours INTEGER;
+        """
+    )
+    await conn.execute(
+        """
+        ALTER TABLE lots_gavage
+        ADD COLUMN IF NOT EXISTS courbe_pysr_snapshot_json JSONB;
+        """
+    )
+    await conn.execute(
+        """
+        ALTER TABLE lots_gavage
+        ADD COLUMN IF NOT EXISTS pysr_formula TEXT;
+        """
+    )
+    await conn.execute(
+        """
+        ALTER TABLE lots_gavage
+        ADD COLUMN IF NOT EXISTS pysr_r2_score DOUBLE PRECISION;
+        """
+    )
+    await conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_lots_gavage_gaveur_debut
+        ON lots_gavage(gaveur_id, debut_lot);
+        """
+    )
+
+
+async def _column_exists(conn, table_name: str, column_name: str, schema: str = "public") -> bool:
+    row = await conn.fetchrow(
+        """
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = $1
+          AND table_name = $2
+          AND column_name = $3
+        """,
+        schema,
+        table_name,
+        column_name,
+    )
+    return row is not None
+
+
+async def _table_exists(conn, table_name: str, schema: str = "public") -> bool:
+    row = await conn.fetchrow(
+        """
+        SELECT 1
+        FROM information_schema.tables
+        WHERE table_schema = $1
+          AND table_name = $2
+        """,
+        schema,
+        table_name,
+    )
+    return row is not None
+
+
+@router.get("/planning/gaveurs-capacite", response_model=List[GaveurCapacityRow])
+async def get_gaveurs_capacite(
+    start_date: date = Query(..., description="Date de début gavage"),
+    duree_jours: int = Query(..., ge=11, le=14, description="Durée gavage (11-14)"),
+    buffer_jours: int = Query(0, ge=0, le=1, description="Buffer (0-1)"),
+    site_code: Optional[str] = Query(None, description="Filtre site"),
+    conn=Depends(get_db_connection),
+):
+    """Retourne la capacité (nombre de lots simultanés sur la fenêtre gavage+buffer) par gaveur.
+
+    La fenêtre utilisée est: [start_date, start_date + duree_jours + buffer_jours)
+    Règle: un gaveur peut avoir au plus 3 lots en parallèle sur cette fenêtre.
+    """
+
+    await _ensure_lots_gavage_planning_columns(conn)
+
+    resolved_site = str(site_code).strip().upper() if site_code else None
+    end2_excl = _capacity_end_exclusive(start_date, int(duree_jours), int(buffer_jours))
+
+    params: List[Any] = [start_date, end2_excl]
+    where_gaveurs: List[str] = ["1=1"]
+    if resolved_site:
+        params.append(resolved_site)
+        where_gaveurs.append(f"g.site_code = ${len(params)}")
+
+    where_gaveurs_sql = " AND ".join(where_gaveurs)
+
+    query = f"""
+    WITH lots_overlap AS (
+        SELECT
+            lg.gaveur_id,
+            COUNT(*)::int AS active_lots_count
+        FROM lots_gavage lg
+        WHERE lg.gaveur_id IS NOT NULL
+          AND COALESCE(LOWER(lg.statut), 'en_cours') IN ('planifie', 'en_cours', 'en_gavage', 'en_preparation')
+          AND lg.debut_lot < $2::date
+          AND (
+                lg.debut_lot
+                + (
+                    COALESCE(lg.duree_gavage_prevue, lg.duree_gavage_reelle, 14)
+                    + COALESCE(lg.buffer_jours, 0)
+                  ) * INTERVAL '1 day'
+              ) > $1::date
+        GROUP BY lg.gaveur_id
+    )
+    SELECT
+        g.id AS gaveur_id,
+        g.nom,
+        g.prenom,
+        g.site_code,
+        COALESCE(lo.active_lots_count, 0) AS active_lots_count,
+        (COALESCE(lo.active_lots_count, 0) < 3) AS can_plan_new_lot
+    FROM gaveurs_euralis g
+    LEFT JOIN lots_overlap lo ON lo.gaveur_id = g.id
+    WHERE {where_gaveurs_sql}
+    ORDER BY g.site_code NULLS LAST, g.nom NULLS LAST, g.prenom NULLS LAST
+    """
+
+    rows = await conn.fetch(query, *params)
+    return [GaveurCapacityRow(**dict(r)) for r in rows]
+
+
+@router.get("/abattages/planning", response_model=List[PlanningAbattageRow])
+async def get_planning_abattages(
+    site_code: Optional[str] = Query(None, description="Filtre site (LL/LS/MT)"),
+    date_debut: Optional[date] = Query(None, description="Date de début (inclus)"),
+    date_fin: Optional[date] = Query(None, description="Date de fin (inclus)"),
+    limit: int = Query(200, ge=1, le=500),
+    conn=Depends(get_db_connection),
+):
+    """Planning abattages (V1).
+
+    Tant que l'optimisation (Hongrois / contraintes abattoirs) n'est pas branchée,
+    cet endpoint fournit un planning simple et déterministe dérivé des lots.
+
+    Champs renvoyés alignés avec le frontend `PlanningAbattage`.
+    """
+
+    await _ensure_lots_gavage_planning_columns(conn)
+
+    resolved_site = str(site_code).strip().upper() if site_code else None
+
+    # Source nb_canards_prevu (ordre de priorité):
+    # 1) SQAL: nombre de canards suspendus = nombre d'échantillons capteurs (sensor_samples)
+    # 2) lots_gavage.<col> si présente/remplie (différents schémas possibles)
+    # 3) estimation: nb_initial - nb_meg (morts) si les 2 existent
+    # 4) sinon dernière valeur connue en timeseries: gavage_data_lots.nb_canards_vivants
+
+    # SQAL (suspendus): on compte les échantillons associés au lot
+    # - certains schémas relient via lot_id
+    # - d'autres via code_lot
+    has_sensor_samples = await _table_exists(conn, "sensor_samples")
+    has_ss_lot_id = has_sensor_samples and await _column_exists(conn, "sensor_samples", "lot_id")
+    has_ss_code_lot = has_sensor_samples and await _column_exists(conn, "sensor_samples", "code_lot")
+
+    join_sqal_sql = ""
+    sqal_suspendus_expr = "NULL"
+    if has_sensor_samples and (has_ss_lot_id or has_ss_code_lot):
+        if has_ss_lot_id and has_ss_code_lot:
+            where_sql = "ss.lot_id = lg.id OR ss.code_lot = lg.code_lot"
+        elif has_ss_lot_id:
+            where_sql = "ss.lot_id = lg.id"
+        else:
+            where_sql = "ss.code_lot = lg.code_lot"
+
+        join_sqal_sql = f"""
+        LEFT JOIN LATERAL (
+            SELECT COUNT(*)::int AS nb_suspendus
+            FROM sensor_samples ss
+            WHERE {where_sql}
+        ) sqal_susp ON TRUE
+        """
+        sqal_suspendus_expr = "NULLIF(sqal_susp.nb_suspendus, 0)"
+
+    lot_canards_exprs: List[str] = []
+    for col in [
+        "nb_canards_initial",
+        "nb_canards_meg",
+        "nb_meg",
+        "nombre_canards",
+        "nombre_canards_initial",
+    ]:
+        if await _column_exists(conn, "lots_gavage", col):
+            lot_canards_exprs.append(f"lg.{col}")
+
+    lg_canards_expr = ", ".join(lot_canards_exprs) if lot_canards_exprs else "NULL"
+
+    # MEG (morts en gavage): colonne variable selon schéma
+    meg_exprs: List[str] = []
+    for col in [
+        "nb_canards_meg",
+        "nb_meg",
+        "nb_morts",
+        "nb_canards_morts",
+    ]:
+        if await _column_exists(conn, "lots_gavage", col):
+            meg_exprs.append(f"lg.{col}")
+
+    lg_meg_expr = ", ".join(meg_exprs) if meg_exprs else "NULL"
+
+    # Estimation alternative: initial - meg (si les 2 sont dispos)
+    # On ne l'utilise que si les 2 expressions sont non-null.
+    est_init_minus_meg_expr = f"(NULLIF({lg_canards_expr}, 0) - COALESCE({lg_meg_expr}, 0))"
+    has_gdl = await _table_exists(conn, "gavage_data_lots") and await _column_exists(conn, "gavage_data_lots", "nb_canards_vivants")
+
+    join_gdl_sql = ""
+    gdl_canards_expr = "NULL"
+    if has_gdl:
+        join_gdl_sql = """
+        LEFT JOIN LATERAL (
+            SELECT gdl.nb_canards_vivants
+            FROM gavage_data_lots gdl
+            WHERE gdl.lot_gavage_id = lg.id
+            ORDER BY gdl.time DESC
+            LIMIT 1
+        ) gdl_last ON TRUE
+        """
+        gdl_canards_expr = "gdl_last.nb_canards_vivants"
+
+    nb_canards_expr = f"COALESCE({sqal_suspendus_expr}, NULLIF({lg_canards_expr}, 0), {est_init_minus_meg_expr}, {gdl_canards_expr}, 0)"
+
+    query = f"""
+        SELECT
+            lg.id AS id,
+            lg.code_lot,
+            lg.site_code,
+            lg.debut_lot,
+            COALESCE(lg.duree_gavage_prevue, lg.duree_gavage_reelle, 14) AS duree_jours,
+            COALESCE(lg.buffer_jours, 0) AS buffer_jours,
+            (
+                lg.debut_lot
+                + (
+                    (COALESCE(lg.duree_gavage_prevue, lg.duree_gavage_reelle, 14) + COALESCE(lg.buffer_jours, 0))
+                    * INTERVAL '1 day'
+                )
+            )::date AS date_abattage_prevue,
+            {nb_canards_expr} AS nb_canards,
+            LOWER(COALESCE(lg.statut, '')) AS statut
+        FROM lots_gavage lg
+        {join_sqal_sql}
+        {join_gdl_sql}
+        WHERE lg.code_lot IS NOT NULL
+    """
+
+    params: List[Any] = []
+    where_parts: List[str] = []
+
+    if resolved_site:
+        params.append(resolved_site)
+        where_parts.append(f"site_code = ${len(params)}")
+
+    if date_debut:
+        params.append(date_debut)
+        where_parts.append(f"(debut_lot + ((COALESCE(duree_gavage_prevue, duree_gavage_reelle, 14) + COALESCE(buffer_jours, 0)) * INTERVAL '1 day'))::date >= ${len(params)}")
+
+    if date_fin:
+        params.append(date_fin)
+        where_parts.append(f"(debut_lot + ((COALESCE(duree_gavage_prevue, duree_gavage_reelle, 14) + COALESCE(buffer_jours, 0)) * INTERVAL '1 day'))::date <= ${len(params)}")
+
+    if where_parts:
+        query += " AND " + " AND ".join(where_parts)
+
+    query += " ORDER BY date_abattage_prevue ASC NULLS LAST, debut_lot ASC NULLS LAST LIMIT $" + str(len(params) + 1)
+    params.append(int(limit))
+
+    rows = await conn.fetch(query, *params)
+
+    # Mapping simple abattoirs / distances (placeholder V1)
+    abattoir_by_site = {
+        "LL": ("ABATTOIR OUEST", 45.0),
+        "LS": ("ABATTOIR SUD", 65.0),
+        "MT": ("ABATTOIR NORD", 35.0),
+    }
+
+    out: List[PlanningAbattageRow] = []
+    for r in rows:
+        rd = dict(r)
+
+        abattage_date: Optional[date] = rd.get("date_abattage_prevue") or date.today()
+
+        site = str(rd.get("site_code") or "").strip().upper() or "LL"
+        abattoir, distance_km = abattoir_by_site.get(site, ("ABATTOIR OUEST", 50.0))
+
+        # Créneau horaire simple (alternance)
+        creneau = "08h-12h" if int(rd.get("id") or 0) % 2 == 0 else "14h-18h"
+
+        nb_canards = int(rd.get("nb_canards") or 0)
+        capacite_jour = 2000
+        taux_util = 0.0
+        if capacite_jour > 0:
+            taux_util = min(100.0, (nb_canards / capacite_jour) * 100.0)
+
+        # Coût transport (placeholder): base + km
+        cout = float(120.0 + distance_km * 2.5)
+
+        statut_raw = str(rd.get("statut") or "").strip().lower()
+        if statut_raw in {"abattu", "termine"}:
+            statut_ab = "realise"
+        elif statut_raw in {"planifie", "en_preparation"}:
+            statut_ab = "planifie"
+        else:
+            statut_ab = "confirme"
+
+        # Priorité simple: plus proche = plus prioritaire
+        days_to = (abattage_date - date.today()).days if abattage_date else 999
+        if days_to <= 1:
+            priorite = 5
+        elif days_to <= 3:
+            priorite = 4
+        elif days_to <= 7:
+            priorite = 3
+        elif days_to <= 14:
+            priorite = 2
+        else:
+            priorite = 1
+
+        out.append(
+            PlanningAbattageRow(
+                id=int(rd.get("id")),
+                code_lot=str(rd.get("code_lot")),
+                site_code=site,
+                date_abattage_prevue=abattage_date.isoformat() if abattage_date else date.today().isoformat(),
+                abattoir=abattoir,
+                creneau_horaire=creneau,
+                nb_canards_prevu=nb_canards,
+                capacite_abattoir_jour=int(capacite_jour),
+                taux_utilisation_pct=float(round(taux_util, 2)),
+                distance_km=float(round(distance_km, 2)),
+                cout_transport=float(round(cout, 2)),
+                priorite=int(priorite),
+                statut=str(statut_ab),
+            )
+        )
+    return out
+
+
+@router.post("/lots/planifier", response_model=Dict[str, Any])
+async def planifier_lot(
+    payload: LotPlanCreateRequest,
+    conn=Depends(get_db_connection),
+):
+    """Crée un lot planifié côté Euralis (planning superviseur).
+
+    Remarque: la courbe PySR snapshot est assignée via un endpoint séparé.
+    """
+
+    await _ensure_lots_gavage_planning_columns(conn)
+
+    site = str(payload.site_code).strip().upper()
+    if payload.duree_gavage_prevue < 11 or payload.duree_gavage_prevue > 14:
+        raise HTTPException(status_code=400, detail="duree_gavage_prevue must be between 11 and 14")
+    if payload.buffer_jours < 0 or payload.buffer_jours > 1:
+        raise HTTPException(status_code=400, detail="buffer_jours must be 0 or 1")
+
+    # Check capacity for that gaveur on that window
+    cap_rows = await get_gaveurs_capacite(
+        start_date=payload.debut_lot,
+        duree_jours=payload.duree_gavage_prevue,
+        buffer_jours=payload.buffer_jours,
+        site_code=site,
+        conn=conn,
+    )
+    cap = next((r for r in cap_rows if r.gaveur_id == payload.gaveur_id), None)
+    if not cap:
+        raise HTTPException(status_code=404, detail=f"Gaveur {payload.gaveur_id} introuvable")
+    if not cap.can_plan_new_lot:
+        raise HTTPException(status_code=409, detail=f"Gaveur {payload.gaveur_id} a déjà 3 lots sur la période")
+
+    fin_capacite_prevue = _capacity_end_exclusive(
+        payload.debut_lot, int(payload.duree_gavage_prevue), int(payload.buffer_jours)
+    )
+
     try:
-        yield conn
-    finally:
-        await conn.close()
+        row = await conn.fetchrow(
+            """
+            INSERT INTO lots_gavage (
+                code_lot,
+                site_code,
+                gaveur_id,
+                souche,
+                genetique,
+                debut_lot,
+                nb_canards_initial,
+                duree_gavage_prevue,
+                buffer_jours,
+                statut,
+                created_at,
+                updated_at
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'planifie',NOW(),NOW())
+            RETURNING id, code_lot, site_code, gaveur_id, debut_lot, duree_gavage_prevue, buffer_jours, statut
+            """,
+            str(payload.code_lot),
+            site,
+            int(payload.gaveur_id),
+            payload.souche,
+            payload.genetique,
+            payload.debut_lot,
+            int(payload.nb_canards_initial),
+            int(payload.duree_gavage_prevue),
+            int(payload.buffer_jours),
+        )
+    except asyncpg.UniqueViolationError:
+        raise HTTPException(status_code=409, detail=f"Le code lot {payload.code_lot} existe déjà")
+
+    result = dict(row)
+    result["fin_capacite_prevue"] = fin_capacite_prevue.isoformat()
+    return result
+
+
+@router.post("/lots/{lot_id}/assign-curve-snapshot", response_model=Dict[str, Any])
+async def assign_curve_snapshot_to_lot(
+    lot_id: int,
+    payload: LotAssignCurveSnapshotRequest,
+    conn=Depends(get_db_connection),
+):
+    """Assigne un snapshot JSON de courbe PySR au lot.
+
+    Le snapshot est figé. Refus si le lot a déjà démarré.
+    """
+
+    await _ensure_lots_gavage_planning_columns(conn)
+
+    lot = await conn.fetchrow(
+        """
+        SELECT id, code_lot, debut_lot, statut
+        FROM lots_gavage
+        WHERE id = $1
+        """,
+        int(lot_id),
+    )
+    if not lot:
+        raise HTTPException(status_code=404, detail=f"Lot {lot_id} introuvable")
+
+    lot_statut = str(lot.get("statut") or "").strip().lower()
+    today = date.today()
+    debut_lot = lot.get("debut_lot")
+    lot_started_by_status = lot_statut in {"en_cours", "en_gavage"}
+    lot_started_by_date = bool(debut_lot and today > debut_lot)
+    if lot_started_by_status or lot_started_by_date:
+        raise HTTPException(status_code=409, detail="Impossible d'assigner une courbe: le lot a déjà démarré")
+
+    import json as _json
+
+    snapshot_json = payload.courbe_pysr_snapshot_json
+    try:
+        if isinstance(snapshot_json, str):
+            snapshot_json = _json.loads(snapshot_json)
+    except Exception:
+        raise HTTPException(status_code=400, detail="courbe_pysr_snapshot_json doit être un JSON valide")
+
+    try:
+        snapshot_json_str = _json.dumps(snapshot_json)
+    except Exception:
+        raise HTTPException(status_code=400, detail="courbe_pysr_snapshot_json doit être sérialisable JSON")
+
+    await conn.execute(
+        """
+        UPDATE lots_gavage
+        SET
+            courbe_pysr_snapshot_json = $1::jsonb,
+            pysr_formula = $2,
+            pysr_r2_score = $3,
+            updated_at = NOW()
+        WHERE id = $4
+        """,
+        snapshot_json_str,
+        payload.pysr_formula,
+        payload.pysr_r2_score,
+        int(lot_id),
+    )
+
+    updated = await conn.fetchrow(
+        """
+        SELECT
+            id, code_lot, site_code, gaveur_id, souche, debut_lot,
+            duree_gavage_prevue, buffer_jours,
+            (debut_lot + (COALESCE(duree_gavage_prevue, 14) + COALESCE(buffer_jours, 0)) * INTERVAL '1 day')::date AS fin_capacite_prevue,
+            itm, sigma, duree_gavage_reelle, pctg_perte_gavage, statut,
+            courbe_pysr_snapshot_json, pysr_formula, pysr_r2_score
+        FROM lots_gavage
+        WHERE id = $1
+        """,
+        int(lot_id),
+    )
+    return dict(updated)
+
+
+def _compute_capacity_end_exclusive_sql(start_param: str, duree_param: str, buffer_param: str) -> str:
+    return f"({start_param}::date + ({duree_param}::int + {buffer_param}::int) * INTERVAL '1 day')"
+
+
+@router.get("/ml/pysr/training-history", response_model=List[PySRTrainingHistoryRow])
+async def list_pysr_training_history(
+    site_code: Optional[str] = Query(None, description="Code site"),
+    genetique: Optional[str] = Query(None, description="Génétique"),
+    cluster_id: Optional[int] = Query(None, ge=0),
+    statut: Optional[str] = Query(None, description="SUCCESS/FAILED/..."),
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    conn=Depends(get_db_connection),
+):
+    """Liste l'historique des runs PySR (pour comparaison multi-courbes côté admin)."""
+
+    try:
+        def _json_safe(obj: Any) -> Any:
+            """Convertit récursivement les valeurs non sérialisables JSON strict (NaN/Inf) en None."""
+            try:
+                if isinstance(obj, float):
+                    return obj if math.isfinite(obj) else None
+                if isinstance(obj, dict):
+                    return {k: _json_safe(v) for k, v in obj.items()}
+                if isinstance(obj, list):
+                    return [_json_safe(v) for v in obj]
+                if isinstance(obj, tuple):
+                    return [_json_safe(v) for v in obj]
+                return obj
+            except Exception:
+                return None
+
+        # Robustesse: la table peut ne pas exister si aucun training n'a encore tourné.
+        try:
+            await conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS pysr_training_history (
+                    id SERIAL PRIMARY KEY,
+                    task_id TEXT,
+                    lot_id INTEGER,
+                    gaveur_id INTEGER,
+                    site_code VARCHAR(2),
+                    genetique TEXT,
+                    cluster_id INTEGER,
+                    statut VARCHAR(20) NOT NULL,
+                    best_equation TEXT,
+                    r2_score DOUBLE PRECISION,
+                    mae DOUBLE PRECISION,
+                    complexity INTEGER,
+                    duree_secondes INTEGER,
+                    error_message TEXT,
+                    candidate_curve_json JSONB,
+                    candidate_metrics_json JSONB,
+                    started_at TIMESTAMPTZ,
+                    finished_at TIMESTAMPTZ,
+                    created_at TIMESTAMPTZ DEFAULT NOW()
+                );
+                """
+            )
+        except Exception:
+            pass
+
+        # Robustesse: le schéma peut ne pas être à jour si aucun training n'a encore exécuté
+        # _ensure_pysr_training_history_table côté worker.
+        try:
+            await conn.execute(
+                "ALTER TABLE pysr_training_history ADD COLUMN IF NOT EXISTS candidate_curve_json JSONB"
+            )
+            await conn.execute(
+                "ALTER TABLE pysr_training_history ADD COLUMN IF NOT EXISTS candidate_metrics_json JSONB"
+            )
+        except Exception:
+            # Ne pas empêcher la lecture de l'historique si la migration légère échoue
+            pass
+
+        where: list[str] = ["1=1"]
+        params: list[object] = []
+
+        if site_code:
+            where.append(f"site_code = ${len(params) + 1}")
+            params.append(str(site_code).strip().upper())
+
+        if genetique:
+            where.append(f"genetique = ${len(params) + 1}")
+            params.append(str(genetique).strip().lower())
+
+        if cluster_id is not None:
+            where.append(f"cluster_id = ${len(params) + 1}")
+            params.append(int(cluster_id))
+
+        if statut:
+            where.append(f"statut = ${len(params) + 1}")
+            params.append(str(statut).strip().upper())
+
+        params.append(int(limit))
+        limit_param_idx = len(params)
+        params.append(int(offset))
+        offset_param_idx = len(params)
+
+        query = (
+            "SELECT id, task_id, site_code, genetique, cluster_id, statut, best_equation, r2_score, mae, complexity, "
+            "candidate_curve_json, candidate_metrics_json, "
+            "error_message, started_at, finished_at, created_at "
+            "FROM pysr_training_history "
+            f"WHERE {' AND '.join(where)} "
+            "ORDER BY started_at DESC NULLS LAST, created_at DESC "
+            f"LIMIT ${limit_param_idx} OFFSET ${offset_param_idx}"
+        )
+
+        rows = await conn.fetch(query, *params)
+
+        out: list[PySRTrainingHistoryRow] = []
+        for r in rows:
+            try:
+                payload = dict(r)
+
+                # Robust conversions (asyncpg.Record doesn't guarantee plain python types for JSON/NUMERIC).
+                payload["started_at"] = r["started_at"].isoformat() if r["started_at"] is not None else None
+                payload["finished_at"] = r["finished_at"].isoformat() if r["finished_at"] is not None else None
+                payload["created_at"] = r["created_at"].isoformat() if r["created_at"] is not None else None
+
+                payload["r2_score"] = float(r["r2_score"]) if r["r2_score"] is not None else None
+                payload["mae"] = float(r["mae"]) if r["mae"] is not None else None
+                payload["complexity"] = int(r["complexity"]) if r["complexity"] is not None else None
+                payload["cluster_id"] = int(r["cluster_id"]) if r["cluster_id"] is not None else None
+
+                # JSONB can arrive as python objects, strings, or driver wrappers.
+                for k in ("candidate_curve_json", "candidate_metrics_json"):
+                    v = payload.get(k)
+                    if v is None:
+                        continue
+                    if isinstance(v, (dict, list, int, float, bool)):
+                        continue
+                    if isinstance(v, str):
+                        try:
+                            payload[k] = json.loads(v)
+                        except Exception:
+                            # Keep raw string if it isn't JSON.
+                            payload[k] = v
+                    else:
+                        # Fallback: ensure it's JSON-serializable.
+                        payload[k] = json.loads(json.dumps(v, default=str))
+
+                # JSON strict: empêcher NaN/Inf dans toute la payload (sinon 500 à la sérialisation).
+                payload = _json_safe(payload)
+
+                out.append(PySRTrainingHistoryRow(**payload))
+            except Exception as row_exc:
+                # Never crash the whole endpoint due to one bad legacy row.
+                try:
+                    logger.warning(
+                        "Skip invalid pysr_training_history row id=%s err=%s",
+                        str(r["id"] if "id" in r else "?"),
+                        str(row_exc),
+                    )
+                except Exception:
+                    pass
+                continue
+
+        return out
+    except Exception as exc:
+        logger.exception("Erreur list_pysr_training_history")
+        raise HTTPException(status_code=500, detail="Erreur listing historique PySR")
+
+
+@router.get("/ml/pysr/training-preview", response_model=PySRTrainingPreviewResponse)
+async def get_pysr_training_preview(
+    task_id: str = Query(..., description="Celery task_id d'un run PySR"),
+    cluster_id: Optional[int] = Query(None, ge=0, description="Override cluster pour choisir la courbe de base"),
+):
+    """Reconstruit une courbe preview à partir d'un résultat d'entraînement PySR (task SUCCESS)."""
+
+    try:
+        task_res = AsyncResult(str(task_id), app=celery_app)
+        if task_res is None:
+            raise HTTPException(status_code=404, detail="task_id introuvable")
+
+        if task_res.state not in ("SUCCESS", "FAILURE"):
+            raise HTTPException(
+                status_code=409,
+                detail=f"Task pas terminée (state={task_res.state})",
+            )
+
+        if task_res.state == "FAILURE":
+            raise HTTPException(status_code=400, detail="Task en échec, preview impossible")
+
+        result = task_res.result or {}
+
+        resolved_site_code = None
+        site_codes = result.get("site_codes")
+        if isinstance(site_codes, list) and site_codes:
+            resolved_site_code = str(site_codes[0]).strip().upper()
+
+        resolved_cluster_id = cluster_id
+        if resolved_cluster_id is None:
+            cluster_ids = result.get("cluster_ids")
+            if isinstance(cluster_ids, list) and cluster_ids:
+                try:
+                    resolved_cluster_id = int(cluster_ids[0])
+                except Exception:
+                    resolved_cluster_id = None
+
+        resolved_genetique = result.get("genetique")
+        if resolved_genetique is not None:
+            resolved_genetique = str(resolved_genetique).strip().lower()
+
+        from app.ml.euralis.courbes_personnalisees import CourbesPersonnaliseesML
+
+        ref_engine = CourbesPersonnaliseesML()
+
+        base_curve: list[dict[str, Any]] = []
+        if resolved_cluster_id is not None:
+            base_curve = (ref_engine.courbes_reference.get(int(resolved_cluster_id)) or {}).get("courbe", [])
+        if not base_curve:
+            base_curve = (ref_engine.courbes_reference.get(2) or {}).get("courbe", [])
+
+        if not base_curve:
+            raise HTTPException(status_code=400, detail="Impossible de construire la courbe preview")
+
+        return {
+            "task_id": str(task_id),
+            "segment": {
+                "site_code": resolved_site_code,
+                "genetique": resolved_genetique,
+                "cluster_id": resolved_cluster_id,
+            },
+            "pysr": {
+                "formula": result.get("formula"),
+                "r2_score": result.get("r2_score"),
+                "complexity": result.get("complexity"),
+                "variables": result.get("variables"),
+                "foie_objective": result.get("foie_objective"),
+            },
+            "courbe": {"jours": base_curve},
+        }
+
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Erreur get_pysr_training_preview")
+        raise HTTPException(status_code=500, detail="Erreur preview PySR")
+
+
+@router.get("/ml/pysr/reference-curves/latest")
+async def get_latest_pysr_reference_curve(
+    site_code: str = Query(..., description="Code site"),
+    genetique: str = Query(..., description="Génétique"),
+    cluster_id: int = Query(..., ge=0),
+    conn=Depends(get_db_connection),
+):
+    try:
+        await _ensure_pysr_reference_curve_tables(conn)
+
+        row = await conn.fetchrow(
+            """
+            SELECT *
+            FROM pysr_reference_curves_segments
+            WHERE site_code = $1
+              AND genetique = $2
+              AND cluster_id = $3
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            str(site_code).strip().upper(),
+            str(genetique).strip().lower(),
+            int(cluster_id),
+        )
+        if not row:
+            raise HTTPException(status_code=404, detail="Aucune courbe de référence PySR pour ce segment")
+
+        return {
+            **dict(row),
+            "created_at": row["created_at"].isoformat() if row.get("created_at") else None,
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"Erreur get_latest_pysr_reference_curve: {exc}")
+        raise HTTPException(status_code=500, detail="Erreur récupération courbe de référence")
+
+
+@router.post("/ml/pysr/reference-curves/publish")
+async def publish_pysr_reference_curve(
+    payload: PySRReferenceCurvePublishRequest,
+    conn=Depends(get_db_connection),
+):
+    """Publie une courbe de référence segment (figée) à partir d'un résultat de task PySR."""
+
+    try:
+        await _ensure_pysr_reference_curve_tables(conn)
+
+        task_res = AsyncResult(payload.task_id, app=celery_app)
+        if task_res is None:
+            raise HTTPException(status_code=404, detail="task_id introuvable")
+
+        if task_res.state not in ("SUCCESS", "FAILURE"):
+            raise HTTPException(
+                status_code=409,
+                detail=f"Task pas terminée (state={task_res.state})",
+            )
+
+        if task_res.state == "FAILURE":
+            raise HTTPException(status_code=400, detail="Task en échec, publication impossible")
+
+        result = task_res.result or {}
+        pysr_formula = result.get("formula")
+        pysr_r2_score = result.get("r2_score")
+        pysr_complexity = result.get("complexity")
+
+        from app.ml.euralis.courbes_personnalisees import CourbesPersonnaliseesML
+
+        if payload.reference_curve:
+            reference_curve = payload.reference_curve
+        else:
+            ref_engine = CourbesPersonnaliseesML()
+            reference_curve = (ref_engine.courbes_reference.get(int(payload.cluster_id)) or ref_engine.courbes_reference.get(2) or {}).get(
+                "courbe",
+                [],
+            )
+
+        if not reference_curve:
+            raise HTTPException(status_code=400, detail="Impossible de construire la courbe de référence")
+
+        last_version = await conn.fetchval(
+            """
+            SELECT COALESCE(MAX(version), 0)
+            FROM pysr_reference_curves_segments
+            WHERE site_code = $1 AND genetique = $2 AND cluster_id = $3
+            """,
+            str(payload.site_code).strip().upper(),
+            str(payload.genetique).strip().lower(),
+            int(payload.cluster_id),
+        )
+        next_version = int(last_version or 0) + 1
+
+        row = await conn.fetchrow(
+            """
+            INSERT INTO pysr_reference_curves_segments (
+                site_code, genetique, cluster_id, version,
+                task_id, pysr_formula, pysr_r2_score, pysr_complexity,
+                reference_curve_json, params, created_by
+            ) VALUES (
+                $1, $2, $3, $4,
+                $5, $6, $7, $8,
+                $9::jsonb, $10::jsonb, $11
+            )
+            RETURNING id, created_at
+            """,
+            str(payload.site_code).strip().upper(),
+            str(payload.genetique).strip().lower(),
+            int(payload.cluster_id),
+            next_version,
+            str(payload.task_id),
+            (str(pysr_formula) if pysr_formula else None),
+            (float(pysr_r2_score) if pysr_r2_score is not None else None),
+            (int(pysr_complexity) if pysr_complexity is not None else None),
+            json.dumps({"jours": reference_curve}),
+            json.dumps(
+                {
+                    "task_result": {
+                        "include_sqal_features": result.get("include_sqal_features"),
+                        "premium_grades": result.get("premium_grades"),
+                        "require_sqal_premium": result.get("require_sqal_premium"),
+                        "site_codes": result.get("site_codes"),
+                        "seasons": result.get("seasons"),
+                        "cluster_ids": result.get("cluster_ids"),
+                        "foie_objective": result.get("foie_objective"),
+                    }
+                }
+            ),
+            payload.created_by,
+        )
+
+        return {
+            "success": True,
+            "reference_curve_id": row["id"],
+            "created_at": row["created_at"].isoformat() if row.get("created_at") else None,
+            "version": next_version,
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"Erreur publish_pysr_reference_curve: {exc}")
+        raise HTTPException(status_code=500, detail="Erreur publication courbe de référence")
+
+
+@router.post("/ml/pysr/reference-curves/{reference_curve_id}/assign")
+async def assign_pysr_reference_curve_to_gaveurs(
+    reference_curve_id: int,
+    payload: PySRReferenceCurveAssignRequest,
+    conn=Depends(get_db_connection),
+):
+    """Assigne (bulk) une référence segment à des gaveurs en matérialisant une courbe personnalisée et en écrasant la courbe active."""
+
+    try:
+        await _ensure_pysr_reference_curve_tables(conn)
+
+        ref_row = await conn.fetchrow(
+            """
+            SELECT *
+            FROM pysr_reference_curves_segments
+            WHERE id = $1
+            """,
+            int(reference_curve_id),
+        )
+        if not ref_row:
+            raise HTTPException(status_code=404, detail="Courbe de référence introuvable")
+
+        ref_json = ref_row.get("reference_curve_json")
+        ref_curve = []
+        if isinstance(ref_json, str):
+            try:
+                ref_json = json.loads(ref_json)
+            except Exception:
+                ref_json = None
+
+        if isinstance(ref_json, dict):
+            ref_curve = ref_json.get("jours") or []
+
+        if not ref_curve:
+            raise HTTPException(status_code=400, detail="Courbe de référence invalide")
+
+        from app.ml.euralis.courbes_personnalisees import CourbesPersonnaliseesML
+
+        engine = CourbesPersonnaliseesML()
+
+        view_exists = await conn.fetchval(
+            "SELECT to_regclass('public.gaveurs_clustering_ml_view') IS NOT NULL"
+        )
+
+        assigned: List[Dict[str, Any]] = []
+        for gid in payload.gaveur_ids:
+            if view_exists:
+                stats_row = await conn.fetchrow(
+                    """
+                    SELECT
+                        g.id as gaveur_id,
+                        g.nom,
+                        g.prenom,
+                        COALESCE(v.cluster_ml, NULL) as cluster_ml,
+                        AVG(l.itm) as itm_moyen,
+                        AVG(l.pctg_perte_gavage) as mortalite
+                    FROM gaveurs_euralis g
+                    LEFT JOIN gaveurs_clustering_ml_view v ON v.gaveur_id = g.id
+                    LEFT JOIN lots_gavage l ON l.gaveur_id = g.id AND l.itm IS NOT NULL
+                    WHERE g.id = $1
+                    GROUP BY g.id, g.nom, g.prenom, v.cluster_ml
+                    """,
+                    int(gid),
+                )
+            else:
+                stats_row = await conn.fetchrow(
+                    """
+                    SELECT
+                        g.id as gaveur_id,
+                        g.nom,
+                        g.prenom,
+                        NULL as cluster_ml,
+                        AVG(l.itm) as itm_moyen,
+                        AVG(l.pctg_perte_gavage) as mortalite
+                    FROM gaveurs_euralis g
+                    LEFT JOIN lots_gavage l ON l.gaveur_id = g.id AND l.itm IS NOT NULL
+                    WHERE g.id = $1
+                    GROUP BY g.id, g.nom, g.prenom
+                    """,
+                    int(gid),
+                )
+
+            if not stats_row:
+                assigned.append({"gaveur_id": int(gid), "status": "not_found"})
+                continue
+
+            cluster_val = int(stats_row["cluster_ml"]) if stats_row.get("cluster_ml") is not None else int(ref_row["cluster_id"])
+            itm_val = float(stats_row["itm_moyen"]) if stats_row.get("itm_moyen") is not None else 15.0
+            mortalite_val = float(stats_row["mortalite"]) if stats_row.get("mortalite") is not None else 1.5
+
+            courbe_result = engine.generer_courbe_personnalisee_depuis_reference(
+                reference_curve=ref_curve,
+                cluster=cluster_val,
+                itm_historique=itm_val,
+                mortalite_historique=mortalite_val,
+                nb_canards=int(payload.nb_canards),
+                souche=str(payload.souche),
+            )
+
+            courbe_json = json.dumps({"jours": courbe_result["courbe"]})
+            metadata = courbe_result.get("metadata", {})
+
+            existing_id = await conn.fetchval(
+                "SELECT id FROM courbes_optimales_gaveurs WHERE gaveur_id = $1 LIMIT 1",
+                int(gid),
+            )
+
+            if existing_id:
+                await conn.execute(
+                    """
+                    UPDATE courbes_optimales_gaveurs
+                    SET
+                        cluster_performance = $1,
+                        souche = $2,
+                        duree_jours = $3,
+                        itm_cible = $4,
+                        courbe_json = $5::jsonb,
+                        score_performance = $6,
+                        source_generation = $7,
+                        nb_lots_base = $8
+                    WHERE id = $9
+                    """,
+                    int(metadata.get("cluster", cluster_val)),
+                    str(metadata.get("souche", payload.souche)),
+                    int(11),
+                    float(metadata.get("itm_cible", 15.0)),
+                    courbe_json,
+                    float(20.0 / float(metadata.get("itm_cible", 15.0) or 15.0)),
+                    "pysr_segment",
+                    None,
+                    int(existing_id),
+                )
+                courbe_id = int(existing_id)
+            else:
+                new_row = await conn.fetchrow(
+                    """
+                    INSERT INTO courbes_optimales_gaveurs (
+                        gaveur_id, cluster_performance, souche, duree_jours,
+                        itm_cible, courbe_json, score_performance,
+                        source_generation, nb_lots_base
+                    ) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9)
+                    RETURNING id
+                    """,
+                    int(gid),
+                    int(metadata.get("cluster", cluster_val)),
+                    str(metadata.get("souche", payload.souche)),
+                    int(11),
+                    float(metadata.get("itm_cible", 15.0)),
+                    courbe_json,
+                    float(20.0 / float(metadata.get("itm_cible", 15.0) or 15.0)),
+                    "pysr_segment",
+                    None,
+                )
+                courbe_id = int(new_row["id"])
+
+            await conn.execute(
+                """
+                INSERT INTO courbes_recommandations_historique (
+                    gaveur_id, courbe_id, lot_id,
+                    itm_cible, notes
+                ) VALUES ($1, $2, NULL, $3, $4)
+                """,
+                int(gid),
+                int(courbe_id),
+                float(metadata.get("itm_cible", 15.0)),
+                json.dumps(
+                    {
+                        "reference_curve_id": int(reference_curve_id),
+                        "assigned_by": payload.assigned_by,
+                        "segment": {
+                            "site_code": ref_row.get("site_code"),
+                            "genetique": ref_row.get("genetique"),
+                            "cluster_id": ref_row.get("cluster_id"),
+                            "version": ref_row.get("version"),
+                        },
+                    }
+                ),
+            )
+
+            assigned.append(
+                {
+                    "gaveur_id": int(gid),
+                    "courbe_id": int(courbe_id),
+                    "status": "assigned",
+                }
+            )
+
+        return {
+            "success": True,
+            "reference_curve_id": int(reference_curve_id),
+            "n_requested": len(payload.gaveur_ids),
+            "results": assigned,
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Erreur assign_pysr_reference_curve_to_gaveurs")
+        raise HTTPException(status_code=500, detail="Erreur assignation courbe de référence")
 
 
 # ============================================================================
@@ -1327,9 +2585,24 @@ async def get_lots(
         Liste des lots
     """
 
+    await _ensure_lots_gavage_planning_columns(conn)
+
     query = """
-        SELECT id, code_lot, site_code, gaveur_id, souche, debut_lot,
-               itm, sigma, duree_gavage_reelle, pctg_perte_gavage, statut
+        SELECT
+            id,
+            code_lot,
+            site_code,
+            gaveur_id,
+            souche,
+            debut_lot,
+            duree_gavage_prevue,
+            buffer_jours,
+            (debut_lot + (COALESCE(duree_gavage_prevue, 14) + COALESCE(buffer_jours, 0)) * INTERVAL '1 day')::date AS fin_capacite_prevue,
+            itm,
+            sigma,
+            duree_gavage_reelle,
+            pctg_perte_gavage,
+            statut
         FROM lots_gavage
         WHERE 1=1
     """
@@ -1364,13 +2637,36 @@ async def get_lot_detail(id: int, conn = Depends(get_db_connection)):
         Informations détaillées du lot
     """
 
-    row = await conn.fetchrow("""
-        SELECT id, code_lot, site_code, gaveur_id, souche, debut_lot,
-               itm, sigma, duree_gavage_reelle, pctg_perte_gavage, statut,
-               nb_canards_meg, nb_canards_accroches, total_corn_real
+    await _ensure_lots_gavage_planning_columns(conn)
+
+    row = await conn.fetchrow(
+        """
+        SELECT
+            id,
+            code_lot,
+            site_code,
+            gaveur_id,
+            souche,
+            debut_lot,
+            duree_gavage_prevue,
+            buffer_jours,
+            (debut_lot + (COALESCE(duree_gavage_prevue, 14) + COALESCE(buffer_jours, 0)) * INTERVAL '1 day')::date AS fin_capacite_prevue,
+            itm,
+            sigma,
+            duree_gavage_reelle,
+            pctg_perte_gavage,
+            statut,
+            courbe_pysr_snapshot_json,
+            pysr_formula,
+            pysr_r2_score,
+            nb_canards_meg,
+            nb_canards_accroches,
+            total_corn_real
         FROM lots_gavage
         WHERE id = $1
-    """, id)
+        """,
+        id,
+    )
 
     if not row:
         raise HTTPException(status_code=404, detail=f"Lot {id} non trouvé")
@@ -1826,7 +3122,7 @@ async def get_gaveurs_by_cluster(
             query += f" AND g.site_code = ${len(params)}"
 
         query += """
-            GROUP BY g.id, g.nom, g.prenom, g.site_code, g.email, g.telephone
+            GROUP BY g.id, g.nom, g.prenom, g.site_code, g.email, g.telephone, gc.cluster_id, gc.cluster_label
             HAVING COUNT(l.id) >= 1
             ORDER BY performance_score DESC, AVG(l.itm) DESC
         """

@@ -85,7 +85,9 @@ class ESP32_Simulator:
         backend_url: str = "ws://localhost:8000/ws/sensors/",
         buffer_size: int = 100,
         sampling_rate_hz: float = 1.0,
-        config_profile: str = "foiegras_standard_barquette"
+        config_profile: str = "foiegras_standard_barquette",
+        code_lots: Optional[list[str]] = None,
+        lot_ids: Optional[list[int]] = None,
     ):
         """
         Args:
@@ -103,6 +105,12 @@ class ESP32_Simulator:
         self.mac_address = mac_address or self._generate_mac()
         self.location = location
         self.config_profile = config_profile
+
+        # Optional lot identifiers (round-robin) for simulator payloads
+        self.code_lots = list(code_lots) if code_lots else []
+        self.lot_ids = list(lot_ids) if lot_ids else []
+        self._code_lot_idx = 0
+        self._lot_id_idx = 0
 
         # Network
         self.wifi_ssid = wifi_ssid
@@ -179,6 +187,9 @@ class ESP32_Simulator:
         }
 
         logger.info(f"ESP32 initialized: {self.device_id} @ {self.location}")
+
+        # Stats sampling for validation
+        self._volume_simpson_samples_mm3: list[float] = []
 
     def _generate_mac(self):
         """Génère MAC address Espressif (OUI: 24:0A:C4)"""
@@ -272,7 +283,12 @@ class ESP32_Simulator:
 
         try:
             self.websocket = await asyncio.wait_for(
-                websockets.connect(self.backend_url),
+                websockets.connect(
+                    self.backend_url,
+                    ping_interval=20.0,
+                    ping_timeout=20.0,
+                    close_timeout=5.0,
+                ),
                 timeout=10.0
             )
 
@@ -300,6 +316,12 @@ class ESP32_Simulator:
             self.leds['backend'] = False
             self.leds['status'] = 'orange'
             return False
+
+        except asyncio.CancelledError:
+            self.status = ESP32_Status.OFFLINE
+            self.leds['backend'] = False
+            self.leds['status'] = 'orange'
+            raise
 
         except Exception as e:
             logger.error(f"[{self.device_id}] ❌ Backend connection failed: {e}")
@@ -474,6 +496,78 @@ class ESP32_Simulator:
         # 1. Enrichir VL53L8CH Analysis avec champs manquants
         if vl_analysis:
             stats = vl_analysis.get('stats', {})
+
+            # Fallback: if stats look incoherent (max_height>0 but occupied_pixels==0 => volumes become 0),
+            # recompute occupied mask + volumes directly from raw matrices.
+            try:
+                max_h = float(stats.get('max_height_mm', 0.0) or 0.0)
+                occ_px = int(stats.get('occupied_pixels', 0) or 0)
+            except Exception:
+                max_h = 0.0
+                occ_px = 0
+
+            if vl_raw and max_h > 0.0 and occ_px == 0:
+                try:
+                    distances = np.array(vl_raw.get('distance_matrix', []), dtype=float)
+                    reflectance = np.array(vl_raw.get('reflectance_matrix', []), dtype=float)
+                    amplitude = np.array(vl_raw.get('amplitude_matrix', []), dtype=float)
+
+                    distances = np.nan_to_num(distances, nan=0.0, posinf=0.0, neginf=0.0)
+                    reflectance = np.nan_to_num(reflectance, nan=0.0, posinf=0.0, neginf=0.0)
+                    amplitude = np.nan_to_num(amplitude, nan=0.0, posinf=0.0, neginf=0.0)
+
+                    meta = vl_raw.get('meta') or {}
+                    height_sensor_mm = float(meta.get('height_sensor_mm', 100.0))
+                    zone_size_mm = float(meta.get('zone_size_mm', 37.5))
+                    zone_area_mm2 = zone_size_mm ** 2
+
+                    heights = height_sensor_mm - distances
+                    heights = np.clip(heights, 0.0, None)
+
+                    try:
+                        p95_h = float(np.nanpercentile(heights, 95))
+                    except Exception:
+                        p95_h = float(np.max(heights)) if heights.size else 0.0
+
+                    ref_h = p95_h if np.isfinite(p95_h) and p95_h > 0.0 else float(np.max(heights))
+                    occ_threshold = max(0.20 * ref_h, 2.0)
+                    height_candidate_mask = heights > occ_threshold
+
+                    refl_values = reflectance[height_candidate_mask] if np.any(height_candidate_mask) else reflectance
+                    amp_values = amplitude[height_candidate_mask] if np.any(height_candidate_mask) else amplitude
+
+                    try:
+                        refl_thr = float(np.nanpercentile(refl_values, 40))
+                    except Exception:
+                        refl_thr = 0.0
+                    if not np.isfinite(refl_thr):
+                        refl_thr = 0.0
+                    refl_thr = max(refl_thr, 1.0)
+
+                    try:
+                        amp_thr = float(np.nanpercentile(amp_values, 40))
+                    except Exception:
+                        amp_thr = 0.0
+                    if not np.isfinite(amp_thr):
+                        amp_thr = 0.0
+                    amp_thr = max(amp_thr, 1.0)
+
+                    occupied_mask = (heights > occ_threshold) & (reflectance > refl_thr) & (amplitude > amp_thr)
+                    if int(np.sum(occupied_mask)) < 4:
+                        occupied_mask = height_candidate_mask
+
+                    heights_for_volume = heights * occupied_mask
+                    total_volume_mm3 = float(np.sum(heights_for_volume) * zone_area_mm2)
+
+                    stats = {
+                        **stats,
+                        'occupied_pixels': int(np.sum(occupied_mask)),
+                        'volume_mm3': total_volume_mm3,
+                        'volume_trapezoidal_mm3': total_volume_mm3,
+                    }
+                    vl_analysis['stats'] = stats
+                except Exception:
+                    pass
             
             # Ajouter champs de base depuis stats
             vl_analysis['volume_mm3'] = stats.get('volume_trapezoidal_mm3', stats.get('volume_mm3', 0))
@@ -637,6 +731,15 @@ class ESP32_Simulator:
             'eleveur': eleveur,
             'provenance': provenance
         }
+
+        # Collect samples for distribution validation (no impact on payload)
+        try:
+            vl_stats = adapted_data.get('vl53l8ch', {}).get('stats', {})
+            v = float(vl_stats.get('volume_simpson_mm3'))
+            if np.isfinite(v) and v > 0.0:
+                self._volume_simpson_samples_mm3.append(v)
+        except Exception:
+            pass
 
         # Si ONLINE → envoyer
         if self.status == ESP32_Status.ONLINE and self.websocket:
@@ -840,7 +943,7 @@ class ESP32_Simulator:
             logger.warning(f"[{self.device_id}] ❌ Reconnection failed")
             return False
 
-    async def run(self, duration_seconds: Optional[int] = None):
+    async def run(self, duration_seconds: Optional[int] = None, max_measurements: Optional[int] = None):
         """
         Boucle principale ESP32
         Args:
@@ -887,6 +990,10 @@ class ESP32_Simulator:
                     # Envoyer mesure
                     await self.send_measurement(sensor_data)
 
+                    if max_measurements and self.stats['measurements_sent'] >= max_measurements:
+                        logger.info(f"[{self.device_id}] ✓ Max measurements reached ({max_measurements})")
+                        break
+
                     # Log toutes les 10 mesures
                     if (self.stats['measurements_sent'] + self.stats['measurements_buffered']) % 10 == 0:
                         logger.info(
@@ -913,9 +1020,42 @@ class ESP32_Simulator:
 
         except KeyboardInterrupt:
             logger.info(f"[{self.device_id}] ⚠ Stopped by user")
+        except asyncio.CancelledError:
+            logger.info(f"[{self.device_id}] ⚠ Cancelled")
+            raise
         finally:
             if self.websocket:
-                await self.websocket.close()
+                try:
+                    await self.websocket.close()
+                except Exception:
+                    pass
+
+            # Validation summary
+            try:
+                if self._volume_simpson_samples_mm3:
+                    arr = np.asarray(self._volume_simpson_samples_mm3, dtype=float)
+                    arr = arr[np.isfinite(arr)]
+                    if arr.size > 0:
+                        density_g_per_cm3 = 0.947
+                        weights_g = (arr / 1000.0) * density_g_per_cm3
+                        def q(x, p):
+                            return float(np.percentile(x, p))
+
+                        logger.info(f"[{self.device_id}] 📈 Volume Simpson distribution (mm³) over {int(arr.size)} samples:")
+                        logger.info(f"  - min: {float(np.min(arr)):.0f}")
+                        logger.info(f"  - p5: {q(arr, 5):.0f}")
+                        logger.info(f"  - median: {q(arr, 50):.0f}")
+                        logger.info(f"  - p95: {q(arr, 95):.0f}")
+                        logger.info(f"  - max: {float(np.max(arr)):.0f}")
+
+                        logger.info(f"[{self.device_id}] ⚖ Estimated weight distribution (g) over {int(weights_g.size)} samples:")
+                        logger.info(f"  - min: {float(np.min(weights_g)):.0f}")
+                        logger.info(f"  - p5: {q(weights_g, 5):.0f}")
+                        logger.info(f"  - median: {q(weights_g, 50):.0f}")
+                        logger.info(f"  - p95: {q(weights_g, 95):.0f}")
+                        logger.info(f"  - max: {float(np.max(weights_g)):.0f}")
+            except Exception:
+                pass
 
             logger.info(f"[{self.device_id}] 📊 Final stats:")
             logger.info(f"  - Sent: {self.stats['measurements_sent']}")

@@ -331,21 +331,38 @@ class SensorsConsumer:
                         site_code = candidate
 
                     # Le schéma consumer_products référence lots_gavage(id) (int).
-                    # Or certains simulateurs SQAL n'envoient pas de lot_id -> fallback sur le dernier lot actif du site.
+                    # Or certains simulateurs SQAL n'envoient pas de lot_id ->
+                    # 1) essayer de résoudre via code_lot (fiable)
+                    # 2) sinon fallback sur le dernier lot actif du site (moins fiable)
                     lot_id = sensor_data.lot_id
                     if lot_id is None:
                         try:
                             async with self.service.pool.acquire() as conn:
-                                lot_id = await conn.fetchval(
-                                    """
-                                    SELECT id
-                                    FROM lots_gavage
-                                    WHERE site_code = $1
-                                    ORDER BY updated_at DESC NULLS LAST, id DESC
-                                    LIMIT 1
-                                    """,
-                                    site_code
-                                )
+                                if getattr(sensor_data, "code_lot", None):
+                                    lot_id = await conn.fetchval(
+                                        """
+                                        SELECT id
+                                        FROM lots_gavage
+                                        WHERE code_lot = $1
+                                        LIMIT 1
+                                        """,
+                                        str(sensor_data.code_lot),
+                                    )
+                                if lot_id is None:
+                                    logger.warning(
+                                        "⚠️ SQAL QR: falling back to latest lot of site because code_lot is missing or not resolvable. "
+                                        f"sample={sensor_data.sample_id} device={sensor_data.device_id} site={site_code} code_lot={getattr(sensor_data, 'code_lot', None)}"
+                                    )
+                                    lot_id = await conn.fetchval(
+                                        """
+                                        SELECT id
+                                        FROM lots_gavage
+                                        WHERE site_code = $1
+                                        ORDER BY updated_at DESC NULLS LAST, id DESC
+                                        LIMIT 1
+                                        """,
+                                        site_code
+                                    )
                         except Exception as lot_err:
                             logger.warning(f"⚠️ Failed to resolve lot_id for site {site_code}: {lot_err}")
                             lot_id = None

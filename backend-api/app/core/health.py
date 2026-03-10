@@ -397,7 +397,7 @@ async def check_database_health() -> tuple[bool, str]:
         tuple: (is_healthy, message)
     """
     try:
-        from app.core.database import AsyncSessionLocal
+        from app.db.sqlalchemy import AsyncSessionLocal
         from sqlalchemy import text
 
         async with AsyncSessionLocal() as db:

@@ -56,6 +56,7 @@ export default function LotSelector({ selectedLotId, onLotChange, className = ''
 
   const getStatutBadge = (statut: string) => {
     const badges: Record<string, { label: string; className: string }> = {
+      'planifie': { label: 'Planifié', className: 'bg-yellow-100 text-yellow-800' },
       'en_preparation': { label: 'Préparation', className: 'bg-gray-100 text-gray-700' },
       'en_gavage': { label: 'En gavage', className: 'bg-green-100 text-green-700' },
       'termine': { label: 'Terminé', className: 'bg-blue-100 text-blue-700' },
@@ -118,10 +119,10 @@ export default function LotSelector({ selectedLotId, onLotChange, className = ''
               {selectedLot ? (
                 <>
                   <div className="font-bold text-gray-900 text-lg">
-                    Lot {selectedLot.id} - {selectedLot.race}
+                    Lot {selectedLot.code_lot || selectedLot.id}
                   </div>
                   <div className="text-sm text-gray-600 flex items-center gap-2 mt-1">
-                    <span>{selectedLot.nombre_canards} canards</span>
+                    <span>{selectedLot.nombre_canards ?? selectedLot.nb_canards_initial ?? '—'} canards</span>
                     <span>•</span>
                     {selectedLot.statut === 'en_gavage' && selectedLot.date_debut_gavage && (
                       <span className="font-semibold text-green-600">
@@ -168,10 +169,10 @@ export default function LotSelector({ selectedLotId, onLotChange, className = ''
                     <div className="flex justify-between items-start">
                       <div>
                         <div className="font-semibold text-gray-900">
-                          Lot {lot.id} - {lot.race}
+                          Lot {lot.code_lot || lot.id}
                         </div>
                         <div className="text-xs text-gray-600 mt-1">
-                          {lot.nombre_canards} canards • Début: {lot.date_debut_gavage ? new Date(lot.date_debut_gavage).toLocaleDateString('fr-FR') : 'N/A'}
+                          {lot.nombre_canards ?? lot.nb_canards_initial ?? '—'} canards • Début: {lot.date_debut_gavage ? new Date(lot.date_debut_gavage).toLocaleDateString('fr-FR') : 'N/A'}
                         </div>
                       </div>
                       <div className="text-right">
@@ -207,10 +208,10 @@ export default function LotSelector({ selectedLotId, onLotChange, className = ''
                   <div className="flex justify-between items-start">
                     <div>
                       <div className="font-semibold text-gray-900">
-                        Lot {lot.id} - {lot.race}
+                        Lot {lot.code_lot || lot.id}
                       </div>
                       <div className="text-xs text-gray-600 mt-1">
-                        {lot.nombre_canards} canards
+                        {lot.nombre_canards ?? lot.nb_canards_initial ?? '—'} canards
                       </div>
                     </div>
                     <div>{getStatutBadge(lot.statut)}</div>

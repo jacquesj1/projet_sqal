@@ -91,6 +91,9 @@ services:
       APP_ENV: production
       LOG_LEVEL: info
 
+      # PySR
+      PYSR_ABSOLUTE_MIN_ROWS: "5"
+
       # PySR Configuration
       PYSR_USE_NUMPY: "true"  # true = NumPy pure (pas Julia), false = PySR avec Julia
 
@@ -308,7 +311,7 @@ services:
   celery-worker:
     build:
       context: ./backend-api
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.julia
     container_name: gaveurs_celery_worker
     restart: unless-stopped
     environment:
@@ -322,6 +325,9 @@ services:
       # Application
       APP_ENV: production
       LOG_LEVEL: info
+
+      # PySR
+      PYSR_ABSOLUTE_MIN_ROWS: "5"
 
       # SMTP (pour notifications)
       SMTP_HOST: smtp.gmail.com
@@ -357,7 +363,7 @@ services:
   celery-beat:
     build:
       context: ./backend-api
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.julia
     container_name: gaveurs_celery_beat
     restart: unless-stopped
     environment:
@@ -371,6 +377,9 @@ services:
       # Application
       APP_ENV: production
       LOG_LEVEL: info
+
+      # PySR
+      PYSR_ABSOLUTE_MIN_ROWS: "5"
     command: celery -A app.tasks.celery_app beat --loglevel=info
     depends_on:
       timescaledb:
@@ -387,7 +396,7 @@ services:
   flower:
     build:
       context: ./backend-api
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.julia
     container_name: gaveurs_flower
     restart: unless-stopped
     environment:
@@ -473,6 +482,7 @@ services:
       LOG_LEVEL: info
     volumes:
       - ./simulator-sqal:/app/simulator_original:ro
+      - ./simulators/sqal:/app/sqal:ro
     command: >
       python main.py
       --device ESP32_DOCKER_01
@@ -500,6 +510,7 @@ services:
       LOG_LEVEL: info
     volumes:
       - ./simulator-sqal:/app/simulator_original:ro
+      - ./simulators/sqal:/app/sqal:ro
     command: >
       python main.py
       --device ESP32_DOCKER_02

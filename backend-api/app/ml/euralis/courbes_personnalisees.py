@@ -113,6 +113,105 @@ class CourbesPersonnaliseesML:
     def __init__(self):
         self.courbes_reference = self.COURBES_REFERENCE
 
+    def generer_courbe_personnalisee_depuis_reference(
+        self,
+        reference_curve: List[Dict],
+        cluster: int,
+        itm_historique: float,
+        mortalite_historique: float,
+        nb_canards: int = 800,
+        souche: str = "Mulard",
+        ajustements_personnalises: Optional[Dict] = None,
+    ) -> Dict:
+        logger.info(
+            f"Génération courbe depuis référence (cluster {cluster}, ITM hist {itm_historique:.2f})"
+        )
+
+        courbe_base = [jour.copy() for jour in (reference_curve or [])]
+        if not courbe_base:
+            courbe_base = [jour.copy() for jour in self.courbes_reference.get(2, {}).get("courbe", [])]
+            cluster = 2
+
+        courbe_ref = self.courbes_reference.get(cluster) or self.courbes_reference.get(2)
+        if not courbe_ref:
+            raise ValueError("Aucune courbe de référence disponible")
+
+        ecart_itm = itm_historique - float(courbe_ref.get("itm_cible", 15.0))
+        facteur_ajustement = 1.0
+        if abs(ecart_itm) > 0.5:
+            facteur_ajustement = 1.0 - (ecart_itm * 0.03)
+            facteur_ajustement = max(0.85, min(1.15, facteur_ajustement))
+            logger.info(
+                f"Ajustement ITM: {facteur_ajustement:.3f} (écart ITM: {ecart_itm:.2f})"
+            )
+
+        facteur_mortalite = 1.0
+        if mortalite_historique > 2.0:
+            facteur_mortalite = 0.95
+            logger.info(
+                f"Mortalité élevée ({mortalite_historique:.1f}%), réduction agressivité"
+            )
+
+        courbe_ajustee = []
+        for idx, jour_data in enumerate(courbe_base):
+            jour_num = int(jour_data.get("jour") or (idx + 1))
+            matin_val = float(jour_data.get("matin") or 0)
+            soir_val = float(jour_data.get("soir") or 0)
+
+            if mortalite_historique > 2.0:
+                facteur_progressif = 0.90 if jour_num <= 4 else (0.95 if jour_num <= 7 else 1.0)
+            else:
+                facteur_progressif = 1.0
+
+            facteur_total = facteur_ajustement * facteur_mortalite * facteur_progressif
+
+            matin_ajuste = round(matin_val * facteur_total)
+            soir_ajuste = round(soir_val * facteur_total)
+            total_ajuste = matin_ajuste + soir_ajuste
+
+            courbe_ajustee.append(
+                {
+                    "jour": jour_num,
+                    "matin": matin_ajuste,
+                    "soir": soir_ajuste,
+                    "total": total_ajuste,
+                }
+            )
+
+        if ajustements_personnalises:
+            courbe_ajustee = self._appliquer_ajustements_personnalises(
+                courbe_ajustee,
+                ajustements_personnalises,
+            )
+
+        total_mais = sum(float(j.get("total") or 0) for j in courbe_ajustee)
+        total_mais_lot = total_mais * nb_canards / 1000
+        poids_foie_estime = 450
+        itm_estime = total_mais / poids_foie_estime if poids_foie_estime else 0
+
+        return {
+            "courbe": courbe_ajustee,
+            "metadata": {
+                "cluster": cluster,
+                "itm_historique": round(itm_historique, 2),
+                "itm_cible": round(itm_estime, 2),
+                "mortalite_historique": round(mortalite_historique, 2),
+                "nb_canards": nb_canards,
+                "souche": souche,
+                "total_mais_par_canard_g": total_mais,
+                "total_mais_lot_kg": round(total_mais_lot, 2),
+                "facteur_ajustement": round(facteur_ajustement, 3),
+                "date_generation": datetime.now().isoformat(),
+                "source": "ML",
+            },
+            "recommandations": self._generer_recommandations(
+                cluster,
+                itm_historique,
+                mortalite_historique,
+                courbe_ajustee,
+            ),
+        }
+
     def generer_courbe_personnalisee(
         self,
         cluster: int,

@@ -92,6 +92,40 @@ class SQALService:
         """
         try:
             async with self.pool.acquire() as conn:
+                # Ensure we can persist code_lot for reliable joins (gavage <-> SQAL)
+                try:
+                    await conn.execute(
+                        """
+                        ALTER TABLE sensor_samples
+                        ADD COLUMN IF NOT EXISTS code_lot VARCHAR(20)
+                        """
+                    )
+                    await conn.execute(
+                        """
+                        CREATE INDEX IF NOT EXISTS idx_sensor_samples_code_lot
+                        ON sensor_samples(code_lot)
+                        """
+                    )
+                except Exception as schema_err:
+                    logger.warning(f"Failed to ensure sensor_samples.code_lot schema: {schema_err}")
+
+                # Resolve lot_id from code_lot when missing (avoid 'latest lot of site' ambiguity)
+                resolved_lot_id = sensor_data.lot_id
+                resolved_code_lot = sensor_data.code_lot
+                if resolved_lot_id is None and resolved_code_lot:
+                    try:
+                        resolved_lot_id = await conn.fetchval(
+                            """
+                            SELECT id
+                            FROM lots_gavage
+                            WHERE code_lot = $1
+                            LIMIT 1
+                            """,
+                            resolved_code_lot,
+                        )
+                    except Exception as resolve_err:
+                        logger.warning(f"Failed to resolve lot_id from code_lot={resolved_code_lot}: {resolve_err}")
+                        resolved_lot_id = None
                 # Ensure device exists to satisfy FK on sensor_samples.device_id
                 config_profile = None
                 try:
@@ -163,7 +197,8 @@ class SQALService:
                             timestamp=sensor_data.timestamp,
                             device_id=sensor_data.device_id,
                             sample_id=sensor_data.sample_id,
-                            lot_id=sensor_data.lot_id,
+                            lot_id=resolved_lot_id,
+                            code_lot=resolved_code_lot,
                             vl53l8ch_distance_matrix=sensor_data.vl53l8ch.raw.distance_matrix,
                             vl53l8ch_reflectance_matrix=sensor_data.vl53l8ch.raw.reflectance_matrix,
                             vl53l8ch_amplitude_matrix=sensor_data.vl53l8ch.raw.amplitude_matrix,
@@ -220,45 +255,97 @@ class SQALService:
         """
         try:
             async with self.pool.acquire() as conn:
-                data_context_value = alert.data_context if alert.data_context else None
+                cols_rows = await conn.fetch(
+                    """
+                    SELECT column_name
+                    FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                      AND table_name = 'sqal_alerts'
+                    """
+                )
+                cols = {str(r["column_name"]) for r in cols_rows}
 
-                # Schema variant 1: (message, data_context, is_acknowledged)
-                try:
-                    alert_id = await conn.fetchval(
-                        """
-                        INSERT INTO sqal_alerts (
-                            time, device_id, sample_id, alert_type, severity, message, data_context, is_acknowledged
+                # Always serialize to JSON string for asyncpg (never pass a dict directly)
+                data_context_json = json.dumps(alert.data_context) if alert.data_context is not None else None
+
+                now_ts = datetime.now(timezone.utc)
+                severity_value = str(getattr(alert.severity, "value", alert.severity))
+
+                if "data_context" in cols:
+                    # Legacy schema: message + data_context
+                    if "is_acknowledged" in cols:
+                        alert_id = await conn.fetchval(
+                            """
+                            INSERT INTO sqal_alerts (
+                                time, device_id, sample_id, alert_type, severity, message, data_context, is_acknowledged
+                            )
+                            VALUES ($1, $2, $3, $4, $5, $6, $7, FALSE)
+                            RETURNING alert_id
+                            """,
+                            now_ts,
+                            alert.device_id,
+                            alert.sample_id,
+                            alert.alert_type,
+                            severity_value,
+                            alert.message,
+                            data_context_json,
                         )
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, FALSE)
-                        RETURNING alert_id
-                        """,
-                        datetime.now(timezone.utc),
-                        alert.device_id,
-                        alert.sample_id,
-                        alert.alert_type,
-                        alert.severity,
-                        alert.message,
-                        data_context_value,
-                    )
-                except Exception:
-                    # Schema variant 2: (title, defect_details, acknowledged)
-                    alert_id = await conn.fetchval(
-                        """
-                        INSERT INTO sqal_alerts (
-                            time, device_id, sample_id, alert_type, severity, title, message, defect_details, acknowledged
+                    else:
+                        alert_id = await conn.fetchval(
+                            """
+                            INSERT INTO sqal_alerts (
+                                time, device_id, sample_id, alert_type, severity, message, data_context
+                            )
+                            VALUES ($1, $2, $3, $4, $5, $6, $7)
+                            RETURNING alert_id
+                            """,
+                            now_ts,
+                            alert.device_id,
+                            alert.sample_id,
+                            alert.alert_type,
+                            severity_value,
+                            alert.message,
+                            data_context_json,
                         )
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, FALSE)
-                        RETURNING alert_id
-                        """,
-                        datetime.now(timezone.utc),
-                        alert.device_id,
-                        alert.sample_id,
-                        alert.alert_type,
-                        alert.severity,
-                        alert.alert_type,
-                        alert.message,
-                        data_context_value,
-                    )
+                else:
+                    # Current schema: title + defect_details (JSONB)
+                    title_value = str(alert.alert_type).strip() or "sqal_alert"
+                    if "acknowledged" in cols:
+                        alert_id = await conn.fetchval(
+                            """
+                            INSERT INTO sqal_alerts (
+                                time, device_id, sample_id, alert_type, severity, title, message, defect_details, acknowledged
+                            )
+                            VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, FALSE)
+                            RETURNING alert_id
+                            """,
+                            now_ts,
+                            alert.device_id,
+                            alert.sample_id,
+                            alert.alert_type,
+                            severity_value,
+                            title_value,
+                            alert.message,
+                            data_context_json,
+                        )
+                    else:
+                        alert_id = await conn.fetchval(
+                            """
+                            INSERT INTO sqal_alerts (
+                                time, device_id, sample_id, alert_type, severity, title, message, defect_details
+                            )
+                            VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
+                            RETURNING alert_id
+                            """,
+                            now_ts,
+                            alert.device_id,
+                            alert.sample_id,
+                            alert.alert_type,
+                            severity_value,
+                            title_value,
+                            alert.message,
+                            data_context_json,
+                        )
 
                 logger.info(f"🚨 Alerte créée: {alert_id} - {alert.alert_type}")
                 return alert_id

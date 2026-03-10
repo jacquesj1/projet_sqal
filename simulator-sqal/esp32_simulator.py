@@ -85,7 +85,9 @@ class ESP32_Simulator:
         backend_url: str = "ws://localhost:8000/ws/sensors/",
         buffer_size: int = 100,
         sampling_rate_hz: float = 1.0,
-        config_profile: str = "foiegras_standard_barquette"
+        config_profile: str = "foiegras_standard_barquette",
+        code_lots: Optional[list[str]] = None,
+        lot_ids: Optional[list[int]] = None,
     ):
         """
         Args:
@@ -103,6 +105,17 @@ class ESP32_Simulator:
         self.mac_address = mac_address or self._generate_mac()
         self.location = location
         self.config_profile = config_profile
+
+        self.code_lots = [str(c).strip() for c in (code_lots or []) if str(c).strip()]
+        self._code_lot_idx = 0
+
+        self.lot_ids: list[int] = []
+        for raw in (lot_ids or []):
+            try:
+                self.lot_ids.append(int(raw))
+            except Exception:
+                continue
+        self._lot_id_idx = 0
 
         # Network
         self.wifi_ssid = wifi_ssid
@@ -645,6 +658,15 @@ class ESP32_Simulator:
         eleveur = lot_data.get('eleveur', 'Ferme Martin')
         provenance = lot_data.get('provenance', 'Périgord, France')
 
+        lot_id = None
+        code_lot = None
+        if self.lot_ids:
+            lot_id = self.lot_ids[self._lot_id_idx % len(self.lot_ids)]
+            self._lot_id_idx += 1
+        elif self.code_lots:
+            code_lot = self.code_lots[self._code_lot_idx % len(self.code_lots)]
+            self._code_lot_idx += 1
+
         # Payload - Données enrichies et validées pour le backend
         payload = {
             'type': 'sensor_data',
@@ -652,6 +674,8 @@ class ESP32_Simulator:
             'sample_id': sample_id,
             'device_id': self.device_id,
             'location': self.location,
+            'code_lot': code_lot,
+            'lot_id': lot_id,
             # Données analysées enrichies (tous les champs requis par le schéma Pydantic)
             'vl53l8ch': adapted_data['vl53l8ch'],
             'as7341': adapted_data['as7341'],

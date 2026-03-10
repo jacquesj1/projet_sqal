@@ -17,6 +17,7 @@ from datetime import datetime, date
 from pydantic import BaseModel
 import asyncpg
 import os
+import json
 
 # Configuration
 DATABASE_URL = os.getenv(
@@ -26,6 +27,94 @@ DATABASE_URL = os.getenv(
 
 # Router
 router = APIRouter(prefix="/api/courbes", tags=["courbes"])
+
+
+def _snapshot_to_dose_jours(snapshot: Any) -> List[Dict[str, Any]]:
+    """Convertit un snapshot de courbe (liste de jours avec matin/soir/total)
+    en courbe compatible dashboard gaveur: [{jour, dose_g}]."""
+    if snapshot is None:
+        return []
+    if isinstance(snapshot, str):
+        try:
+            snapshot = json.loads(snapshot)
+        except Exception:
+            return []
+    if not isinstance(snapshot, list):
+        return []
+
+    out: List[Dict[str, Any]] = []
+    for it in snapshot:
+        if not isinstance(it, dict):
+            continue
+        try:
+            jour = int(it.get("jour"))
+        except Exception:
+            continue
+        total = it.get("total")
+        if total is None:
+            try:
+                matin = float(it.get("matin") or 0)
+                soir = float(it.get("soir") or 0)
+                total = matin + soir
+            except Exception:
+                total = None
+        try:
+            dose_g = float(total) if total is not None else 0.0
+        except Exception:
+            dose_g = 0.0
+        out.append({"jour": jour, "dose_g": dose_g})
+
+    out.sort(key=lambda x: x.get("jour") or 0)
+    return out
+
+
+def _snapshot_to_detail_jours(snapshot: Any) -> List[Dict[str, Any]]:
+    """Convertit un snapshot de courbe en format détaillé:
+    [{jour, matin, soir, total}]."""
+    if snapshot is None:
+        return []
+    if isinstance(snapshot, str):
+        try:
+            snapshot = json.loads(snapshot)
+        except Exception:
+            return []
+    if not isinstance(snapshot, list):
+        return []
+
+    out: List[Dict[str, Any]] = []
+    for it in snapshot:
+        if not isinstance(it, dict):
+            continue
+        try:
+            jour = int(it.get("jour"))
+        except Exception:
+            continue
+        try:
+            matin = float(it.get("matin")) if it.get("matin") is not None else 0.0
+        except Exception:
+            matin = 0.0
+        try:
+            soir = float(it.get("soir")) if it.get("soir") is not None else 0.0
+        except Exception:
+            soir = 0.0
+
+        total_raw = it.get("total")
+        try:
+            total = float(total_raw) if total_raw is not None else float(matin + soir)
+        except Exception:
+            total = float(matin + soir)
+
+        out.append(
+            {
+                "jour": jour,
+                "matin": float(matin),
+                "soir": float(soir),
+                "total": float(total),
+            }
+        )
+
+    out.sort(key=lambda x: x.get("jour") or 0)
+    return out
 
 
 # ============================================================================
@@ -479,7 +568,46 @@ async def get_dashboard_3_courbes(
     """, lot_id)
 
     if not courbe_theo:
-        raise HTTPException(status_code=404, detail=f"Aucune courbe pour lot {lot_id}")
+        lot = await conn.fetchrow(
+            """
+            SELECT
+                id,
+                courbe_pysr_snapshot_json,
+                pysr_formula,
+                pysr_r2_score,
+                duree_gavage_prevue,
+                statut
+            FROM lots_gavage
+            WHERE id = $1
+            """,
+            int(lot_id),
+        )
+        snapshot = lot["courbe_pysr_snapshot_json"] if lot else None
+        jours = _snapshot_to_dose_jours(snapshot)
+        detail_jours = _snapshot_to_detail_jours(snapshot)
+        if not jours:
+            raise HTTPException(status_code=404, detail=f"Aucune courbe pour lot {lot_id}")
+
+        # fallback: construire une courbe théorique minimale depuis la snapshot du lot
+        return {
+            'lot_id': lot_id,
+            'courbe_theorique': {
+                'id': None,
+                'equation': lot.get('pysr_formula') if lot else None,
+                'courbe': jours,
+                'courbe_detaillee': detail_jours if detail_jours else None,
+                'statut': 'SNAPSHOT',
+                'superviseur': None,
+            },
+            'courbe_reelle': [],
+            'corrections_ia': [],
+            'statistiques': {
+                'nb_jours_saisis': 0,
+                'ecart_moyen_pct': None,
+                'ecart_max_pct': None,
+                'nb_alertes': 0,
+            },
+        }
 
     # 2. Courbe réelle
     courbe_reelle = await conn.fetch("""
@@ -556,9 +684,35 @@ async def get_courbe_predictive(lot_id: int):
 
     logger = logging.getLogger(__name__)
 
-    conn = await asyncpg.connect(DATABASE_URL)
+    conn = await asyncpg.connect(DATABASE_URL, ssl=False)
 
     try:
+
+        # Fallback: lot planifié avec snapshot (lots_gavage.courbe_pysr_snapshot_json)
+        # mais pas encore de courbe théorique en table courbes_gavage_optimales.
+        lot = await conn.fetchrow(
+            """
+            SELECT id, courbe_pysr_snapshot_json, pysr_formula, pysr_r2_score
+            FROM lots_gavage
+            WHERE id = $1
+            """,
+            int(lot_id),
+        )
+        if lot and lot.get("courbe_pysr_snapshot_json"):
+            jours = _snapshot_to_dose_jours(lot.get("courbe_pysr_snapshot_json"))
+            if jours:
+                return {
+                    'lot_id': int(lot_id),
+                    'courbe_predictive': jours,
+                    'dernier_jour_reel': 0,
+                    'a_des_ecarts': False,
+                    'algorithme': 'snapshot',
+                    'metadata': {
+                        'pysr_formula': lot.get('pysr_formula'),
+                        'pysr_r2_score': lot.get('pysr_r2_score'),
+                    },
+                }
+
         async def _ensure_contract_deviation_tables(c: asyncpg.Connection) -> None:
             await c.execute(
                 """

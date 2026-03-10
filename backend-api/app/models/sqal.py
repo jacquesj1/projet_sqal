@@ -303,6 +303,7 @@ class SensorDataMessage(BaseModel):
 
     # Contexte optionnel
     lot_id: Optional[int] = Field(None, description="ID lot gavage (si associé)")
+    code_lot: Optional[str] = Field(None, description="Code lot gavage (ex: LL2512001)")
     site_code: Optional[str] = Field(None, description="Code site (LL/LS/MT)")
     location: Optional[str] = Field(None, description="Emplacement physique (ex: Ligne A)")
 

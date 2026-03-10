@@ -43,7 +43,11 @@ export default function LotsPage() {
   const lotsEnGavage = lots.filter((l) => l.statut === "en_gavage");
   const lotsTermines = lots.filter((l) => l.statut === "termine" || l.statut === "abattu");
   const lotsPreparation = lots.filter((l) => l.statut === "en_preparation");
-  const totalCanards = lots.reduce((sum, l) => sum + l.nombre_canards, 0);
+  const lotsPlanifies = lots.filter((l) => l.statut === "planifie");
+  const totalCanards = lots.reduce(
+    (sum, l) => sum + (l.nombre_canards ?? l.nb_canards_initial ?? 0),
+    0
+  );
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 p-6">
@@ -78,14 +82,14 @@ export default function LotsPage() {
         <div className="rounded-2xl bg-gradient-to-br from-green-500 to-green-600 p-6 text-white shadow-lg">
           <div className="flex items-center justify-between mb-2">
             <TrendingUp size={32} className="opacity-80" />
-            <div className="rounded-full bg-white/20 px-3 py-1 text-xs font-bold">
+            <div className="rounded-xl bg-white/20 px-3 py-1 text-xs font-bold">
               ACTIFS
             </div>
           </div>
           <p className="text-green-100 text-sm">Lots en gavage</p>
           <p className="mt-2 text-5xl font-bold">{lotsEnGavage.length}</p>
           <p className="mt-2 text-green-100 text-sm">
-            {lotsEnGavage.reduce((sum, l) => sum + l.nombre_canards, 0)} canards
+            {lotsEnGavage.reduce((sum, l) => sum + (l.nombre_canards ?? l.nb_canards_initial ?? 0), 0)} canards
           </p>
         </div>
 
@@ -171,6 +175,16 @@ export default function LotsPage() {
         >
           ⏳ En préparation ({lotsPreparation.length})
         </button>
+        <button
+          onClick={() => setFilterStatut("planifie")}
+          className={`rounded-xl px-6 py-3 text-sm font-bold shadow-md transition-all ${
+            filterStatut === "planifie"
+              ? "bg-gradient-to-r from-yellow-500 to-yellow-600 text-white scale-105"
+              : "bg-white text-gray-700 hover:bg-gray-50 hover:scale-105"
+          }`}
+        >
+          📅 Planifiés ({lotsPlanifies.length})
+        </button>
       </div>
 
       {/* Liste des lots */}
@@ -213,13 +227,23 @@ export default function LotsPage() {
 // ============================================================================
 
 function LotCard({ lot }: { lot: Lot }) {
-  const progressPourcent = Math.min(
-    (lot.poids_moyen_actuel / lot.objectif_poids_final) * 100,
-    100
-  );
+  const poidsActuel = lot.poids_moyen_actuel ?? undefined;
+  const poidsObjectif = lot.objectif_poids_final ?? undefined;
+  const progressPourcent =
+    typeof poidsActuel === "number" && typeof poidsObjectif === "number" && poidsObjectif > 0
+      ? Math.min((poidsActuel / poidsObjectif) * 100, 100)
+      : 0;
 
-  const getStatutBadge = (statut: StatutLot) => {
+  const getStatutBadge = (statutRaw: StatutLot | string) => {
+    const statut = String(statutRaw || "").trim().toLowerCase() as StatutLot;
     switch (statut) {
+      case "planifie":
+        return (
+          <span className="inline-flex items-center gap-1 rounded-full bg-yellow-100 px-3 py-1 text-xs font-bold text-yellow-800">
+            <Clock size={14} />
+            PLANIFIÉ
+          </span>
+        );
       case "en_gavage":
         return (
           <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-3 py-1 text-xs font-bold text-green-700">
@@ -253,8 +277,11 @@ function LotCard({ lot }: { lot: Lot }) {
     }
   };
 
-  const getCardGradient = (statut: StatutLot) => {
+  const getCardGradient = (statutRaw: StatutLot | string) => {
+    const statut = String(statutRaw || "").trim().toLowerCase() as StatutLot;
     switch (statut) {
+      case "planifie":
+        return "from-yellow-50 to-yellow-100 border-yellow-300";
       case "en_gavage":
         return "from-green-50 to-green-100 border-green-300";
       case "termine":
@@ -287,7 +314,9 @@ function LotCard({ lot }: { lot: Lot }) {
       <div className="mb-4 space-y-2 rounded-xl bg-white/60 p-4">
         <div className="flex justify-between text-sm">
           <span className="text-gray-600">Canards :</span>
-          <span className="font-bold text-gray-800">{lot.nb_canards_initial || 'N/A'}</span>
+          <span className="font-bold text-gray-800">
+            {lot.nombre_canards ?? lot.nb_canards_initial ?? 'N/A'}
+          </span>
         </div>
         <div className="flex justify-between text-sm">
           <span className="text-gray-600">Poids actuel :</span>
@@ -354,7 +383,10 @@ function LotCard({ lot }: { lot: Lot }) {
       </div>
 
       {/* Alertes si présentes */}
-      {lot.statut === "en_gavage" && lot.poids_moyen_actuel < lot.poids_moyen_initial && (
+      {lot.statut === "en_gavage" &&
+        typeof lot.poids_moyen_actuel === "number" &&
+        typeof lot.poids_moyen_initial === "number" &&
+        lot.poids_moyen_actuel < lot.poids_moyen_initial && (
         <div className="mt-4 rounded-xl bg-red-100 border-2 border-red-300 p-3 flex items-center gap-2">
           <AlertTriangle className="text-red-600" size={20} />
           <p className="text-xs font-bold text-red-700">

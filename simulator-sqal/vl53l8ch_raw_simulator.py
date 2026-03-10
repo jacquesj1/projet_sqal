@@ -20,7 +20,13 @@ import time
 import math
 import json
 
-from scipy import signal, stats, interpolate, integrate
+try:
+    from scipy import signal, stats, interpolate, integrate
+except Exception:
+    signal = None
+    stats = None
+    interpolate = None
+    integrate = None
 
 # Optional imports (scipy: gaussian filter & signal)
 try:

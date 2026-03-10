@@ -7,6 +7,7 @@ import {
   Chart as ChartJS,
   CategoryScale,
   LinearScale,
+  BarElement,
   PointElement,
   LineElement,
   Title,
@@ -14,12 +15,14 @@ import {
   Legend,
   Filler
 } from 'chart.js';
-import { Line } from 'react-chartjs-2';
+import { Chart } from 'react-chartjs-2';
 import { courbesAPI, type Dashboard3Courbes, type CorrectionIA } from '@/lib/courbes-api';
+import type { Lot } from '@/types/lot';
 
 ChartJS.register(
   CategoryScale,
   LinearScale,
+  BarElement,
   PointElement,
   LineElement,
   Title,
@@ -34,10 +37,13 @@ export default function CourbesSprint3Page() {
   const lotId = parseInt(params?.id as string, 10);
 
   const [dashboard, setDashboard] = useState<Dashboard3Courbes | null>(null);
+  const [lot, setLot] = useState<Lot | null>(null);
   const [corrections, setCorrections] = useState<CorrectionIA[]>([]);
   const [courbePredictive, setCourbePredictive] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const [theoViewMode, setTheoViewMode] = useState<'total' | 'matin_soir'>('total');
 
   // État pour saisie rapide dose
   const [showSaisieModal, setShowSaisieModal] = useState(false);
@@ -58,17 +64,27 @@ export default function CourbesSprint3Page() {
     setError(null);
 
     try {
-      const [dashboardData, correctionsData, predictiveData] = await Promise.all([
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
+      const [dashboardData, correctionsData, predictiveData, lotRes] = await Promise.all([
         courbesAPI.getDashboard3Courbes(lotId),
         // TODO: Récupérer gaveur_id depuis contexte auth
         courbesAPI.getCorrectionsGaveur(1, true).catch(() => []),
-        courbesAPI.getCourbePredictive(lotId).catch(() => null)
+        courbesAPI.getCourbePredictive(lotId).catch(() => null),
+        fetch(`${apiUrl}/api/lots/${lotId}`).catch(() => null),
       ]);
 
       setDashboard(dashboardData);
       // Filtrer corrections pour ce lot
       setCorrections(correctionsData.filter(c => c.lot_id === lotId));
       setCourbePredictive(predictiveData);
+
+      if (lotRes && (lotRes as any).ok) {
+        const lotData = await (lotRes as Response).json();
+        setLot(lotData);
+      } else {
+        setLot(null);
+      }
     } catch (err) {
       console.error('Erreur chargement dashboard:', err);
       setError(err instanceof Error ? err.message : 'Erreur chargement');
@@ -144,22 +160,81 @@ export default function CourbesSprint3Page() {
     ...dashboard.courbe_reelle.map(d => d.jour_gavage)
   );
 
+  const theoDetail = dashboard.courbe_theorique.courbe_detaillee;
+  const hasTheoDetail = Array.isArray(theoDetail) && theoDetail.length > 0;
+
+  const effectiveTheoTotal =
+    theoViewMode === 'matin_soir' && hasTheoDetail
+      ? theoDetail!.map((d) => d.total)
+      : dashboard.courbe_theorique.courbe.map((d) => d.dose_g);
+
+  const theoDosePeak = effectiveTheoTotal.length ? Math.max(...effectiveTheoTotal) : null;
+  const theoDayPeak =
+    theoDosePeak !== null ? effectiveTheoTotal.findIndex((v) => v === theoDosePeak) + 1 : null;
+  const theoTotalMais = effectiveTheoTotal.length
+    ? Math.round(effectiveTheoTotal.reduce((sum, v) => sum + (typeof v === 'number' ? v : 0), 0))
+    : null;
+
   const chartData = {
     labels: Array.from({ length: maxJour }, (_, i) => `J${i + 1}`),
     datasets: [
       {
         label: 'Courbe Théorique PySR',
-        data: dashboard.courbe_theorique.courbe.map(d => d.dose_g),
+        type: theoViewMode === 'matin_soir' && hasTheoDetail ? 'bar' : 'line',
+        data:
+          theoViewMode === 'matin_soir' && hasTheoDetail
+            ? theoDetail!.map((d) => d.total)
+            : dashboard.courbe_theorique.courbe.map(d => d.dose_g),
         borderColor: 'rgb(59, 130, 246)',
-        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+        backgroundColor:
+          theoViewMode === 'matin_soir' && hasTheoDetail
+            ? 'rgba(37, 99, 235, 0.55)'
+            : 'rgba(59, 130, 246, 0.1)',
         fill: false,
         tension: 0.4,
         pointRadius: 3,
         borderWidth: 2,
-        borderDash: [5, 5]
+        borderDash: [5, 5],
+        ...(theoViewMode === 'matin_soir' && hasTheoDetail
+          ? {
+              borderWidth: 0,
+              borderDash: undefined,
+              barPercentage: 0.85,
+              categoryPercentage: 0.9,
+              borderRadius: 6,
+              hoverBackgroundColor: 'rgba(37, 99, 235, 0.75)',
+            }
+          : {})
       },
+      ...(theoViewMode === 'matin_soir' && hasTheoDetail
+        ? [
+            {
+              label: 'Théorique Matin',
+              type: 'line',
+              data: theoDetail!.map((d) => d.matin),
+              borderColor: 'rgb(37, 99, 235)',
+              backgroundColor: 'rgba(37, 99, 235, 0.08)',
+              fill: false,
+              tension: 0.35,
+              pointRadius: 2,
+              borderWidth: 2,
+            },
+            {
+              label: 'Théorique Soir',
+              type: 'line',
+              data: theoDetail!.map((d) => d.soir),
+              borderColor: 'rgb(147, 51, 234)',
+              backgroundColor: 'rgba(147, 51, 234, 0.08)',
+              fill: false,
+              tension: 0.35,
+              pointRadius: 2,
+              borderWidth: 2,
+            },
+          ]
+        : []),
       {
         label: 'Courbe Réelle (Gaveur)',
+        type: 'line',
         data: Array.from({ length: maxJour }, (_, i) => {
           const point = dashboard.courbe_reelle.find(d => d.jour_gavage === i + 1);
           return point ? point.dose_reelle_g : null;
@@ -175,6 +250,7 @@ export default function CourbesSprint3Page() {
       // 3ème courbe: Courbe Prédictive IA (si écarts détectés)
       ...(courbePredictive?.a_des_ecarts ? [{
         label: 'Courbe Prédictive IA',
+        type: 'line',
         data: courbePredictive.courbe_predictive.map((d: any) => d.dose_g),
         borderColor: 'rgb(249, 115, 22)', // Orange
         backgroundColor: 'rgba(249, 115, 22, 0.1)',
@@ -196,7 +272,7 @@ export default function CourbesSprint3Page() {
       },
       title: {
         display: true,
-        text: `Dashboard 3-Courbes - Lot ${lotId}`,
+        text: `Courbe de gavage - ${lot?.code_lot || lotId}`,
         font: { size: 18, weight: 'bold' as const }
       },
       tooltip: {
@@ -252,10 +328,10 @@ export default function CourbesSprint3Page() {
         <div className="flex justify-between items-start">
           <div>
             <h1 className="text-3xl font-bold text-gray-900 mb-2">
-              📈 Dashboard 3-Courbes (Sprint 3)
+              📈 Courbe de gavage
             </h1>
             <p className="text-gray-600">
-              Lot {lotId} • Courbe {dashboard.courbe_theorique.statut}
+              Lot {lot?.code_lot || lotId} • Courbe {dashboard.courbe_theorique.statut}
               {dashboard.courbe_theorique.superviseur && ` par ${dashboard.courbe_theorique.superviseur}`}
             </p>
           </div>
@@ -270,22 +346,30 @@ export default function CourbesSprint3Page() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-7 gap-4 mb-6">
         <div className="bg-white rounded-lg shadow p-4">
           <div className="text-sm text-gray-600">Jours saisis</div>
           <div className="text-2xl font-bold text-blue-600">{stats.nb_jours_saisis}</div>
         </div>
         <div className="bg-white rounded-lg shadow p-4">
           <div className="text-sm text-gray-600">Écart moyen</div>
-          <div className={`text-2xl font-bold ${Math.abs(stats.ecart_moyen_pct) > 10 ? 'text-red-600' : 'text-green-600'}`}>
-            {stats.ecart_moyen_pct.toFixed(2)}%
-          </div>
+          {typeof stats.ecart_moyen_pct === 'number' ? (
+            <div className={`text-2xl font-bold ${Math.abs(stats.ecart_moyen_pct) > 10 ? 'text-red-600' : 'text-green-600'}`}>
+              {stats.ecart_moyen_pct.toFixed(2)}%
+            </div>
+          ) : (
+            <div className="text-2xl font-bold text-gray-400">N/A</div>
+          )}
         </div>
         <div className="bg-white rounded-lg shadow p-4">
           <div className="text-sm text-gray-600">Écart maximum</div>
-          <div className={`text-2xl font-bold ${Math.abs(stats.ecart_max_pct) > 10 ? 'text-orange-600' : 'text-green-600'}`}>
-            {stats.ecart_max_pct.toFixed(2)}%
-          </div>
+          {typeof stats.ecart_max_pct === 'number' ? (
+            <div className={`text-2xl font-bold ${Math.abs(stats.ecart_max_pct) > 10 ? 'text-orange-600' : 'text-green-600'}`}>
+              {stats.ecart_max_pct.toFixed(2)}%
+            </div>
+          ) : (
+            <div className="text-2xl font-bold text-gray-400">N/A</div>
+          )}
         </div>
         <div className="bg-white rounded-lg shadow p-4">
           <div className="text-sm text-gray-600">Alertes</div>
@@ -293,11 +377,63 @@ export default function CourbesSprint3Page() {
             {stats.nb_alertes}
           </div>
         </div>
+
+        <div className="bg-white rounded-lg shadow p-4">
+          <div className="text-sm text-gray-600">Peak (théorique)</div>
+          <div className="text-2xl font-bold text-gray-900">
+            {typeof theoDosePeak === 'number' ? `${Math.round(theoDosePeak)}g` : '—'}
+          </div>
+        </div>
+
+        <div className="bg-white rounded-lg shadow p-4">
+          <div className="text-sm text-gray-600">Day peak (théorique)</div>
+          <div className="text-2xl font-bold text-gray-900">
+            {typeof theoDayPeak === 'number' && theoDayPeak > 0 ? `J${theoDayPeak}` : '—'}
+          </div>
+        </div>
+
+        <div className="bg-white rounded-lg shadow p-4">
+          <div className="text-sm text-gray-600">Total maïs (théorique)</div>
+          <div className="text-2xl font-bold text-gray-900">
+            {typeof theoTotalMais === 'number' ? `${theoTotalMais}g` : '—'}
+          </div>
+        </div>
+      </div>
+
+      {/* Toggle Total vs Matin/Soir (si disponible) */}
+      <div className="mb-4 flex items-center gap-2">
+        <button
+          onClick={() => setTheoViewMode('total')}
+          className={`px-3 py-2 rounded-md border text-sm ${
+            theoViewMode === 'total'
+              ? 'bg-gray-900 text-white border-gray-900'
+              : 'bg-white border-gray-300'
+          }`}
+          type="button"
+        >
+          Total
+        </button>
+        <button
+          onClick={() => setTheoViewMode('matin_soir')}
+          className={`px-3 py-2 rounded-md border text-sm ${
+            theoViewMode === 'matin_soir'
+              ? 'bg-gray-900 text-white border-gray-900'
+              : 'bg-white border-gray-300'
+          } ${!hasTheoDetail ? 'opacity-50 cursor-not-allowed' : ''}`}
+          type="button"
+          disabled={!hasTheoDetail}
+          title={!hasTheoDetail ? 'Matin/Soir indisponible pour cette courbe' : ''}
+        >
+          Matin / Soir
+        </button>
+        {!hasTheoDetail && (
+          <div className="text-xs text-gray-500">(seulement disponible pour les courbes snapshot PySR)</div>
+        )}
       </div>
 
       {/* Graphique */}
       <div className="bg-white rounded-lg shadow p-6 mb-6">
-        <Line data={chartData} options={chartOptions} />
+        <Chart type="bar" data={chartData as any} options={chartOptions as any} />
       </div>
 
       {/* Corrections IA en attente */}

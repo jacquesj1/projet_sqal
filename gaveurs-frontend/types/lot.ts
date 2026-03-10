@@ -12,7 +12,7 @@
 
 export type Genetique = "mulard" | "barbarie" | "pekin" | "mixte";
 
-export type StatutLot = "en_preparation" | "en_gavage" | "termine" | "abattu";
+export type StatutLot = "planifie" | "en_preparation" | "en_gavage" | "termine" | "abattu";
 
 export type SiteOrigine = "Bretagne" | "Pays de Loire" | "Maubourguet";
 

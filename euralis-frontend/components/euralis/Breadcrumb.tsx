@@ -28,6 +28,8 @@ export default function Breadcrumb() {
       sites: 'Sites',
       gaveurs: 'Gaveurs',
       courbes: 'Courbes PySR',
+      'courbes-optimales': 'Courbes optimales',
+      pysr: 'Admin PySR',
       previsions: 'Prévisions',
       qualite: 'Qualité',
       abattages: 'Abattages',

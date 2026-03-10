@@ -11,6 +11,9 @@ import redis.asyncio as redis
 logger = logging.getLogger(__name__)
 
 
+cache_manager: Optional["CacheManager"] = None
+
+
 class CacheManager:
     """
     Redis-based cache manager with automatic TTL and invalidation

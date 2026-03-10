@@ -261,25 +261,58 @@ class GavageConsumer:
                 if gavage_data.jour >= 0:  # Ne pas enregistrer J-1
                     await conn.execute("""
                         INSERT INTO doses_journalieres (
-                            time, code_lot, jour, moment,
-                            dose_theorique, dose_reelle,
-                            poids_moyen, nb_vivants, taux_mortalite,
-                            temperature, humidite
-                        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-                        ON CONFLICT (time, code_lot, jour, moment) DO UPDATE SET
+                            time,
+                            lot_id,
+                            jour_gavage,
+                            feed_target,
+                            feed_real,
+                            code_lot,
+                            jour,
+                            moment,
+                            dose_theorique,
+                            dose_reelle,
+                            poids_moyen,
+                            nb_vivants,
+                            taux_mortalite,
+                            temperature,
+                            humidite
+                        ) VALUES (
+                            $1,
+                            (SELECT id FROM lots_gavage WHERE code_lot = $2),
+                            $3,
+                            $4,
+                            $5,
+                            $2,
+                            $3,
+                            $6,
+                            $4,
+                            $5,
+                            $7,
+                            $8,
+                            $9,
+                            $10,
+                            $11
+                        )
+                        ON CONFLICT (time, lot_id, jour_gavage) DO UPDATE SET
+                            feed_target = EXCLUDED.feed_target,
+                            feed_real = EXCLUDED.feed_real,
+                            dose_theorique = EXCLUDED.dose_theorique,
                             dose_reelle = EXCLUDED.dose_reelle,
                             poids_moyen = EXCLUDED.poids_moyen,
                             nb_vivants = EXCLUDED.nb_vivants,
                             taux_mortalite = EXCLUDED.taux_mortalite,
                             temperature = EXCLUDED.temperature,
-                            humidite = EXCLUDED.humidite
+                            humidite = EXCLUDED.humidite,
+                            code_lot = EXCLUDED.code_lot,
+                            jour = EXCLUDED.jour,
+                            moment = EXCLUDED.moment
                     """,
                         datetime.fromisoformat(gavage_data.timestamp),
                         gavage_data.code_lot,
                         gavage_data.jour,
-                        gavage_data.moment,
                         gavage_data.dose_theorique,
                         gavage_data.dose_reelle,
+                        gavage_data.moment,
                         gavage_data.poids_moyen,
                         gavage_data.nb_canards_vivants,
                         gavage_data.taux_mortalite,

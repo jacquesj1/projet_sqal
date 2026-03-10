@@ -26,40 +26,42 @@ export default function AbattagesPage() {
   const [viewMode, setViewMode] = useState<'calendrier' | 'tableau'>('calendrier');
   const [loading, setLoading] = useState(true);
 
+  const buildMockPlanningAbattage = (): PlanningAbattage[] => {
+    return Array.from({ length: 20 }, (_, i) => {
+      const sites = ['LL', 'LS', 'MT'];
+      const site = sites[i % 3];
+      const abattoirs = ['ABATTOIR OUEST', 'ABATTOIR SUD', 'ABATTOIR NORD'];
+      const statuts = ['planifie', 'confirme', 'realise'];
+
+      const date = new Date();
+      date.setDate(date.getDate() + Math.floor(i / 3));
+
+      return {
+        id: i + 1,
+        code_lot: `${site}480${1000 + i}`,
+        site_code: site,
+        date_abattage_prevue: date.toISOString().split('T')[0],
+        abattoir: abattoirs[i % 3],
+        creneau_horaire: i % 2 === 0 ? '08h-12h' : '14h-18h',
+        nb_canards_prevu: 800 + Math.floor(Math.random() * 400),
+        capacite_abattoir_jour: 2000,
+        taux_utilisation_pct: 40 + Math.random() * 50,
+        distance_km: 20 + Math.random() * 80,
+        cout_transport: 150 + Math.random() * 300,
+        priorite: Math.ceil(Math.random() * 5),
+        statut: statuts[i < 5 ? 2 : i < 10 ? 1 : 0],
+      };
+    });
+  };
+
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // TODO: Créer endpoint API /api/euralis/abattages/planning
-        // Données simulées
-        const mockPlanning: PlanningAbattage[] = Array.from({ length: 20 }, (_, i) => {
-          const sites = ['LL', 'LS', 'MT'];
-          const site = sites[i % 3];
-          const abattoirs = ['ABATTOIR OUEST', 'ABATTOIR SUD', 'ABATTOIR NORD'];
-          const statuts = ['planifie', 'confirme', 'realise'];
-
-          const date = new Date();
-          date.setDate(date.getDate() + Math.floor(i / 3));
-
-          return {
-            id: i + 1,
-            code_lot: `${site}480${1000 + i}`,
-            site_code: site,
-            date_abattage_prevue: date.toISOString().split('T')[0],
-            abattoir: abattoirs[i % 3],
-            creneau_horaire: i % 2 === 0 ? '08h-12h' : '14h-18h',
-            nb_canards_prevu: 800 + Math.floor(Math.random() * 400),
-            capacite_abattoir_jour: 2000,
-            taux_utilisation_pct: 40 + Math.random() * 50,
-            distance_km: 20 + Math.random() * 80,
-            cout_transport: 150 + Math.random() * 300,
-            priorite: Math.ceil(Math.random() * 5),
-            statut: statuts[i < 5 ? 2 : i < 10 ? 1 : 0],
-          };
-        });
-
-        setPlanning(mockPlanning);
+        const data = await euralisAPI.getPlanningAbattages({ limit: 200 });
+        setPlanning(Array.isArray(data) ? (data as PlanningAbattage[]) : []);
       } catch (error) {
         console.error('Erreur chargement planning abattages:', error);
+        setPlanning(buildMockPlanningAbattage());
       } finally {
         setLoading(false);
       }

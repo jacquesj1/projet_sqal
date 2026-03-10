@@ -495,14 +495,21 @@ def visualize_3d_advanced(analysis_data: Dict,
         X_interp, Y_interp = np.meshgrid(x_interp, y_interp)
 
         # Interpolation bicubique des données
-        from scipy.interpolate import RectBivariateSpline
-        interp_func = RectBivariateSpline(x_original, y_original, data_3d)
-        Z_interp = interp_func(x_interp, y_interp)
+        try:
+            from scipy.interpolate import RectBivariateSpline
+            interp_func = RectBivariateSpline(x_original, y_original, data_3d)
+            Z_interp = interp_func(x_interp, y_interp)
+        except Exception:
+            Z_interp = data_3d
 
         # Interpolation couleur si disponible
         if 'color_data' in locals():
-            color_interp_func = RectBivariateSpline(x_original, y_original, color_data)
-            color_interp = color_interp_func(x_interp, y_interp)
+            try:
+                from scipy.interpolate import RectBivariateSpline
+                color_interp_func = RectBivariateSpline(x_original, y_original, color_data)
+                color_interp = color_interp_func(x_interp, y_interp)
+            except Exception:
+                color_interp = color_data
 
         X, Y, Z = X_interp, Y_interp, Z_interp
         if 'color_data' in locals():

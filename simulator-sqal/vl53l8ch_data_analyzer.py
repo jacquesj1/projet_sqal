@@ -19,7 +19,13 @@ import time
 from dataclasses import dataclass
 
 # ---------------- Volume calculations ----------------
-from scipy import interpolate, integrate
+# SciPy can be heavy and may fail/hang on some Windows environments.
+# Make it optional and keep the analyzer functional with NumPy fallbacks.
+try:
+    from scipy import interpolate, integrate
+except Exception:
+    interpolate = None
+    integrate = None
 # optionally use scipy for peak finding
 try:
     from scipy import signal as scisig
@@ -100,6 +106,10 @@ class VL53L8CH_DataAnalyzer:
         distances = np.array(raw["distance_matrix"], dtype=float)
         reflectance = np.array(raw["reflectance_matrix"], dtype=float)
         amplitude = np.array(raw["amplitude_matrix"], dtype=float)
+        # Some simulator profiles / real payloads may contain None values.
+        # Converting to float yields NaN, which would make percentiles NaN and kill the occupied mask.
+        reflectance = np.nan_to_num(reflectance, nan=0.0, posinf=0.0, neginf=0.0)
+        amplitude = np.nan_to_num(amplitude, nan=0.0, posinf=0.0, neginf=0.0)
         ambient = np.array(raw["ambient_matrix"], dtype=float)
         bins = raw.get("bins_matrix", None)
         bins_arr = np.array(bins) if bins is not None else None
@@ -110,11 +120,37 @@ class VL53L8CH_DataAnalyzer:
         # Basic stats
         heights = raw["meta"]["height_sensor_mm"] - distances
         heights = np.clip(heights, 0.0, None)
-        total_volume_mm3 = float(np.sum(heights) * zone_area_mm2)
+        # Volume: n'intégrer que la zone réellement occupée (évite de compter toute la grille comme du foie).
+        # On réutilise le même seuil que pour occupied_pixels.
+        max_h = float(np.max(heights))
+        occ_threshold = 0.20 * max_h if max_h > 0.0 else 0.0
+        occ_threshold = max(occ_threshold, 2.0)
+
+        # Combine height + reflectance + amplitude to exclude barquette + low-quality returns.
+        try:
+            refl_thr = float(np.nanpercentile(reflectance, 40))
+        except Exception:
+            refl_thr = 0.0
+        if not math.isfinite(refl_thr):
+            refl_thr = 0.0
+        refl_thr = max(refl_thr, 1.0)
+
+        try:
+            amp_thr = float(np.nanpercentile(amplitude, 40))
+        except Exception:
+            amp_thr = 0.0
+        if not math.isfinite(amp_thr):
+            amp_thr = 0.0
+        amp_thr = max(amp_thr, 1.0)
+
+        occupied_mask = (heights > occ_threshold) & (reflectance > refl_thr) & (amplitude > amp_thr)
+        heights_for_volume = heights * occupied_mask
+
+        total_volume_mm3 = float(np.sum(heights_for_volume) * zone_area_mm2)
         avg_height = float(np.mean(heights))
         max_height = float(np.max(heights))
         min_height = float(np.min(heights))
-        occupied_pixels = int(np.sum(heights > (0.05 * np.max(heights))))  # >5% of max -> occupied
+        occupied_pixels = int(np.sum(occupied_mask))
 
         stats = {
             "volume_mm3": total_volume_mm3,
@@ -124,9 +160,9 @@ class VL53L8CH_DataAnalyzer:
             "height_range_mm": max_height - min_height,  # Added field required by backend
             "occupied_pixels": occupied_pixels,
             "base_area_mm2": float(zone_area_mm2 * distances.size),
-            "volume_trapezoidal_mm3": self._calculate_volume_trapezoidal(heights, raw["meta"]["zone_size_mm"]),
-            "volume_simpson_mm3": self._calculate_volume_simpson(heights, raw["meta"]["zone_size_mm"]),
-            "volume_spline_mm3": self._calculate_volume_spline(heights, raw["meta"]["zone_size_mm"]),
+            "volume_trapezoidal_mm3": self._calculate_volume_trapezoidal(heights_for_volume, raw["meta"]["zone_size_mm"]),
+            "volume_simpson_mm3": self._calculate_volume_simpson(heights_for_volume, raw["meta"]["zone_size_mm"]),
+            "volume_spline_mm3": self._calculate_volume_spline(heights_for_volume, raw["meta"]["zone_size_mm"]),
         }
 
         # Surface uniformity via gradients

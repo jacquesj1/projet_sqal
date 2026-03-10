@@ -108,6 +108,11 @@ class VL53L8CH_DataAnalyzer:
         distances = np.array(raw["distance_matrix"], dtype=float)
         reflectance = np.array(raw["reflectance_matrix"], dtype=float)
         amplitude = np.array(raw["amplitude_matrix"], dtype=float)
+        # Some simulator profiles / real payloads may contain None values.
+        # Converting to float yields NaN, which would make percentiles NaN and kill the occupied mask.
+        distances = np.nan_to_num(distances, nan=0.0, posinf=0.0, neginf=0.0)
+        reflectance = np.nan_to_num(reflectance, nan=0.0, posinf=0.0, neginf=0.0)
+        amplitude = np.nan_to_num(amplitude, nan=0.0, posinf=0.0, neginf=0.0)
         ambient = np.array(raw["ambient_matrix"], dtype=float)
         bins = raw.get("bins_matrix", None)
         bins_arr = np.array(bins) if bins is not None else None
@@ -118,11 +123,80 @@ class VL53L8CH_DataAnalyzer:
         # Basic stats
         heights = raw["meta"]["height_sensor_mm"] - distances
         heights = np.clip(heights, 0.0, None)
-        total_volume_mm3 = float(np.sum(heights) * zone_area_mm2)
+        # Volume: n'intégrer que la zone réellement occupée (évite de compter toute la grille comme du foie).
+        # Combine height + reflectance + amplitude to exclude barquette + low-quality returns.
+        max_h = float(np.max(heights))
+        # Using max height makes the threshold too sensitive to a single noisy spike.
+        # Use p95 as a robust proxy for the “top surface” height.
+        try:
+            p95_h = float(np.nanpercentile(heights, 95))
+        except Exception:
+            p95_h = max_h
+
+        # Additional robust percentile used to cap height contributions during volume integration.
+        # IMPORTANT: compute it on height-candidate pixels; otherwise zeros/background dominate and crush the volume.
+        try:
+            _p90_src = heights[heights > 0.0]
+            p90_h = float(np.nanpercentile(_p90_src, 90)) if _p90_src.size else p95_h
+        except Exception:
+            p90_h = p95_h
+
+        ref_h = p95_h if math.isfinite(p95_h) and p95_h > 0.0 else max_h
+        occ_threshold = 0.20 * ref_h if ref_h > 0.0 else 0.0
+        occ_threshold = max(occ_threshold, 2.0)
+
+        height_candidate_mask = heights > occ_threshold
+
+        # Compute thresholds on height-candidate pixels to avoid barquette/background dominating percentiles.
+        refl_values = reflectance[height_candidate_mask] if np.any(height_candidate_mask) else reflectance
+        amp_values = amplitude[height_candidate_mask] if np.any(height_candidate_mask) else amplitude
+
+        # With very few candidate pixels, low percentiles (p10) can become unstable.
+        # Use a more conservative percentile when sample size is small.
+        refl_values_flat = np.asarray(refl_values, dtype=float).ravel()
+        amp_values_flat = np.asarray(amp_values, dtype=float).ravel()
+        refl_n = int(np.sum(np.isfinite(refl_values_flat)))
+        amp_n = int(np.sum(np.isfinite(amp_values_flat)))
+        refl_pct = 15 if refl_n >= 16 else 35
+        amp_pct = 15 if amp_n >= 16 else 35
+
+        try:
+            refl_thr = float(np.nanpercentile(refl_values, refl_pct))
+        except Exception:
+            refl_thr = 0.0
+        if not math.isfinite(refl_thr):
+            refl_thr = 0.0
+        refl_thr = max(0.90 * refl_thr, 45.0)
+
+        try:
+            amp_thr = float(np.nanpercentile(amp_values, amp_pct))
+        except Exception:
+            amp_thr = 0.0
+        if not math.isfinite(amp_thr):
+            amp_thr = 0.0
+        amp_thr = max(0.90 * amp_thr, 12.0)
+
+        occupied_mask = (heights > occ_threshold) & (reflectance > refl_thr) & (amplitude > amp_thr)
+        occupied_pixels_raw = int(np.sum(occupied_mask))
+        # If thresholds are too strict (e.g. high barquette contribution, missing refl/amp), fall back to height-only.
+        # This prevents occupied_pixels collapsing to ~0 and volumes to near-zero.
+        used_fallback = False
+        if occupied_pixels_raw < 4:
+            occupied_mask = height_candidate_mask
+            used_fallback = True
+        # Clip extreme peaks before volume integration to avoid rare frames exploding the volume.
+        # Only cap heights slightly above the robust surface proxy (p95), so typical volumes are preserved.
+        height_cap_mm = (1.05 * ref_h) if (math.isfinite(ref_h) and ref_h > 0.0) else max_h
+        if not math.isfinite(height_cap_mm) or height_cap_mm <= 0.0:
+            height_cap_mm = max_h
+        heights_clipped = np.clip(heights, 0.0, height_cap_mm)
+        heights_for_volume = heights_clipped * occupied_mask
+
+        total_volume_mm3 = float(np.sum(heights_for_volume) * zone_area_mm2)
         avg_height = float(np.mean(heights))
         max_height = float(np.max(heights))
         min_height = float(np.min(heights))
-        occupied_pixels = int(np.sum(heights > (0.05 * np.max(heights))))  # >5% of max -> occupied
+        occupied_pixels = int(np.sum(occupied_mask))
 
         stats = {
             "volume_mm3": total_volume_mm3,
@@ -131,10 +205,19 @@ class VL53L8CH_DataAnalyzer:
             "min_height_mm": min_height,
             "height_range_mm": max_height - min_height,  # Added field required by backend
             "occupied_pixels": occupied_pixels,
+            "height_candidate_pixels": int(np.sum(height_candidate_mask)),
+            "occupied_pixels_raw": occupied_pixels_raw,
+            "occ_threshold_mm": float(occ_threshold),
+            "height_p95_mm": float(p95_h),
+            "height_p90_mm": float(p90_h),
+            "height_cap_mm": float(height_cap_mm),
+            "refl_thr": float(refl_thr),
+            "amp_thr": float(amp_thr),
+            "used_fallback": bool(used_fallback),
             "base_area_mm2": float(zone_area_mm2 * distances.size),
-            "volume_trapezoidal_mm3": self._calculate_volume_trapezoidal(heights, raw["meta"]["zone_size_mm"]),
-            "volume_simpson_mm3": self._calculate_volume_simpson(heights, raw["meta"]["zone_size_mm"]),
-            "volume_spline_mm3": self._calculate_volume_spline(heights, raw["meta"]["zone_size_mm"]),
+            "volume_trapezoidal_mm3": self._calculate_volume_trapezoidal(heights_for_volume, raw["meta"]["zone_size_mm"]),
+            "volume_simpson_mm3": self._calculate_volume_simpson(heights_for_volume, raw["meta"]["zone_size_mm"]),
+            "volume_spline_mm3": self._calculate_volume_spline(heights_for_volume, raw["meta"]["zone_size_mm"]),
         }
 
         # Surface uniformity via gradients

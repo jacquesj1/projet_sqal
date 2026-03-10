@@ -14,11 +14,142 @@ import logging
 from typing import Dict, Any
 import asyncpg
 import os
+import json
 
 logger = logging.getLogger(__name__)
 
 # Configuration Database
 DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://gaveurs_admin:gaveurs_secure_2024@gaveurs_timescaledb:5432/gaveurs_db')
+
+
+async def _fetch_lot_level_dataset(
+    *,
+    conn: asyncpg.Connection,
+    site_codes: list[str] | None = None,
+    genetique: str | None = None,
+    min_duree_gavage: int | None = None,
+    max_duree_gavage: int | None = None,
+    limit_lots: int | None = None,
+) -> list[dict[str, Any]]:
+    resolved_site_codes = [str(x).strip().upper() for x in (site_codes or []) if str(x).strip()]
+    resolved_gen = str(genetique).strip().lower() if genetique else None
+
+    where: list[str] = [
+        "lg.code_lot IS NOT NULL",
+    ]
+    params: list[object] = []
+    idx = 1
+
+    if resolved_site_codes:
+        where.append(f"lg.site_code = ANY(${idx}::varchar[])")
+        params.append(resolved_site_codes)
+        idx += 1
+
+    if resolved_gen:
+        where.append("(LOWER(lg.genetique) = $%s OR LOWER(lg.souche) = $%s)" % (idx, idx))
+        params.append(resolved_gen)
+        idx += 1
+
+    if min_duree_gavage is not None:
+        where.append(f"COALESCE(lg.duree_gavage_reelle, d.duree_gavage_calc) >= ${idx}")
+        params.append(int(min_duree_gavage))
+        idx += 1
+
+    if max_duree_gavage is not None:
+        where.append(f"COALESCE(lg.duree_gavage_reelle, d.duree_gavage_calc) <= ${idx}")
+        params.append(int(max_duree_gavage))
+        idx += 1
+
+    limit_sql = ""
+    if limit_lots is not None:
+        limit_sql = f"LIMIT {int(max(1, limit_lots))}"
+
+    query = f"""
+    WITH lot_duree AS (
+        SELECT lot_gavage_id, MAX(jour_gavage) AS duree_gavage_calc
+        FROM gavage_data_lots
+        GROUP BY lot_gavage_id
+    ),
+    gdl_last AS (
+        SELECT DISTINCT ON (gdl.lot_gavage_id, gdl.jour_gavage, LOWER(gdl.repas))
+            gdl.lot_gavage_id,
+            gdl.jour_gavage,
+            LOWER(gdl.repas) AS repas,
+            gdl.dose_moyenne,
+            gdl.time
+        FROM gavage_data_lots gdl
+        WHERE gdl.dose_moyenne IS NOT NULL
+        ORDER BY gdl.lot_gavage_id, gdl.jour_gavage, LOWER(gdl.repas), gdl.time DESC
+    ),
+    gdl_pivot AS (
+        SELECT
+            lot_gavage_id,
+            jour_gavage,
+            MAX(dose_moyenne) FILTER (WHERE repas = 'matin') AS dose_matin,
+            MAX(dose_moyenne) FILTER (WHERE repas = 'soir') AS dose_soir
+        FROM gdl_last
+        GROUP BY lot_gavage_id, jour_gavage
+    ),
+    sqal_avg AS (
+        SELECT
+            lg.id AS lot_id,
+            AVG(ss.fusion_final_score) AS sqal_score_avg
+        FROM lots_gavage lg
+        JOIN sensor_samples ss
+          ON ss.lot_id = lg.id
+        GROUP BY lg.id
+    ),
+    sqal_last_grade AS (
+        SELECT DISTINCT ON (lg.id)
+            lg.id AS lot_id,
+            ss.fusion_final_grade AS sqal_grade_last,
+            ss.timestamp AS sqal_ts
+        FROM lots_gavage lg
+        JOIN sensor_samples ss
+          ON ss.lot_id = lg.id
+        WHERE ss.fusion_final_grade IS NOT NULL
+        ORDER BY lg.id, ss.timestamp DESC NULLS LAST
+    )
+    SELECT
+        lg.id AS lot_id,
+        lg.code_lot,
+        lg.site_code,
+        COALESCE(LOWER(lg.genetique), LOWER(lg.souche)) AS genetique,
+        COALESCE(lg.duree_gavage_reelle, d.duree_gavage_calc) AS duree_gavage,
+        sc.sqal_score_avg,
+        slg.sqal_grade_last,
+        COALESCE(
+            json_agg(
+                json_build_object(
+                    'jour', p.jour_gavage,
+                    'matin', COALESCE(p.dose_matin, 0),
+                    'soir', COALESCE(p.dose_soir, 0),
+                    'total', COALESCE(p.dose_matin, 0) + COALESCE(p.dose_soir, 0)
+                )
+                ORDER BY p.jour_gavage
+            ) FILTER (WHERE p.jour_gavage IS NOT NULL),
+            '[]'::json
+        ) AS jours
+    FROM lots_gavage lg
+    JOIN lot_duree d ON d.lot_gavage_id = lg.id
+    LEFT JOIN gdl_pivot p ON p.lot_gavage_id = lg.id
+    LEFT JOIN sqal_avg sc ON sc.lot_id = lg.id
+    LEFT JOIN sqal_last_grade slg ON slg.lot_id = lg.id
+    WHERE {' AND '.join(where)}
+    GROUP BY
+        lg.id,
+        lg.code_lot,
+        lg.site_code,
+        COALESCE(LOWER(lg.genetique), LOWER(lg.souche)),
+        COALESCE(lg.duree_gavage_reelle, d.duree_gavage_calc),
+        sc.sqal_score_avg,
+        slg.sqal_grade_last
+    ORDER BY lg.id DESC
+    {limit_sql}
+    """
+
+    rows = await conn.fetch(query, *params)
+    return [dict(r) for r in rows]
 
 
 @celery_app.task(bind=True, max_retries=3, time_limit=1800)
@@ -57,6 +188,217 @@ def train_pysr_async(
             "variables": list
         }
     """
+    import time
+    started_ts = time.time()
+
+    async def _ensure_pysr_training_history_table(conn: asyncpg.Connection) -> None:
+        await conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS pysr_training_history (
+                id SERIAL PRIMARY KEY,
+                lot_id INTEGER REFERENCES lots_gavage(id),
+                gaveur_id INTEGER REFERENCES gaveurs_euralis(id),
+                nb_iterations INTEGER,
+                max_complexity INTEGER,
+                binary_operators TEXT,
+                unary_operators TEXT,
+                statut VARCHAR(20) NOT NULL,
+                best_equation TEXT,
+                r2_score DECIMAL(10, 6),
+                mae DECIMAL(12, 6),
+                complexity INTEGER,
+                duree_secondes INTEGER,
+                nb_equations_generees INTEGER,
+                nb_lots_entrainement INTEGER,
+                date_debut_donnees DATE,
+                date_fin_donnees DATE,
+                error_message TEXT,
+                started_at TIMESTAMPTZ NOT NULL,
+                finished_at TIMESTAMPTZ,
+                created_at TIMESTAMPTZ DEFAULT NOW()
+            );
+            """
+        )
+
+        # Colonnes additionnelles pour le mode segment (compat rétro)
+        await conn.execute("ALTER TABLE pysr_training_history ADD COLUMN IF NOT EXISTS task_id TEXT")
+        await conn.execute("ALTER TABLE pysr_training_history ADD COLUMN IF NOT EXISTS site_code VARCHAR(2)")
+        await conn.execute("ALTER TABLE pysr_training_history ADD COLUMN IF NOT EXISTS genetique TEXT")
+        await conn.execute("ALTER TABLE pysr_training_history ADD COLUMN IF NOT EXISTS cluster_id INTEGER")
+
+        await conn.execute("ALTER TABLE pysr_training_history ADD COLUMN IF NOT EXISTS candidate_curve_json JSONB")
+        await conn.execute("ALTER TABLE pysr_training_history ADD COLUMN IF NOT EXISTS candidate_metrics_json JSONB")
+
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_pysr_history_segment ON pysr_training_history(site_code, genetique, cluster_id, started_at DESC)"
+        )
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_pysr_history_task_id ON pysr_training_history(task_id)"
+        )
+
+    async def _persist_pysr_history(
+        *,
+        statut: str,
+        equation: str | None,
+        r2_score: float | None,
+        complexity: int | None,
+        error_message: str | None,
+        resolved_site_code: str | None,
+        resolved_cluster_id: int | None,
+        resolved_genetique: str | None,
+        candidate_curve_json: dict[str, Any] | None = None,
+        candidate_metrics_json: dict[str, Any] | None = None,
+    ) -> None:
+        pool = await asyncpg.create_pool(DATABASE_URL)
+        try:
+            async with pool.acquire() as conn:
+                await _ensure_pysr_training_history_table(conn)
+                await conn.execute(
+                    """
+                    INSERT INTO pysr_training_history (
+                        task_id, lot_id, gaveur_id,
+                        site_code, genetique, cluster_id,
+                        statut, best_equation, r2_score, complexity,
+                        duree_secondes, error_message,
+                        candidate_curve_json, candidate_metrics_json,
+                        started_at, finished_at
+                    ) VALUES (
+                        $1, $2, $3,
+                        $4, $5, $6,
+                        $7, $8, $9, $10,
+                        $11, $12,
+                        $13, $14,
+                        to_timestamp($15), to_timestamp($16)
+                    )
+                    """,
+                    str(getattr(self.request, "id", "")) or None,
+                    (int(lot_id) if lot_id is not None else None),
+                    None,
+                    (str(resolved_site_code).strip().upper() if resolved_site_code else None),
+                    (str(resolved_genetique).strip().lower() if resolved_genetique else None),
+                    (int(resolved_cluster_id) if resolved_cluster_id is not None else None),
+                    str(statut).upper(),
+                    (str(equation) if equation else None),
+                    (float(r2_score) if r2_score is not None else None),
+                    (int(complexity) if complexity is not None else None),
+                    int(max(0, round(time.time() - started_ts))),
+                    (str(error_message) if error_message else None),
+                    (json.dumps(candidate_curve_json) if candidate_curve_json is not None else None),
+                    (json.dumps(candidate_metrics_json) if candidate_metrics_json is not None else None),
+                    float(started_ts),
+                    float(time.time()),
+                )
+        finally:
+            await pool.close()
+
+    def _compute_curve_metrics_from_jours(jours: list[dict[str, Any]]) -> dict[str, Any]:
+        totals = []
+        for p in jours:
+            try:
+                totals.append(float(p.get("total") or 0.0))
+            except Exception:
+                totals.append(0.0)
+        if not totals:
+            return {"n_jours": 0}
+
+        peak_total = max(totals)
+        day_peak = int(jours[totals.index(peak_total)].get("jour") or (totals.index(peak_total) + 1))
+        return {
+            "n_jours": int(len(totals)),
+            "dose_start_total": float(totals[0]),
+            "dose_peak_total": float(peak_total),
+            "day_peak": int(day_peak),
+            "dose_end_total": float(totals[-1]),
+            "total_mais": float(sum(totals)),
+        }
+
+    def _build_candidate_curves_by_gate(
+        rows: list[dict[str, Any]],
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        # Group by SQAL gate using last grade.
+        gate_to_lots: dict[str, list[list[dict[str, Any]]]] = {
+            "A": [],
+            "B": [],
+            "C_D": [],
+        }
+
+        for r in rows:
+            grade = str(r.get("sqal_grade_last") or "").strip().upper()
+            if grade in ("A+", "A"):
+                gate = "A"
+            elif grade == "B":
+                gate = "B"
+            elif grade in ("C", "REJECT"):
+                gate = "C_D"
+            else:
+                continue
+
+            jours = r.get("jours")
+            if isinstance(jours, str):
+                try:
+                    jours = json.loads(jours)
+                except Exception:
+                    jours = []
+            if not isinstance(jours, list):
+                jours = []
+            gate_to_lots[gate].append(jours)
+
+        curves_by_gate: dict[str, Any] = {"by_gate": {}}
+        metrics_by_gate: dict[str, Any] = {"by_gate": {}}
+
+        for gate, lots_jours in gate_to_lots.items():
+            if not lots_jours:
+                curves_by_gate["by_gate"][gate] = {"jours": []}
+                metrics_by_gate["by_gate"][gate] = {"n_lots": 0, "metrics": {"n_jours": 0}}
+                continue
+
+            max_day = 0
+            for lj in lots_jours:
+                for p in lj:
+                    try:
+                        max_day = max(max_day, int(p.get("jour") or 0))
+                    except Exception:
+                        continue
+
+            agg: list[dict[str, Any]] = []
+            for day in range(1, max_day + 1):
+                matin_vals: list[float] = []
+                soir_vals: list[float] = []
+                for lj in lots_jours:
+                    for p in lj:
+                        if int(p.get("jour") or 0) != day:
+                            continue
+                        try:
+                            matin_vals.append(float(p.get("matin") or 0.0))
+                        except Exception:
+                            pass
+                        try:
+                            soir_vals.append(float(p.get("soir") or 0.0))
+                        except Exception:
+                            pass
+                        break
+
+                matin_mean = (sum(matin_vals) / len(matin_vals)) if matin_vals else 0.0
+                soir_mean = (sum(soir_vals) / len(soir_vals)) if soir_vals else 0.0
+                agg.append(
+                    {
+                        "jour": int(day),
+                        "matin": float(round(matin_mean, 2)),
+                        "soir": float(round(soir_mean, 2)),
+                        "total": float(round(matin_mean + soir_mean, 2)),
+                    }
+                )
+
+            curves_by_gate["by_gate"][gate] = {
+                "jours": agg,
+            }
+            metrics_by_gate["by_gate"][gate] = {
+                "n_lots": int(len(lots_jours)),
+                "metrics": _compute_curve_metrics_from_jours(agg),
+            }
+
+        return curves_by_gate, metrics_by_gate
+
     try:
         logger.info(f"🔬 Starting PySR training (lot_id={lot_id}, genetique={genetique})")
 
@@ -200,6 +542,112 @@ def train_pysr_async(
         # Import lazy (évite imports inutiles au démarrage)
         from app.ml.symbolic_regression import train_pysr_model
 
+        async def _ensure_pysr_training_history_table(conn: asyncpg.Connection) -> None:
+            await conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS pysr_training_history (
+                    id SERIAL PRIMARY KEY,
+                    task_id TEXT,
+                    lot_id INTEGER,
+                    gaveur_id INTEGER,
+                    site_code VARCHAR(2),
+                    genetique TEXT,
+                    cluster_id INTEGER,
+                    statut VARCHAR(20) NOT NULL,
+                    best_equation TEXT,
+                    r2_score DOUBLE PRECISION,
+                    mae DOUBLE PRECISION,
+                    complexity INTEGER,
+                    duree_secondes INTEGER,
+                    error_message TEXT,
+                    candidate_curve_json JSONB,
+                    candidate_metrics_json JSONB,
+                    started_at TIMESTAMPTZ,
+                    finished_at TIMESTAMPTZ,
+                    created_at TIMESTAMPTZ DEFAULT NOW()
+                );
+                """
+            )
+            await conn.execute("ALTER TABLE pysr_training_history ADD COLUMN IF NOT EXISTS task_id TEXT")
+            await conn.execute("ALTER TABLE pysr_training_history ADD COLUMN IF NOT EXISTS site_code VARCHAR(2)")
+            await conn.execute("ALTER TABLE pysr_training_history ADD COLUMN IF NOT EXISTS genetique TEXT")
+            await conn.execute("ALTER TABLE pysr_training_history ADD COLUMN IF NOT EXISTS cluster_id INTEGER")
+            await conn.execute(
+                "ALTER TABLE pysr_training_history ADD COLUMN IF NOT EXISTS candidate_curve_json JSONB"
+            )
+            await conn.execute(
+                "ALTER TABLE pysr_training_history ADD COLUMN IF NOT EXISTS candidate_metrics_json JSONB"
+            )
+
+        async def _persist_multi_history_row(
+            *,
+            statut: str,
+            resolved_site_code: str | None,
+            resolved_genetique: str | None,
+            resolved_cluster_id: int | None,
+            equation: str | None,
+            r2_score: float | None,
+            complexity: int | None,
+            error_message: str | None,
+            candidate_curve_json: dict[str, Any] | None = None,
+            candidate_metrics_json: dict[str, Any] | None = None,
+        ) -> None:
+            pool = await asyncpg.create_pool(DATABASE_URL)
+            try:
+                async with pool.acquire() as conn:
+                    await _ensure_pysr_training_history_table(conn)
+                    await conn.execute(
+                        """
+                        INSERT INTO pysr_training_history (
+                            task_id,
+                            site_code,
+                            genetique,
+                            cluster_id,
+                            statut,
+                            best_equation,
+                            r2_score,
+                            complexity,
+                            duree_secondes,
+                            error_message,
+                            candidate_curve_json,
+                            candidate_metrics_json,
+                            started_at,
+                            finished_at
+                        ) VALUES (
+                            $1,
+                            $2,
+                            $3,
+                            $4,
+                            $5,
+                            $6,
+                            $7,
+                            $8,
+                            $9,
+                            $10,
+                            $11::jsonb,
+                            $12::jsonb,
+                            to_timestamp($13),
+                            to_timestamp($14)
+                        )
+                        """,
+                        str(getattr(self.request, "id", "")) or None,
+                        (str(resolved_site_code).strip().upper() if resolved_site_code else None),
+                        (str(resolved_genetique).strip().lower() if resolved_genetique else None),
+                        (int(resolved_cluster_id) if resolved_cluster_id is not None else None),
+                        str(statut).upper(),
+                        (str(equation) if equation else None),
+                        (float(r2_score) if r2_score is not None else None),
+                        (int(complexity) if complexity is not None else None),
+                        int(max(0, round(time.time() - started_ts))),
+                        (str(error_message) if error_message else None),
+                        (json.dumps(candidate_curve_json) if candidate_curve_json is not None else None),
+                        (json.dumps(candidate_metrics_json) if candidate_metrics_json is not None else None),
+                        float(started_ts),
+                        float(time.time()),
+                    )
+            finally:
+                await pool.close()
+
         resolved_genetique = genetique
         resolved_site_code: str | None = None
         resolved_cluster_pred_id: int | None = None
@@ -211,6 +659,13 @@ def train_pysr_async(
             resolved_cluster_pred_id = lc
         elif site_codes and len(site_codes) == 1:
             resolved_site_code = str(site_codes[0]).strip().upper()
+
+        persisted_cluster_id: int | None = resolved_cluster_pred_id
+        if persisted_cluster_id is None and cluster_ids and len(cluster_ids) == 1:
+            try:
+                persisted_cluster_id = int(cluster_ids[0])
+            except Exception:
+                persisted_cluster_id = None
 
         (resolved_foie_min,
          resolved_foie_max,
@@ -259,6 +714,58 @@ def train_pysr_async(
             f"✅ PySR training completed (lot_id={lot_id}, genetique={genetique}) - R²: {result.get('r2_score', 0):.3f}"
         )
 
+        # Build "real" candidates curves by SQAL gate from the lot-level dataset.
+        candidate_curve_json = None
+        candidate_metrics_json = None
+        try:
+            pool = asyncio.run(asyncpg.create_pool(DATABASE_URL))
+            try:
+                async def _load_rows() -> list[dict[str, Any]]:
+                    async with pool.acquire() as conn:
+                        return await _fetch_lot_level_dataset(
+                            conn=conn,
+                            site_codes=site_codes,
+                            genetique=resolved_genetique,
+                            min_duree_gavage=min_duree_gavage,
+                            max_duree_gavage=max_duree_gavage,
+                            limit_lots=2000,
+                        )
+
+                rows = asyncio.run(_load_rows())
+            finally:
+                asyncio.run(pool.close())
+
+            candidate_curve_json, candidate_metrics_json = _build_candidate_curves_by_gate(rows)
+            candidate_curve_json["default_gate"] = "A"
+        except Exception as curve_err:
+            logger.warning(f"Failed to build candidate curves by gate: {curve_err}")
+
+        # Persister aussi les métriques de winsorisation (Option C) si présentes dans le résultat.
+        try:
+            w = result.get("winsorization") if isinstance(result, dict) else None
+            if w is not None:
+                if candidate_metrics_json is None:
+                    candidate_metrics_json = {}
+                if isinstance(candidate_metrics_json, dict):
+                    candidate_metrics_json["winsorization"] = w
+        except Exception:
+            pass
+
+        asyncio.run(
+            _persist_pysr_history(
+                statut="SUCCESS",
+                equation=result.get("formula"),
+                r2_score=result.get("r2_score"),
+                complexity=result.get("complexity"),
+                error_message=None,
+                resolved_site_code=resolved_site_code,
+                resolved_cluster_id=persisted_cluster_id,
+                resolved_genetique=resolved_genetique,
+                candidate_curve_json=candidate_curve_json,
+                candidate_metrics_json=candidate_metrics_json,
+            )
+        )
+
         return {
             "status": "success",
             "lot_id": lot_id,
@@ -281,15 +788,32 @@ def train_pysr_async(
     except Exception as exc:
         logger.error(f"❌ PySR training failed (lot_id={lot_id}, genetique={genetique}): {exc}", exc_info=True)
 
+        import asyncio
+        try:
+            asyncio.run(
+                _persist_pysr_history(
+                    statut="FAILED",
+                    equation=None,
+                    r2_score=None,
+                    complexity=None,
+                    error_message=str(exc),
+                    resolved_site_code=None,
+                    resolved_cluster_id=None,
+                    resolved_genetique=str(genetique).strip().lower() if genetique else None,
+                    candidate_curve_json=None,
+                    candidate_metrics_json=None,
+                )
+            )
+        except Exception:
+            # Ne pas masquer l'erreur initiale si l'écriture de l'historique échoue
+            pass
+
         # Cas attendu: pas assez de données → ne pas retry en boucle
         msg = str(exc)
         if "Pas assez de données" in msg:
-            return {
-                "status": "error",
-                "lot_id": lot_id,
-                "genetique": genetique,
-                "error": msg,
-            }
+            # Important: si on return un dict ici, Celery marquera la tâche SUCCESS.
+            # Or on a persisté un FAILED en DB → incohérence côté UI. On laisse échouer sans retry.
+            raise
 
         # Retry avec backoff exponentiel
         raise self.retry(exc=exc, countdown=60 * (2 ** self.request.retries))
@@ -315,6 +839,8 @@ def train_pysr_multi_async(
 ) -> Dict[str, Any]:
     """Entraîne PySR sur *toutes* les génétiques disponibles après application des filtres."""
     try:
+        import time
+        started_ts = time.time()
         logger.info(
             "🔬 Starting PySR multi training "
             f"(site_codes={site_codes}, seasons={seasons}, cluster_ids={cluster_ids}, premium={require_sqal_premium})"
@@ -323,6 +849,112 @@ def train_pysr_multi_async(
         import asyncio
 
         from app.ml.symbolic_regression import train_pysr_model
+
+        async def _ensure_pysr_training_history_table(conn: asyncpg.Connection) -> None:
+            await conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS pysr_training_history (
+                    id SERIAL PRIMARY KEY,
+                    task_id TEXT,
+                    lot_id INTEGER,
+                    gaveur_id INTEGER,
+                    site_code VARCHAR(2),
+                    genetique TEXT,
+                    cluster_id INTEGER,
+                    statut VARCHAR(20) NOT NULL,
+                    best_equation TEXT,
+                    r2_score DOUBLE PRECISION,
+                    mae DOUBLE PRECISION,
+                    complexity INTEGER,
+                    duree_secondes INTEGER,
+                    error_message TEXT,
+                    candidate_curve_json JSONB,
+                    candidate_metrics_json JSONB,
+                    started_at TIMESTAMPTZ,
+                    finished_at TIMESTAMPTZ,
+                    created_at TIMESTAMPTZ DEFAULT NOW()
+                );
+                """
+            )
+            await conn.execute("ALTER TABLE pysr_training_history ADD COLUMN IF NOT EXISTS task_id TEXT")
+            await conn.execute("ALTER TABLE pysr_training_history ADD COLUMN IF NOT EXISTS site_code VARCHAR(2)")
+            await conn.execute("ALTER TABLE pysr_training_history ADD COLUMN IF NOT EXISTS genetique TEXT")
+            await conn.execute("ALTER TABLE pysr_training_history ADD COLUMN IF NOT EXISTS cluster_id INTEGER")
+            await conn.execute(
+                "ALTER TABLE pysr_training_history ADD COLUMN IF NOT EXISTS candidate_curve_json JSONB"
+            )
+            await conn.execute(
+                "ALTER TABLE pysr_training_history ADD COLUMN IF NOT EXISTS candidate_metrics_json JSONB"
+            )
+
+        async def _persist_multi_history_row(
+            *,
+            statut: str,
+            resolved_site_code: str | None,
+            resolved_genetique: str | None,
+            resolved_cluster_id: int | None,
+            equation: str | None,
+            r2_score: float | None,
+            complexity: int | None,
+            error_message: str | None,
+            candidate_curve_json: dict[str, Any] | None = None,
+            candidate_metrics_json: dict[str, Any] | None = None,
+        ) -> None:
+            pool = await asyncpg.create_pool(DATABASE_URL)
+            try:
+                async with pool.acquire() as conn:
+                    await _ensure_pysr_training_history_table(conn)
+                    await conn.execute(
+                        """
+                        INSERT INTO pysr_training_history (
+                            task_id,
+                            site_code,
+                            genetique,
+                            cluster_id,
+                            statut,
+                            best_equation,
+                            r2_score,
+                            complexity,
+                            duree_secondes,
+                            error_message,
+                            candidate_curve_json,
+                            candidate_metrics_json,
+                            started_at,
+                            finished_at
+                        ) VALUES (
+                            $1,
+                            $2,
+                            $3,
+                            $4,
+                            $5,
+                            $6,
+                            $7,
+                            $8,
+                            $9,
+                            $10,
+                            $11::jsonb,
+                            $12::jsonb,
+                            to_timestamp($13),
+                            to_timestamp($14)
+                        )
+                        """,
+                        str(getattr(self.request, "id", "")) or None,
+                        (str(resolved_site_code).strip().upper() if resolved_site_code else None),
+                        (str(resolved_genetique).strip().lower() if resolved_genetique else None),
+                        (int(resolved_cluster_id) if resolved_cluster_id is not None else None),
+                        str(statut).upper(),
+                        (str(equation) if equation else None),
+                        (float(r2_score) if r2_score is not None else None),
+                        (int(complexity) if complexity is not None else None),
+                        int(max(0, round(time.time() - started_ts))),
+                        (str(error_message) if error_message else None),
+                        (json.dumps(candidate_curve_json) if candidate_curve_json is not None else None),
+                        (json.dumps(candidate_metrics_json) if candidate_metrics_json is not None else None),
+                        float(started_ts),
+                        float(time.time()),
+                    )
+            finally:
+                await pool.close()
 
         async def _resolve_foie_objective_for_gen(
             *,
@@ -511,6 +1143,18 @@ def train_pysr_multi_async(
         )
 
         if not genetiques:
+            # Persister un run "FAILED" (sinon Celery peut finir SUCCESS mais l'UI ne verra rien en DB)
+            resolved_site_code_for_history: str | None = None
+            if site_codes and len(site_codes) == 1:
+                resolved_site_code_for_history = str(site_codes[0]).strip().upper()
+
+            persisted_cluster_id_for_history: int | None = None
+            if cluster_ids and len(cluster_ids) == 1:
+                try:
+                    persisted_cluster_id_for_history = int(cluster_ids[0])
+                except Exception:
+                    persisted_cluster_id_for_history = None
+
             diagnostics = {
                 "step_base_no_filters": asyncio.run(
                     _discover_genetiques(None, None, None, None, None, False)
@@ -541,6 +1185,33 @@ def train_pysr_multi_async(
                     )
                 )
 
+            try:
+                asyncio.run(
+                    _persist_multi_history_row(
+                        statut="FAILED",
+                        resolved_site_code=resolved_site_code_for_history,
+                        resolved_genetique=None,
+                        resolved_cluster_id=persisted_cluster_id_for_history,
+                        equation=None,
+                        r2_score=None,
+                        complexity=None,
+                        error_message=(
+                            "Aucune génétique trouvée avec ces filtres | "
+                            f"site_codes={site_codes} cluster_ids={cluster_ids} seasons={seasons} "
+                            f"premium={require_sqal_premium} diagnostics={diagnostics}"
+                        ),
+                    )
+                )
+                logger.info(
+                    "PySR multi persisted FAILED history row (no genetiques) task_id=%s",
+                    str(getattr(self.request, "id", "")),
+                )
+            except Exception:
+                logger.exception(
+                    "PySR multi failed to persist history row (no genetiques) task_id=%s",
+                    str(getattr(self.request, "id", "")),
+                )
+
             return {
                 "status": "error",
                 "error": "Aucune génétique trouvée avec ces filtres",
@@ -562,8 +1233,80 @@ def train_pysr_multi_async(
         if site_codes and len(site_codes) == 1:
             resolved_site_code = str(site_codes[0]).strip().upper()
 
+        persisted_cluster_id: int | None = None
+        if cluster_ids and len(cluster_ids) == 1:
+            try:
+                persisted_cluster_id = int(cluster_ids[0])
+            except Exception:
+                persisted_cluster_id = None
+
+        async def _dataset_stats_for_gen(resolved_gen: str) -> dict[str, Any]:
+            pool = await asyncpg.create_pool(DATABASE_URL)
+            try:
+                async with pool.acquire() as conn:
+                    rows = await _fetch_lot_level_dataset(
+                        conn=conn,
+                        site_codes=site_codes,
+                        genetique=resolved_gen,
+                        min_duree_gavage=min_duree_gavage,
+                        max_duree_gavage=max_duree_gavage,
+                        limit_lots=None,
+                    )
+            finally:
+                await pool.close()
+
+            counts = {
+                "A": 0,
+                "B": 0,
+                "C_D": 0,
+                "missing": 0,
+            }
+
+            for r in rows:
+                grade = (str(r.get("sqal_grade_last") or "").strip().upper())
+                if grade in ("A+", "A"):
+                    counts["A"] += 1
+                elif grade == "B":
+                    counts["B"] += 1
+                elif grade in ("C", "REJECT"):
+                    counts["C_D"] += 1
+                else:
+                    counts["missing"] += 1
+
+            return {
+                "n_lots": int(len(rows)),
+                "sqal_gate_counts": counts,
+            }
+
+        def _empty_candidates_payload(*, gate_counts: dict[str, int] | None = None) -> tuple[dict[str, Any], dict[str, Any]]:
+            resolved_counts = gate_counts or {"A": 0, "B": 0, "C_D": 0, "missing": 0}
+            curves = {
+                "by_gate": {
+                    "A": {"jours": []},
+                    "B": {"jours": []},
+                    "C_D": {"jours": []},
+                },
+                "default_gate": "A",
+            }
+            metrics = {
+                "by_gate": {
+                    "A": {"n_lots": int(resolved_counts.get("A", 0)), "metrics": {"n_jours": 0}},
+                    "B": {"n_lots": int(resolved_counts.get("B", 0)), "metrics": {"n_jours": 0}},
+                    "C_D": {"n_lots": int(resolved_counts.get("C_D", 0)), "metrics": {"n_jours": 0}},
+                }
+            }
+            return curves, metrics
+
         for g in genetiques:
             try:
+                ds_stats = asyncio.run(_dataset_stats_for_gen(str(g).strip().lower()))
+                logger.info(
+                    "PySR lot-level dataset stats genetique=%s n_lots=%s gates=%s",
+                    str(g),
+                    ds_stats.get("n_lots"),
+                    ds_stats.get("sqal_gate_counts"),
+                )
+
                 (resolved_foie_min,
                  resolved_foie_max,
                  resolved_foie_target,
@@ -605,15 +1348,135 @@ def train_pysr_multi_async(
                     foie_weight_range=float(resolved_w_range),
                     foie_weight_target=float(resolved_w_target),
                 )
+
+                # Build candidates curves by SQAL gate (same structure as single-run history).
+                candidate_curve_json = None
+                candidate_metrics_json = None
+                try:
+                    async def _load_rows_for_candidates() -> list[dict[str, Any]]:
+                        pool = await asyncpg.create_pool(DATABASE_URL)
+                        try:
+                            async with pool.acquire() as conn:
+                                return await _fetch_lot_level_dataset(
+                                    conn=conn,
+                                    site_codes=site_codes,
+                                    genetique=str(g).strip().lower(),
+                                    min_duree_gavage=min_duree_gavage,
+                                    max_duree_gavage=max_duree_gavage,
+                                    limit_lots=2000,
+                                )
+                        finally:
+                            await pool.close()
+
+                    rows_for_candidates = asyncio.run(_load_rows_for_candidates())
+                    if rows_for_candidates:
+                        candidate_curve_json, candidate_metrics_json = _build_candidate_curves_by_gate(rows_for_candidates)
+                        candidate_curve_json["default_gate"] = "A"
+                    else:
+                        candidate_curve_json, candidate_metrics_json = _empty_candidates_payload(
+                            gate_counts=(ds_stats or {}).get("sqal_gate_counts")
+                        )
+                except Exception as curve_err:
+                    logger.warning(
+                        "PySR multi failed to build candidate curves by gate genetique=%s err=%s",
+                        str(g),
+                        str(curve_err),
+                    )
+                    candidate_curve_json, candidate_metrics_json = _empty_candidates_payload(
+                        gate_counts=(ds_stats or {}).get("sqal_gate_counts")
+                    )
+
+                # Persister aussi les métriques de winsorisation (Option C) si présentes dans le résultat.
+                try:
+                    w = res.get("winsorization") if isinstance(res, dict) else None
+                    if w is not None:
+                        if candidate_metrics_json is None:
+                            candidate_metrics_json = {}
+                        if isinstance(candidate_metrics_json, dict):
+                            candidate_metrics_json["winsorization"] = w
+                except Exception:
+                    pass
+
+                try:
+                    asyncio.run(
+                        _persist_multi_history_row(
+                            statut="SUCCESS",
+                            resolved_site_code=resolved_site_code,
+                            resolved_genetique=str(g).strip().lower() if g else None,
+                            resolved_cluster_id=persisted_cluster_id,
+                            equation=res.get("formula"),
+                            r2_score=res.get("r2_score"),
+                            complexity=res.get("complexity"),
+                            error_message=None,
+                            candidate_curve_json=candidate_curve_json,
+                            candidate_metrics_json=candidate_metrics_json,
+                        )
+                    )
+                except Exception:
+                    logger.exception(
+                        "PySR multi failed to persist SUCCESS history row task_id=%s genetique=%s",
+                        str(getattr(self.request, "id", "")),
+                        str(g),
+                    )
                 results[str(g)] = {
                     "status": res.get("status", "success"),
                     "genetique": g,
                     "formula": res.get("formula", ""),
                     "r2_score": res.get("r2_score", 0.0),
                     "n_samples": res.get("n_samples", 0),
+                    "dataset": ds_stats,
                     "foie_objective": resolved_foie_objective,
                 }
             except Exception as exc:
+                # Try to still persist candidate curves for debugging/publishing if we can build them.
+                candidate_curve_json = None
+                candidate_metrics_json = None
+                try:
+                    async def _load_rows_for_candidates_failed() -> list[dict[str, Any]]:
+                        pool = await asyncpg.create_pool(DATABASE_URL)
+                        try:
+                            async with pool.acquire() as conn:
+                                return await _fetch_lot_level_dataset(
+                                    conn=conn,
+                                    site_codes=site_codes,
+                                    genetique=str(g).strip().lower(),
+                                    min_duree_gavage=min_duree_gavage,
+                                    max_duree_gavage=max_duree_gavage,
+                                    limit_lots=2000,
+                                )
+                        finally:
+                            await pool.close()
+
+                    rows_for_candidates = asyncio.run(_load_rows_for_candidates_failed())
+                    if rows_for_candidates:
+                        candidate_curve_json, candidate_metrics_json = _build_candidate_curves_by_gate(rows_for_candidates)
+                        candidate_curve_json["default_gate"] = "A"
+                    else:
+                        candidate_curve_json, candidate_metrics_json = _empty_candidates_payload()
+                except Exception:
+                    candidate_curve_json, candidate_metrics_json = _empty_candidates_payload()
+
+                try:
+                    asyncio.run(
+                        _persist_multi_history_row(
+                            statut="FAILED",
+                            resolved_site_code=resolved_site_code,
+                            resolved_genetique=str(g).strip().lower() if g else None,
+                            resolved_cluster_id=persisted_cluster_id,
+                            equation=None,
+                            r2_score=None,
+                            complexity=None,
+                            error_message=str(exc),
+                            candidate_curve_json=candidate_curve_json,
+                            candidate_metrics_json=candidate_metrics_json,
+                        )
+                    )
+                except Exception:
+                    logger.exception(
+                        "PySR multi failed to persist FAILED history row task_id=%s genetique=%s",
+                        str(getattr(self.request, "id", "")),
+                        str(g),
+                    )
                 results[g] = {
                     "status": "error",
                     "error": str(exc),

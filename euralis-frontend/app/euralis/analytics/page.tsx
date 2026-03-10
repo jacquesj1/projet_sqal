@@ -640,7 +640,7 @@ export default function AnalyticsPage() {
                   </p>
                 </div>
               ) : (
-                <ClustersMapLeaflet gaveurs={clusters} />
+                <ClustersMapLeaflet gaveurs={clusters as any[]} />
               )}
             </div>
 

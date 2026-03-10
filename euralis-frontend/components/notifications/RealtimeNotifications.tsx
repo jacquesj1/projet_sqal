@@ -18,7 +18,12 @@ interface RealtimeNotificationsProps {
 }
 
 export default function RealtimeNotifications({
-  wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8000',
+  wsUrl =
+    process.env.NEXT_PUBLIC_WS_URL ||
+    (() => {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      return apiUrl.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:');
+    })(),
   maxNotifications = 50,
 }: RealtimeNotificationsProps) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -27,9 +32,16 @@ export default function RealtimeNotifications({
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout>();
   const reconnectAttempts = useRef(0);
+  const maxReconnectAttempts = 5;
+  const hasLoggedError = useRef(false);
 
   const connectWebSocket = () => {
     try {
+      if (reconnectAttempts.current >= maxReconnectAttempts) {
+        setIsConnected(false);
+        return;
+      }
+
       // Connexion au WebSocket pour les notifications
       const ws = new WebSocket(`${wsUrl}/ws/notifications/`);
 
@@ -68,28 +80,40 @@ export default function RealtimeNotifications({
       };
 
       ws.onerror = (error) => {
-        console.error('[WS] WebSocket error:', error);
+        if (!hasLoggedError.current) {
+          console.warn('[WS] Notifications WebSocket unavailable (degraded mode).', error);
+          hasLoggedError.current = true;
+        }
         setIsConnected(false);
       };
 
       ws.onclose = () => {
-        console.log('[WS] Disconnected from notifications service');
+        if (!hasLoggedError.current) {
+          console.log('[WS] Disconnected from notifications service');
+        }
         setIsConnected(false);
         wsRef.current = null;
 
-        // Tentative de reconnexion avec backoff exponentiel
-        const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.current), 30000);
-        reconnectAttempts.current += 1;
+        // Tentative de reconnexion avec backoff exponentiel (limité)
+        if (reconnectAttempts.current < maxReconnectAttempts) {
+          const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.current), 15000);
+          reconnectAttempts.current += 1;
 
-        reconnectTimeoutRef.current = setTimeout(() => {
-          console.log(`[WS] Attempting to reconnect (attempt ${reconnectAttempts.current})...`);
-          connectWebSocket();
-        }, delay);
+          reconnectTimeoutRef.current = setTimeout(() => {
+            if (!hasLoggedError.current) {
+              console.log(`[WS] Attempting to reconnect (attempt ${reconnectAttempts.current})...`);
+            }
+            connectWebSocket();
+          }, delay);
+        }
       };
 
       wsRef.current = ws;
     } catch (error) {
-      console.error('[WS] Failed to connect:', error);
+      if (!hasLoggedError.current) {
+        console.warn('[WS] Failed to connect to notifications (degraded mode).', error);
+        hasLoggedError.current = true;
+      }
       setIsConnected(false);
     }
   };

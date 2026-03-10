@@ -75,8 +75,7 @@ RUN pip3 install --no-cache-dir --upgrade pip --break-system-packages && \
 # ==============================================================================
 # Copier code application
 # ==============================================================================
-COPY ./app/__init__.py /app/app/
-COPY ./app/main.py /app/app/
+COPY ./app /app/app
 
 # Alembic migrations
 COPY ./alembic.ini /app/alembic.ini
