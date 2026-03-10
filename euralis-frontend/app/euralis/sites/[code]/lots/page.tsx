@@ -12,12 +12,12 @@ interface Lot {
   code_lot: string;
   site_code: string;
   gaveur_id: number;
-  souche: string | null;
+  souche?: string;
   debut_lot: string;
-  itm: number | null;
-  sigma: number | null;
-  duree_gavage_reelle: number | null;
-  pctg_perte_gavage: number | null;
+  itm?: number;
+  sigma?: number;
+  duree_gavage_reelle?: number;
+  pctg_perte_gavage?: number;
   statut: string;
 }
 

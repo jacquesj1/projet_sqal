@@ -38,8 +38,8 @@ interface Lot {
   gaveur_id: number;
   debut_lot: string;
   statut: string;
-  itm: number | null;
-  duree_gavage_reelle: number | null;
+  itm?: number;
+  duree_gavage_reelle?: number;
 }
 
 export default function SiteDetailPage() {

@@ -24,10 +24,10 @@ interface Lot {
   code_lot: string;
   site_code: string;
   debut_lot: string;
-  itm: number | null;
-  sigma: number | null;
+  itm?: number;
+  sigma?: number;
   statut: string;
-  duree_gavage_reelle: number | null;
+  duree_gavage_reelle?: number;
 }
 
 export default function GaveurDetailPage() {
