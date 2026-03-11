@@ -107,9 +107,13 @@ services:
       LOG_LEVEL: info
       SECRET_KEY: ${SECRET_KEY:-euralis_nas_secret_2026}
 
-      # PySR — Julia activé (PYSR_USE_NUMPY=false → régression symbolique réelle)
-      PYSR_USE_NUMPY:          "false"
+      # PySR — Julia désactivé sur NAS J4025 (pas d'AVX → SIGILL sinon)
+      # numpy fallback : régression symbolique simplifiée mais stable
+      PYSR_USE_NUMPY:          "true"
       PYSR_ABSOLUTE_MIN_ROWS:  "5"
+      # OpenBLAS : forcer SSE2 pour éviter AVX sur Celeron J4025 (Gemini Lake, no AVX)
+      OPENBLAS_CORETYPE:       "CORE2"
+      JULIA_CPU_TARGET:        "generic"
 
       # CORS — toutes les origines nginx (même hôte → en pratique inutile, mais safe)
       CORS_ORIGINS: >-
@@ -358,8 +362,10 @@ services:
       CELERY_RESULT_BACKEND: redis://redis:6379/1
       APP_ENV:               production
       LOG_LEVEL:             info
-      PYSR_USE_NUMPY:        "false"
+      PYSR_USE_NUMPY:        "true"
       PYSR_ABSOLUTE_MIN_ROWS: "5"
+      OPENBLAS_CORETYPE:     "CORE2"
+      JULIA_CPU_TARGET:      "generic"
       BACKUP_DIR:            /tmp/backups
     command: celery -A app.tasks.celery_app worker --loglevel=info --concurrency=2 --queues=ml_heavy,ml_light,exports,notifications,default
     depends_on:
@@ -387,7 +393,9 @@ services:
       CELERY_RESULT_BACKEND: redis://redis:6379/1
       APP_ENV:               production
       LOG_LEVEL:             info
-      PYSR_USE_NUMPY:        "false"
+      PYSR_USE_NUMPY:        "true"
+      OPENBLAS_CORETYPE:     "CORE2"
+      JULIA_CPU_TARGET:      "generic"
     command: celery -A app.tasks.celery_app beat --loglevel=info
     depends_on:
       timescaledb:
