@@ -6,7 +6,7 @@
 #   docker compose -f docker-compose.euralis.nas.yml --env-file .env.euralis.nas down
 #
 # Ports NAS (accès LAN) :
-#   http://DEEP_NAS:8081  → Gaveurs
+#   http://DEEP_NAS:8088  → Gaveurs  (8081 occupé par Squid/ProxyServer DSM)
 #   http://DEEP_NAS:8082  → Euralis
 #   http://DEEP_NAS:8083  → Traçabilité
 #   http://DEEP_NAS:8084  → SQAL
@@ -117,7 +117,7 @@ services:
 
       # CORS — toutes les origines nginx (même hôte → en pratique inutile, mais safe)
       CORS_ORIGINS: >-
-        http://${NAS_IP:-DEEP_NAS}:8081,
+        http://${NAS_IP:-DEEP_NAS}:8088,
         http://${NAS_IP:-DEEP_NAS}:8082,
         http://${NAS_IP:-DEEP_NAS}:8083,
         http://${NAS_IP:-DEEP_NAS}:8084,
@@ -201,7 +201,7 @@ services:
       context: ./gaveurs-frontend
       dockerfile: Dockerfile
       args:
-        NEXT_PUBLIC_API_URL: "http://${NAS_IP:-DEEP_NAS}:8081"
+        NEXT_PUBLIC_API_URL: "http://${NAS_IP:-DEEP_NAS}:8088"
     container_name: euralis_frontend_gaveurs
     restart: unless-stopped
     environment:
@@ -328,7 +328,7 @@ services:
     container_name: euralis_nginx
     restart: unless-stopped
     ports:
-      - "8081:8081"
+      - "8088:8088"
       - "8082:8082"
       - "8083:8083"
       - "8084:8084"
