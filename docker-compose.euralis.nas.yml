@@ -128,6 +128,8 @@ services:
     command:
       - "gunicorn"
       - "app.main:app"
+      - "--config"
+      - "/app/gunicorn.nas.conf.py"
       - "--worker-class"
       - "uvicorn.workers.UvicornWorker"
       - "--workers"
@@ -154,6 +156,7 @@ services:
     volumes:
       - ./backend-api/app:/app/app:ro
       - ./backend-api/models:/app/models:ro
+      - ./backend-api/gunicorn.nas.conf.py:/app/gunicorn.nas.conf.py:ro
       - ./simulators:/simulators:ro
       - ./simulator-sqal:/simulator-sqal:ro
       - /var/run/docker.sock:/var/run/docker.sock:rw
