@@ -80,7 +80,7 @@ export default function StatsPage() {
             Statistiques - Lot {lot.code_lot}
           </h1>
           <p className="text-gray-600 mt-2">
-            {lot.nombre_canards} canards · {lot.souche} · Gaveur {lot.gaveur_id}
+            {lot.nombre_canards} canards · {lot.genetique} · Gaveur {lot.gaveur_id}
           </p>
         </div>
 
@@ -93,9 +93,9 @@ export default function StatsPage() {
               </svg>
             }
             label="Poids actuel moyen"
-            value={`${lot.poids_moyen_actuel.toFixed(0)} g`}
+            value={`${(lot.poids_moyen_actuel ?? 0).toFixed(0)} g`}
             color="blue"
-            subtitle={`Départ: ${lot.poids_moyen_initial.toFixed(0)} g`}
+            subtitle={`Départ: ${(lot.poids_moyen_initial ?? 0).toFixed(0)} g`}
           />
           <KPICard
             icon={
@@ -104,9 +104,9 @@ export default function StatsPage() {
               </svg>
             }
             label="Gain de poids"
-            value={`${(lot.poids_moyen_actuel - lot.poids_moyen_initial).toFixed(0)} g`}
+            value={`${((lot.poids_moyen_actuel ?? 0) - (lot.poids_moyen_initial ?? 0)).toFixed(0)} g`}
             color="green"
-            subtitle={`+${(((lot.poids_moyen_actuel - lot.poids_moyen_initial) / lot.poids_moyen_initial) * 100).toFixed(1)}%`}
+            subtitle={`+${((((lot.poids_moyen_actuel ?? 0) - (lot.poids_moyen_initial ?? 0)) / (lot.poids_moyen_initial || 1)) * 100).toFixed(1)}%`}
           />
           <KPICard
             icon={
@@ -126,7 +126,7 @@ export default function StatsPage() {
               </svg>
             }
             label="Durée gavage"
-            value={lot.duree_gavage_prevue || 'N/A'}
+            value={lot.duree_gavage_reelle != null ? String(lot.duree_gavage_reelle) : 'N/A'}
             color="orange"
             subtitle="jours"
           />
@@ -143,14 +143,14 @@ export default function StatsPage() {
                 <div>
                   <p className="text-sm text-gray-600">Date début</p>
                   <p className="text-lg font-semibold text-gray-800">
-                    {new Date(lot.date_debut_gavage).toLocaleDateString('fr-FR')}
+                    {lot.date_debut_gavage ? new Date(lot.date_debut_gavage).toLocaleDateString('fr-FR') : 'N/A'}
                   </p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-600">Date fin prévue</p>
                   <p className="text-lg font-semibold text-gray-800">
-                    {lot.date_fin_prevue
-                      ? new Date(lot.date_fin_prevue).toLocaleDateString('fr-FR')
+                    {lot.date_fin_gavage_prevue
+                      ? new Date(lot.date_fin_gavage_prevue).toLocaleDateString('fr-FR')
                       : 'Non définie'}
                   </p>
                 </div>
@@ -160,7 +160,7 @@ export default function StatsPage() {
                 </div>
                 <div>
                   <p className="text-sm text-gray-600">Souche</p>
-                  <p className="text-lg font-semibold text-gray-800">{lot.souche}</p>
+                  <p className="text-lg font-semibold text-gray-800">{lot.genetique}</p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-600">Statut</p>
@@ -181,7 +181,7 @@ export default function StatsPage() {
                 <div>
                   <p className="text-sm text-gray-600">Site</p>
                   <p className="text-lg font-semibold text-gray-800">
-                    {lot.site_id || 'Non assigné'}
+                    {lot.site_code || lot.site_origine || 'Non assigné'}
                   </p>
                 </div>
               </div>

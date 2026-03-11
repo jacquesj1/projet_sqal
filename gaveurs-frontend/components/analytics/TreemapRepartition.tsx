@@ -153,7 +153,7 @@ export default function TreemapRepartition({ gaveurId, filteredLotId = null, cla
       .padding(2)
       .round(true);
 
-    treemapLayout(root);
+    const treemapRoot = treemapLayout(root);
 
     // Create tooltip
     const tooltip = d3.select('body')
@@ -171,7 +171,7 @@ export default function TreemapRepartition({ gaveurId, filteredLotId = null, cla
 
     // Draw rectangles
     const cell = svg.selectAll('g')
-      .data(root.leaves())
+      .data(treemapRoot.leaves())
       .enter()
       .append('g')
       .attr('transform', d => `translate(${d.x0},${d.y0})`);

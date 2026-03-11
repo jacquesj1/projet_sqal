@@ -57,7 +57,7 @@ export function LotSelector({
 
   // Filtrer les lots par statut
   const lotsFiltered = filterStatut
-    ? lots.filter((l) => filterStatut.includes(l.statut))
+    ? lots.filter((l) => filterStatut.includes(l.statut as StatutLot))
     : lots;
 
   // Trier par statut puis par code_lot
@@ -119,7 +119,7 @@ export function LotSelector({
         {lotsSorted.map((lot) => (
           <option key={lot.id} value={lot.id}>
             {lot.code_lot} - {lot.site_origine} ({lot.nombre_canards} canards) -{" "}
-            {getStatutLabel(lot.statut)} - J{lot.nombre_jours_gavage_ecoules}
+            {getStatutLabel(lot.statut as StatutLot)} - J{lot.nombre_jours_gavage_ecoules}
           </option>
         ))}
       </select>
@@ -147,6 +147,7 @@ export function LotSelector({
 // Helper: Obtenir label français pour statut
 function getStatutLabel(statut: StatutLot): string {
   const labels: Record<StatutLot, string> = {
+    planifie: "Planifié",
     en_preparation: "En préparation",
     en_gavage: "En gavage",
     termine: "Terminé",
@@ -199,7 +200,7 @@ export function LotCardSelector({
   }, [gaveurId]);
 
   const lotsFiltered = filterStatut
-    ? lots.filter((l) => filterStatut.includes(l.statut))
+    ? lots.filter((l) => filterStatut.includes(l.statut as StatutLot))
     : lots;
 
   if (loading) {
@@ -222,10 +223,10 @@ export function LotCardSelector({
             <h3 className="text-lg font-bold text-gray-800">{lot.code_lot}</h3>
             <span
               className={`rounded-full px-2 py-1 text-xs font-bold ${getStatutColor(
-                lot.statut
+                lot.statut as StatutLot
               )}`}
             >
-              {getStatutLabel(lot.statut)}
+              {getStatutLabel(lot.statut as StatutLot)}
             </span>
           </div>
 
@@ -255,6 +256,7 @@ export function LotCardSelector({
 
 function getStatutColor(statut: StatutLot): string {
   const colors: Record<StatutLot, string> = {
+    planifie: "bg-yellow-100 text-yellow-800",
     en_preparation: "bg-gray-100 text-gray-800",
     en_gavage: "bg-green-100 text-green-800",
     termine: "bg-blue-100 text-blue-800",

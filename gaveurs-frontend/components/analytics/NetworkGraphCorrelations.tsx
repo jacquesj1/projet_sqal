@@ -459,7 +459,7 @@ export default function NetworkGraphCorrelations({ gaveurId, filteredLotId = nul
         .attr('transform', (d: any) => `translate(${d.x},${d.y})`);
     });
 
-    function dragstarted(event: any) {
+    function dragstarted(this: Element, event: any) {
       if (!event.active) simulation.alphaTarget(0.3).restart();
       event.subject.fx = event.subject.x;
       event.subject.fy = event.subject.y;
@@ -471,7 +471,7 @@ export default function NetworkGraphCorrelations({ gaveurId, filteredLotId = nul
       event.subject.fy = event.y;
     }
 
-    function dragended(event: any) {
+    function dragended(this: Element, event: any) {
       if (!event.active) simulation.alphaTarget(0);
       event.subject.fx = null;
       event.subject.fy = null;

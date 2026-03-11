@@ -64,10 +64,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     Cookies.set('auth_token', data.access_token, COOKIE_OPTIONS);
     localStorage.setItem('access_token', data.access_token);
 
-    // Enrichir user avec gaveur_id depuis user_info
+    // Enrichir user avec gaveur_id depuis user_info (champ backend hors type)
+    const dataAny = data as any;
     const enrichedUser = {
       ...data.user,
-      gaveur_id: data.user_info?.gaveur_id || data.user_info?.id || data.user_info?.gaveur?.id || null
+      gaveur_id: dataAny.user_info?.gaveur_id || dataAny.user_info?.id || dataAny.user_info?.gaveur?.id || null
     };
 
     localStorage.setItem('user', JSON.stringify(enrichedUser));

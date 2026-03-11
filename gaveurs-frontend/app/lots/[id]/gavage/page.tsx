@@ -58,7 +58,7 @@ export default function GavagePage() {
   useEffect(() => {
     if (lot) {
       const jour = calculateJourGavage(
-        lot.date_debut_gavage.toString(),
+        (lot.date_debut_gavage ?? ''),
         formData.date_gavage
       );
       setFormData((prev) => ({ ...prev, jour_gavage: jour }));

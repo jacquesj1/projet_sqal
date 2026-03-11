@@ -183,7 +183,7 @@ export default function ViolinPlotDistributions({ gaveurId, filteredLotId = null
 
       // Draw violin
       svg.append('path')
-        .datum(density)
+        .datum(density as unknown as [number, number][])
         .attr('d', area)
         .attr('fill', colorScale(violinData.race))
         .attr('opacity', 0.7)
