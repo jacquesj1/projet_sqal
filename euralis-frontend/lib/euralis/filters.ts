@@ -88,10 +88,10 @@ export function sortLots(
     }
 
     // Dates
-    if (aVal instanceof Date && bVal instanceof Date) {
+    if ((aVal as unknown) instanceof Date && (bVal as unknown) instanceof Date) {
       return sortDirection === 'asc'
-        ? aVal.getTime() - bVal.getTime()
-        : bVal.getTime() - aVal.getTime();
+        ? (aVal as unknown as Date).getTime() - (bVal as unknown as Date).getTime()
+        : (bVal as unknown as Date).getTime() - (aVal as unknown as Date).getTime();
     }
 
     // String comparison par défaut

@@ -297,7 +297,7 @@ describe('RealtimeSitesMonitor Component', () => {
       jest.advanceTimersByTime(20)
     })
 
-    const ws = mockWsInstance
+    const ws = mockWsInstance!
 
     await act(async () => {
       jest.advanceTimersByTime(30000)
@@ -501,7 +501,7 @@ describe('RealtimeSitesMonitor Component', () => {
       jest.advanceTimersByTime(20)
     })
 
-    const ws = mockWsInstance
+    const ws = mockWsInstance!
 
     unmount()
 

@@ -271,7 +271,7 @@ export default function SiteDetailPage() {
             <div>
               <p className="text-sm text-gray-600">ITM Moyen</p>
               <p className="text-3xl font-bold text-gray-900 mt-1">
-                {stats.itm_moyen.toFixed(2)}
+                {stats.itm_moyen?.toFixed(2) ?? 'N/A'}
               </p>
             </div>
             <BarChart3 className="h-10 w-10 text-green-500" />
@@ -284,7 +284,7 @@ export default function SiteDetailPage() {
             <div>
               <p className="text-sm text-gray-600">Mortalité</p>
               <p className="text-3xl font-bold text-gray-900 mt-1">
-                {stats.mortalite_moyenne.toFixed(1)}%
+                {stats.mortalite_moyenne?.toFixed(1) ?? 'N/A'}%
               </p>
             </div>
             <svg className="h-10 w-10 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -299,7 +299,7 @@ export default function SiteDetailPage() {
             <div>
               <p className="text-sm text-gray-600">Production</p>
               <p className="text-3xl font-bold text-gray-900 mt-1">
-                {(stats.production_totale_kg / 1000).toFixed(1)}
+                {((stats.production_totale_kg ?? 0) / 1000).toFixed(1)}
               </p>
             </div>
             <svg className="h-10 w-10 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">

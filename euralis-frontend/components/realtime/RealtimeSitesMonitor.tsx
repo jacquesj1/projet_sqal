@@ -87,7 +87,7 @@ export default function RealtimeSitesMonitor() {
         console.log(`✅ ${gavages.length} gavages récents chargés depuis l'API`);
 
         // Initialiser les stats avec les sites
-        const initialStats = new Map(
+        const initialStats: Map<string, SiteStats> = new Map(
           sites.map((site: any) => [
             site.code,
             {

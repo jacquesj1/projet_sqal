@@ -100,7 +100,7 @@ export async function loginProgrammatically(
       value: data.access_token,
       domain: 'localhost',
       path: '/',
-      maxAge: 3600,
+      expires: Math.floor(Date.now() / 1000) + 3600,
     },
   ]);
 
