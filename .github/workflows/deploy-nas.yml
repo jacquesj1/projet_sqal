@@ -49,7 +49,7 @@ jobs:
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.NAS_SSH_HOST }}
-          port: ${{ secrets.NAS_SSH_PORT || '22' }}
+          port: 22
           username: ${{ secrets.NAS_SSH_USER }}
           key: ${{ secrets.NAS_SSH_KEY }}
           timeout: 60s
