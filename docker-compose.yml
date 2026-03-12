@@ -25,7 +25,7 @@ services:
       POSTGRES_PASSWORD: gaveurs_secure_2024
       POSTGRES_INITDB_ARGS: "-E UTF8"
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - timescaledb_data:/var/lib/postgresql/data
       - ./backend-api/scripts:/docker-entrypoint-initdb.d:ro
