@@ -28,7 +28,6 @@ services:
       - "5433:5432"
     volumes:
       - timescaledb_data:/var/lib/postgresql/data
-      - ./backend-api/scripts:/docker-entrypoint-initdb.d:ro
     networks:
       - gaveurs_network
     healthcheck:
