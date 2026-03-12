@@ -30,6 +30,7 @@ from app.api import advanced_routes
 from app.api import auth_routes
 
 # Import Production-ready Core Modules (Phase 2)
+_core_import_error = None
 try:
     from app.core.cache import CacheManager
     from app.core.health import health_manager, initialize_health_checks
@@ -40,6 +41,7 @@ try:
     CORE_MODULES_AVAILABLE = True
 except ImportError as e:
     CORE_MODULES_AVAILABLE = False
+    _core_import_error = str(e)  # Save before 'e' is deleted by Python 3 scoping
 
 # ============================================
 # LOGGING CONFIGURATION (Daily Rotation by Module)
@@ -64,7 +66,7 @@ logger = main_logger
 if CORE_MODULES_AVAILABLE:
     logger.info("✅ Production core modules imported successfully")
 else:
-    logger.warning(f"⚠️  Core modules not available: {e}")
+    logger.warning(f"⚠️  Core modules not available: {_core_import_error}")
 
 # Métriques Prometheus
 REQUEST_COUNT = Counter('gaveurs_requests_total', 'Total requests', ['method', 'endpoint'])
@@ -123,29 +125,37 @@ async def lifespan(app: FastAPI):
         "postgresql://gaveurs_admin:gaveurs_secure_2024@timescaledb:5432/gaveurs_db"
     )
 
-    try:
-        logger.info("⏳ Connecting to TimescaleDB...")
-        # Disable SSL for local development (Windows host -> Docker container)
-        import ssl
-        db_pool = await asyncpg.create_pool(
-            database_url,
-            min_size=5,
-            max_size=20,
-            ssl=False  # Disable SSL for localhost connections
-        )
-        app.state.db_pool = db_pool  # Make pool available for routers
-        logger.info("  ✅ TimescaleDB connection established")
+    # Retry loop: DB may need a few seconds after healthcheck passes
+    _db_max_retries = 5
+    _db_retry_delay = 5  # seconds between retries
+    for _db_attempt in range(1, _db_max_retries + 1):
+        try:
+            logger.info(f"⏳ Connecting to TimescaleDB (attempt {_db_attempt}/{_db_max_retries})...")
+            db_pool = await asyncpg.create_pool(
+                database_url,
+                min_size=2,   # Reduced from 5 to ease initial load
+                max_size=20,
+                ssl=False,    # Disable SSL for Docker-internal connections
+                command_timeout=30,
+                max_inactive_connection_lifetime=300
+            )
+            app.state.db_pool = db_pool  # Make pool available for routers
+            logger.info("  ✅ TimescaleDB connection established")
 
-        if CORE_MODULES_AVAILABLE:
-            try:
-                health_manager.mark_component_healthy("database")
-            except AttributeError:
-                pass  # Method may not exist
-    except Exception as e:
-        logger.error(f"  ❌ Database connection failed: {e}")
-        # if CORE_MODULES_AVAILABLE:
-        #     health_manager.mark_component_unhealthy("database", str(e))
-        raise
+            if CORE_MODULES_AVAILABLE:
+                try:
+                    health_manager.mark_component_healthy("database")
+                except AttributeError:
+                    pass  # Method may not exist
+            break  # Success — exit retry loop
+        except Exception as e:
+            logger.error(f"  ❌ Database connection failed (attempt {_db_attempt}): {e}")
+            if _db_attempt < _db_max_retries:
+                logger.info(f"  ⏳ Retrying in {_db_retry_delay}s...")
+                await asyncio.sleep(_db_retry_delay)
+            else:
+                logger.error("  ❌ All DB connection attempts failed. Aborting startup.")
+                raise
 
     # Step 3: Initialize Redis cache (if available)
     redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")

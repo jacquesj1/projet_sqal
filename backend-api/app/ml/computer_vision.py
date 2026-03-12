@@ -12,8 +12,15 @@ from typing import Dict, Optional, List
 from datetime import datetime
 import base64
 import io
-from PIL import Image
 import logging
+
+# PIL/Pillow imports (conditional for optional dependency)
+try:
+    from PIL import Image
+    PILLOW_AVAILABLE = True
+except ImportError:
+    PILLOW_AVAILABLE = False
+    logging.warning("Pillow not available. Install with: pip install Pillow")
 
 # TensorFlow imports (conditional for optional dependency)
 try:
