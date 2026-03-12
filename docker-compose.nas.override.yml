@@ -1,0 +1,56 @@
+# ==============================================================================
+# NAS Override - Système Gaveurs V3.0
+# ==============================================================================
+# Ce fichier est automatiquement détecté et appliqué par le workflow GitOps.
+# Il surcharge docker-compose.yml avec des paramètres adaptés au NAS
+# (timeouts plus longs, mémoire réduite, simulateurs optionnels).
+#
+# Usage (automatique via workflow):
+#   docker compose -f docker-compose.yml -f docker-compose.nas.override.yml up -d
+# ==============================================================================
+
+services:
+
+  # Backend: start_period plus long sur NAS (CPU lent + DB init)
+  backend:
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 15s
+      retries: 8
+      start_period: 180s
+
+  # Simulateurs: les rendre optionnels sur NAS (pas critiques pour la demo)
+  # Ils ne bloquent plus le deploiement si le backend tarde a demarrer
+  simulator-sqal:
+    depends_on:
+      backend:
+        condition: service_started   # service_started = ne pas attendre healthy
+    restart: on-failure
+
+  simulator-consumer:
+    depends_on:
+      backend:
+        condition: service_started
+    restart: on-failure
+
+  simulator-gavage-realtime:
+    depends_on:
+      backend:
+        condition: service_started
+    restart: on-failure
+
+  # Celery worker/beat: aussi en service_started pour eviter blocage
+  celery-worker:
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  celery-beat:
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy

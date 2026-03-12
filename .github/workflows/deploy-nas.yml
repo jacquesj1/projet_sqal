@@ -105,20 +105,37 @@ jobs:
             # La couche Julia (lente) est cachée après le 1er build
             # Seule la couche pip (rapide) se rebuild si requirements.txt a changé
             echo "Building avec cache Docker (Julia déjà compilée = rapide si pas de changement Dockerfile)"
+            # Ne pas faire echouer le script si up signale un container unhealthy
+            # (on veut quand meme voir les logs pour diagnostiquer)
+            set +e
             $DC $COMPOSE_FILES up --build -d
+            UP_EXIT=$?
+            set -e
 
-            echo "=== [3/4] Health check ==="
-            sleep 20
+            echo "=== [3/4] Diagnostics backend ==="
+            echo "docker compose up exit code: $UP_EXIT"
+            echo ""
+            echo "--- Backend logs (last 100 lines) ---"
+            docker logs gaveurs_backend --tail 100 2>&1 || echo "(container not found)"
+            echo "--- fin logs backend ---"
+            echo ""
+
+            # Health check (apres avoir donne du temps au backend)
+            echo "Attente 30s supplementaires puis health check..."
+            sleep 30
             if curl -sf http://localhost:8001/health > /dev/null; then
-              echo "Backend: OK"
+              echo "✅ Backend /health: OK"
             else
-              echo "WARNING: Backend health check failed (may still be starting)"
+              echo "⚠️  Backend /health: KO (voir logs ci-dessus)"
             fi
 
             echo "=== [4/4] Stack status ==="
             $DC $COMPOSE_FILES ps
             echo ""
             echo "Deployment complete - $(date)"
+
+            # Echouer si up a echoue
+            [ $UP_EXIT -eq 0 ] || exit $UP_EXIT
 
       - name: Report result
         if: always()
