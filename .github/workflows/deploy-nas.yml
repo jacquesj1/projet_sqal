@@ -61,10 +61,18 @@ jobs:
             PROJECT="${{ secrets.NAS_PROJECT_PATH }}"
             BRANCH="demo"
 
-            echo "=== [1/4] Git pull ($BRANCH) ==="
-            cd "$PROJECT"
-            git fetch --all
-            git reset --hard origin/$BRANCH
+            echo "=== [1/4] Git clone/pull ($BRANCH) ==="
+            if [ -d "$PROJECT/.git" ]; then
+              echo "Repo existant -> git pull"
+              cd "$PROJECT"
+              git fetch --all
+              git reset --hard origin/$BRANCH
+            else
+              echo "Premier deploiement -> git clone"
+              mkdir -p "$(dirname $PROJECT)"
+              git clone --branch $BRANCH https://github.com/jacquesj1/projet_sqal.git "$PROJECT"
+              cd "$PROJECT"
+            fi
             echo "Commit: $(git log --oneline -1)"
 
             echo "=== [2/4] Docker Compose build & up ==="
