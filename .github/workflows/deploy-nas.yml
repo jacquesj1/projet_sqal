@@ -1,0 +1,109 @@
+# ==============================================================================
+# Deploy to NAS - Système Gaveurs V3.0
+# ==============================================================================
+# Triggered on push to `demo` branch.
+# Uses Tailscale VPN to reach the NAS on the local network, then SSHs in.
+#
+# Required GitHub Secrets:
+#   TAILSCALE_AUTHKEY - Tailscale reusable auth key (Settings > Keys)
+#   NAS_SSH_HOST      - NAS Tailscale hostname or IP (e.g. DEEP_NAS or 100.x.x.x)
+#   NAS_SSH_PORT      - SSH port (default: 22)
+#   NAS_SSH_USER      - SSH user (admin_jj)
+#   NAS_SSH_KEY       - Private SSH key (full PEM content of ~/.ssh/id_rsa)
+#   NAS_PROJECT_PATH  - /volume1/DevProject/gaveurs/app/projet-euralis-gaveurs
+# ==============================================================================
+
+name: Deploy to NAS (demo)
+
+on:
+  push:
+    branches:
+      - demo
+  workflow_dispatch:
+    inputs:
+      force_rebuild:
+        description: 'Force Docker image rebuild'
+        required: false
+        default: 'false'
+        type: boolean
+
+jobs:
+  deploy:
+    name: Deploy to NAS via Tailscale
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: nas-demo
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v2
+        with:
+          authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
+          tags: tag:ci
+
+      - name: Deploy to NAS via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.NAS_SSH_HOST }}
+          port: ${{ secrets.NAS_SSH_PORT || '22' }}
+          username: ${{ secrets.NAS_SSH_USER }}
+          key: ${{ secrets.NAS_SSH_KEY }}
+          timeout: 60s
+          command_timeout: 25m
+          script: |
+            set -e
+            export PATH=/usr/local/bin:/usr/bin:/bin:/usr/syno/bin:$PATH
+
+            PROJECT="${{ secrets.NAS_PROJECT_PATH }}"
+            BRANCH="demo"
+
+            echo "=== [1/4] Git pull ($BRANCH) ==="
+            cd "$PROJECT"
+            git fetch --all
+            git reset --hard origin/$BRANCH
+            echo "Commit: $(git log --oneline -1)"
+
+            echo "=== [2/4] Docker Compose build & up ==="
+            if docker compose version > /dev/null 2>&1; then
+              DC="docker compose"
+            elif docker-compose version > /dev/null 2>&1; then
+              DC="docker-compose"
+            else
+              echo "ERROR: docker compose not found"
+              exit 1
+            fi
+
+            COMPOSE_FILES="-f docker-compose.yml"
+            if [ -f docker-compose.nas.override.yml ]; then
+              COMPOSE_FILES="$COMPOSE_FILES -f docker-compose.nas.override.yml"
+            fi
+
+            $DC $COMPOSE_FILES pull --ignore-pull-failures || true
+            $DC $COMPOSE_FILES up --build -d
+
+            echo "=== [3/4] Health check ==="
+            sleep 15
+            if curl -sf http://localhost:8000/health > /dev/null; then
+              echo "Backend: OK"
+            else
+              echo "WARNING: Backend health check failed (may still be starting)"
+            fi
+
+            echo "=== [4/4] Stack status ==="
+            $DC $COMPOSE_FILES ps
+            echo ""
+            echo "Deployment complete - $(date)"
+
+      - name: Report result
+        if: always()
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then
+            echo "NAS deployment successful - branch: demo - commit: ${{ github.sha }}"
+          else
+            echo "NAS deployment FAILED"
+            echo "Logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          fi
