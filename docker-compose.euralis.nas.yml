@@ -380,6 +380,9 @@ services:
       - euralis_nas_network
     volumes:
       - ./backend-api/app:/app/app:ro
+    # Disable Dockerfile HEALTHCHECK (which probes port 8000 — not open on celery workers)
+    healthcheck:
+      disable: true
 
   # ============================================================================
   # Celery Beat — planificateur de tâches
@@ -409,6 +412,9 @@ services:
       - euralis_nas_network
     volumes:
       - ./backend-api/app:/app/app:ro
+    # Disable Dockerfile HEALTHCHECK (which probes port 8000 — not open on celery beat)
+    healthcheck:
+      disable: true
 
   # ============================================================================
   # Flower — Interface Celery (toujours actif)
@@ -433,6 +439,12 @@ services:
       - celery-worker
     networks:
       - euralis_nas_network
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1:5555/healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
   # ============================================================================
   # Simulateurs — toujours actifs (IoT + temps réel)
