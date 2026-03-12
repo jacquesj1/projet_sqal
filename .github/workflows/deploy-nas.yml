@@ -90,6 +90,9 @@ jobs:
               COMPOSE_FILES="$COMPOSE_FILES -f docker-compose.nas.override.yml"
             fi
 
+            # Stoppe les containers existants pour liberer les ports
+            $DC $COMPOSE_FILES down --remove-orphans || true
+
             # Pull images externes (redis, timescaledb...) sans rebuild
             $DC $COMPOSE_FILES pull --ignore-pull-failures || true
 
