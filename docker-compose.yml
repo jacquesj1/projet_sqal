@@ -103,7 +103,7 @@ services:
       # JWT (for future authentication)
       SECRET_KEY: "your-secret-key-change-in-production"
     ports:
-      - "8000:8000"
+      - "8001:8000"
     depends_on:
       timescaledb:
         condition: service_healthy
