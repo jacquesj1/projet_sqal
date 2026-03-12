@@ -203,7 +203,7 @@ services:
       NEXT_PUBLIC_API_URL: http://localhost:8000
       NODE_ENV: production
     ports:
-      - "3000:3000"
+      - "3003:3000"
     depends_on:
       - backend
     networks:
@@ -559,8 +559,8 @@ services:
     container_name: gaveurs_nginx
     restart: unless-stopped
     ports:
-      - "80:80"
-      - "443:443"
+      - "9080:80"
+      - "9443:443"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/ssl:/etc/nginx/ssl:ro
@@ -582,7 +582,7 @@ services:
     container_name: gaveurs_prometheus
     restart: unless-stopped
     ports:
-      - "9090:9090"
+      - "9091:9090"
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
