@@ -1,0 +1,44 @@
+# Node modules in FrontEnd (reinstalled during build via npm ci)
+FrontEnd/node_modules
+
+# Vite build output
+FrontEnd/dist
+FrontEnd/dist-ssr
+
+# SQAL directories not needed for frontend Docker build
+BackEnd
+Simulator
+simulator-sqal
+*.md
+
+# Misc
+.DS_Store
+*.pem
+
+# Local env files
+FrontEnd/.env*.local
+FrontEnd/.env.development.local
+FrontEnd/.env.test.local
+FrontEnd/.env.production.local
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# Git
+.git
+.gitignore
+
+# Testing
+coverage
+.nyc_output
+
+# Logs
+logs
+*.log
+
+# TypeScript
+FrontEnd/*.tsbuildinfo
