@@ -90,8 +90,12 @@ jobs:
               COMPOSE_FILES="$COMPOSE_FILES -f docker-compose.nas.override.yml"
             fi
 
-            # Stoppe les containers existants pour liberer les ports
+            # Stoppe les containers existants (compose-managed)
             $DC $COMPOSE_FILES down --remove-orphans || true
+
+            # Force-remove containers avec le prefixe "gaveurs" qui seraient restes
+            # (cas: demarrage manuel precedent hors contexte Compose)
+            docker ps -aq --filter "name=gaveurs" | xargs -r docker rm -f 2>/dev/null || true
 
             # Pull images externes (redis, timescaledb...) sans rebuild
             $DC $COMPOSE_FILES pull --ignore-pull-failures || true
