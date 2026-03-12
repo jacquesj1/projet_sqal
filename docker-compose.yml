@@ -250,7 +250,7 @@ services:
   # ============================================================================
   frontend-sqal:
     build:
-      context: ./sqal/frontend
+      context: ./sqal
       dockerfile: Dockerfile
       args:
         VITE_API_URL: http://localhost:8000
@@ -279,7 +279,7 @@ services:
   # ============================================================================
   control-panel:
     build:
-      context: ./control-panel-v2
+      context: ./control-panel-frontend
       dockerfile: Dockerfile
       args:
         VITE_API_URL: http://localhost:8000
