@@ -15,14 +15,20 @@ redis==4.6.0
 celery[redis]==5.3.4
 flower==2.0.1
 
-# Machine Learning & IA
+# Machine Learning & IA (core)
 pysr==0.18.1
 scikit-learn==1.4.0
 numpy==1.26.3
 pandas==2.2.0
 prophet==1.1.5
-tensorflow==2.18.0  # Updated for Python 3.12 compatibility
-torch==2.5.0  # Updated for Python 3.12 compatibility
+Pillow>=10.0.0  # Image processing (was pulled by tensorflow, now explicit)
+
+# Machine Learning - OPTIONAL heavy deps (disabled on NAS to avoid OOM)
+# tensorflow and torch use 1-2GB RAM each at import time — too heavy for NAS
+# They are wrapped in try/except in computer_vision.py and voice_assistant.py
+# Uncomment ONLY if NAS has 16GB+ RAM free:
+# tensorflow==2.18.0
+# torch==2.5.0
 
 # SMS Service
 twilio==8.11.1

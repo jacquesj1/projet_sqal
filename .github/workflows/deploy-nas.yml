@@ -96,20 +96,16 @@ jobs:
             # Pull images externes (redis, timescaledb...) sans rebuild
             $DC $COMPOSE_FILES pull --ignore-pull-failures || true
 
-            # Build uniquement si Dockerfile ou requirements ont changé
-            # Premier déploiement : --build obligatoire
-            # Déploiements suivants : pas de --build (utilise le cache Docker)
-            if docker image inspect projet-euralis-gaveurs-backend > /dev/null 2>&1; then
-              echo "Images existantes -> up sans rebuild (utilise cache Docker)"
-              $DC $COMPOSE_FILES up -d
-            else
-              echo "Premiere installation -> build complet (peut prendre 30-60 min)"
-              $DC $COMPOSE_FILES up --build -d
-            fi
+            # Toujours builder avec --build
+            # Pourquoi : le cache Docker rend ça rapide si rien n'a changé
+            # La couche Julia (lente) est cachée après le 1er build
+            # Seule la couche pip (rapide) se rebuild si requirements.txt a changé
+            echo "Building avec cache Docker (Julia déjà compilée = rapide si pas de changement Dockerfile)"
+            $DC $COMPOSE_FILES up --build -d
 
             echo "=== [3/4] Health check ==="
             sleep 20
-            if curl -sf http://localhost:8000/health > /dev/null; then
+            if curl -sf http://localhost:8001/health > /dev/null; then
               echo "Backend: OK"
             else
               echo "WARNING: Backend health check failed (may still be starting)"
