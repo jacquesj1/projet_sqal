@@ -11,8 +11,10 @@
 
 services:
 
-  # Backend: start_period plus long sur NAS (CPU lent + DB init)
+  # Backend: start_period plus long sur NAS (CPU lent + DB init) + CORS NAS
   backend:
+    environment:
+      CORS_ORIGINS: "http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:3003,http://localhost:5173,http://localhost:5174,http://192.168.1.103:3001,http://192.168.1.103:3002,http://192.168.1.103:3003,http://192.168.1.103:5173,http://192.168.1.103:5174,http://deep_nas:3001,http://deep_nas:3002,http://deep_nas:3003,http://deep_nas:5173,http://deep_nas:5174"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
