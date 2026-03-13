@@ -5,6 +5,7 @@ Uses CNN (Convolutional Neural Network) with TensorFlow/Keras
 Module permettant de détecter automatiquement le poids d'un canard
 à partir d'une photo (vision par ordinateur).
 """
+from __future__ import annotations  # Lazy annotation evaluation (keras may not be installed)
 
 import numpy as np
 import asyncpg
