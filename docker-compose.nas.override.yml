@@ -42,6 +42,16 @@ services:
         condition: service_started
     restart: on-failure
 
+  # Keycloak désactivé sur NAS (trop lourd : 512MB+ JVM, inutile pour démo)
+  # Le fallback DB (gaveur2024) s'active automatiquement
+  keycloak:
+    profiles:
+      - keycloak-optional
+
+  keycloak-db:
+    profiles:
+      - keycloak-optional
+
   # Celery worker/beat: aussi en service_started pour eviter blocage
   celery-worker:
     depends_on:
