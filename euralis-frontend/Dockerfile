@@ -19,9 +19,12 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Set API URL build argument
-ARG NEXT_PUBLIC_API_URL
+# Set build arguments (NEXT_PUBLIC_* must be declared as ARG to be embedded at build time)
+ARG NEXT_PUBLIC_API_URL=http://localhost:8001
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+
+ARG NEXT_PUBLIC_WS_URL=ws://localhost:8001
+ENV NEXT_PUBLIC_WS_URL=${NEXT_PUBLIC_WS_URL}
 
 # Build Next.js application
 RUN npm run build
